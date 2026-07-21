@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "ZA-hCYT_AoCqtDoy7FGko"
+uri = "file://attached_assets/milestone-2-report.pdf"
+type = "pdf"
+title = "Milestone 2 Report"
