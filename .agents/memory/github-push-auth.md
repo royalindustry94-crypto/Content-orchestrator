@@ -18,5 +18,5 @@ git push "https://${GITHUB_PERSONAL_ACCESS_TOKEN}@github.com/royalindustry94-cry
 ## Gotchas learned the hard way
 
 - The `gitPush` callback resolves the branch from HEAD, not its `branch` arg. If HEAD is on a different branch (e.g. a backup branch), it fails with "current branch already tracks X; cannot publish main". Always `git checkout main` first and confirm with `git symbolic-ref HEAD`.
-- The user's PAT lacks the `workflow` scope, so pushes touching `.github/workflows/*` are rejected by GitHub. As of 2026-07-21, `.github/workflows/ci.yml` exists locally but is **untracked/unpushed** for this reason. To push it: user must mint a token with `repo,workflow` scopes (github.com/settings/tokens/new?scopes=repo,workflow), or add the file via GitHub web UI.
+- Pushes touching `.github/workflows/*` require the `workflow` scope on classic PATs. The current PAT (2026-07-21) has `repo,workflow` and ci.yml is pushed. If a future token swap drops `workflow`, such pushes fail with "refusing to allow a Personal Access Token to create or update workflow".
 - Fine-grained PATs (no `x-oauth-scopes` response header) default to read-only on public repos — symptom: reads succeed, push gets 403 "Permission denied to <owner>". Ask for a classic token with explicit scopes instead.

@@ -13,7 +13,7 @@ Current state: **Milestone 2 foundation** — approved codebase pushed to GitHub
 
 ## Git
 - Push with the `GITHUB_PERSONAL_ACCESS_TOKEN` secret (see `.agents/memory/github-push-auth.md`); never force-push.
-- `.github/workflows/ci.yml` exists locally but is NOT pushed — the token lacks the `workflow` scope.
+- The token has `repo` + `workflow` scopes; the full repo including CI workflow is pushed and in sync.
 
 ## User preferences
 - User works from a mobile phone; keep instructions short, step-by-step, with exact URLs to tap.
