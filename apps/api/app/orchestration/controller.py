@@ -1,0 +1,599 @@
+"""Execution controller: advances pipeline runs through their workflow
+definition, handles failures/retries, the human review gate, and spend
+protection hooks (design doc §2, §8, §9).
+
+This is the one place cross-cutting policy decisions are made; stage
+execution itself belongs to workers (out of scope this milestone).
+"""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+
+from sqlalchemy import func, select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.models.enums import (
+    JobType,
+    PauseReason,
+    ReservationStatus,
+    ReviewGateStatus,
+    StageAssignmentStatus,
+    WorkflowTransitionTrigger,
+)
+from app.models.pipeline import PipelineRun, PipelineStageRun
+from app.models.review_gate import ReviewGate
+from app.models.scheduling import JobSchedule
+from app.models.spend import SpendCap, SpendLog, SpendReservation
+from app.models.workflow import WorkflowDefinition, WorkflowStage, WorkflowTransition
+from app.orchestration.events.envelope import child_span
+from app.orchestration.events.types import (
+    PIPELINE_CANCELLED,
+    PIPELINE_FAILED,
+    PIPELINE_SUCCEEDED,
+    REVIEW_ESCALATED,
+    REVIEW_REQUESTED,
+    REVIEW_TIMED_OUT,
+    SPEND_BUDGET_EXCEEDED,
+    SPEND_COMMITTED,
+    SPEND_RELEASED,
+    SPEND_RESERVED,
+    STAGE_FAILED,
+)
+from app.orchestration.outbox import emit
+from app.orchestration.retry import compute_backoff_seconds, is_retryable, route_to_dead_letter
+
+DEFAULT_REVIEW_TIMEOUT_HOURS = 48
+
+
+# --- condition DSL (design doc §2.4) -----------------------------------
+# Restricted, whitelisted — never arbitrary code. A condition is either
+# None (unconditional) or {"field": "<dotted path in context>",
+# "op": "eq"|"ne"|"gt"|"gte"|"lt"|"lte"|"in", "value": <json>}.
+_OPS = {
+    "eq": lambda a, b: a == b,
+    "ne": lambda a, b: a != b,
+    "gt": lambda a, b: a is not None and a > b,
+    "gte": lambda a, b: a is not None and a >= b,
+    "lt": lambda a, b: a is not None and a < b,
+    "lte": lambda a, b: a is not None and a <= b,
+    "in": lambda a, b: a in b,
+}
+
+
+def evaluate_condition(condition: dict | None, context: dict) -> bool:
+    if condition is None:
+        return True
+    field_path = condition["field"].split(".")
+    value = context
+    for part in field_path:
+        value = value.get(part) if isinstance(value, dict) else None
+    op = _OPS.get(condition["op"])
+    if op is None:
+        raise ValueError(f"unsupported condition operator: {condition['op']}")
+    return op(value, condition["value"])
+
+
+async def _find_transition(
+    session: AsyncSession, *, definition_id: uuid.UUID, from_stage: str,
+    trigger: WorkflowTransitionTrigger, context: dict,
+) -> WorkflowTransition | None:
+    result = await session.execute(
+        select(WorkflowTransition)
+        .where(
+            WorkflowTransition.definition_id == definition_id,
+            WorkflowTransition.from_stage == from_stage,
+            WorkflowTransition.trigger == trigger,
+        )
+        .order_by(WorkflowTransition.priority.asc())
+    )
+    for transition in result.scalars().all():
+        if evaluate_condition(transition.condition, context):
+            return transition
+    return None
+
+
+async def _get_stage_def(session: AsyncSession, *, definition_id: uuid.UUID,
+    stage_key: str) -> WorkflowStage:
+    result = await session.execute(
+        select(WorkflowStage).where(
+            WorkflowStage.definition_id == definition_id, WorkflowStage.stage_key == stage_key
+        )
+    )
+    stage = result.scalar_one_or_none()
+    if stage is None:
+        raise ValueError(f"workflow_stages has no row for stage {stage_key} in definition {definition_id}")
+    return stage
+
+
+async def enqueue_stage(
+    session: AsyncSession, *, run: PipelineRun, stage_key: str, attempt: int = 0,
+    run_after: datetime | None = None,
+) -> JobSchedule:
+    job = JobSchedule(
+        id=uuid.uuid4(),
+        workspace_id=run.workspace_id,
+        job_type=JobType.STAGE if attempt == 0 else JobType.RETRY,
+        ref_table=stage_key,  # stage jobs carry the stage_key here (see scheduler.process_leased_job)
+        ref_id=run.id,
+        run_after=run_after or datetime.now(timezone.utc),
+        attempt=attempt,
+        correlation_id=run.correlation_id,
+        trace_id=run.trace_id,
+    )
+    session.add(job)
+    await session.flush()
+    return job
+
+
+# --- run lifecycle -------------------------------------------------------
+
+async def start_run(
+    session: AsyncSession, *, run: PipelineRun, definition: WorkflowDefinition,
+) -> None:
+    """Kick off a pipeline run: pin the definition, enqueue the first
+    stage. Definition is pinned by FK at run creation — later edits to
+    the named workflow (new versions) never affect this run, which is
+    what preserves deterministic replay (amendment 4).
+    """
+    run.definition_id = definition.id
+    if run.correlation_id is None:
+        run.correlation_id = uuid.uuid4()
+    stages = await session.execute(
+        select(WorkflowStage)
+        .where(WorkflowStage.definition_id == definition.id)
+        .order_by(WorkflowStage.ordinal)
+    )
+    first_stage = stages.scalars().first()
+    if first_stage is None:
+        raise ValueError(f"workflow_definitions {definition.id} has no stages")
+    run.current_stage = first_stage.stage_key
+    run.started_at = datetime.now(timezone.utc)
+    await enqueue_stage(session, run=run, stage_key=first_stage.stage_key)
+
+
+async def _advance_or_finish(
+    session: AsyncSession, *, run: PipelineRun, from_stage: str,
+    trigger: WorkflowTransitionTrigger, context: dict,
+) -> None:
+    transition = await _find_transition(
+        session, definition_id=run.definition_id, from_stage=from_stage, trigger=trigger, context=context
+    )
+    if transition is None:
+        # No matching transition on success from a non-terminal stage is a
+        # workflow-definition authoring error, not a runtime failure to
+        # swallow — surfacing it loudly here is preferable to a silently
+        # stuck run.
+        raise ValueError(
+            f"no matching transition from stage={from_stage} trigger={trigger} "
+            f"for definition {run.definition_id}"
+        )
+    to_stage_def = await _get_stage_def(
+        session, definition_id=run.definition_id, stage_key=transition.to_stage
+    )
+    trace_id, span_id = child_span(run.trace_id)
+    run.trace_id = trace_id
+    run.current_stage = transition.to_stage
+
+    if to_stage_def.is_terminal:
+        run.status = "succeeded"
+        run.completed_at = datetime.now(timezone.utc)
+        await emit(
+            session, event_type=PIPELINE_SUCCEEDED, workspace_id=run.workspace_id,
+            aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
+            trace_id=trace_id, span_id=span_id, payload={"final_stage": transition.to_stage},
+            produced_by="controller",
+        )
+    elif to_stage_def.is_review_gate:
+        await pause_for_review(
+            session, run=run, stage_key=to_stage_def.stage_key, timeout_seconds=to_stage_def.timeout_seconds
+        )
+    else:
+        await enqueue_stage(session, run=run, stage_key=to_stage_def.stage_key)
+
+
+async def handle_stage_success(
+    session: AsyncSession, *, run: PipelineRun, stage: str, result_context: dict | None = None,
+) -> None:
+    await _advance_or_finish(
+        session, run=run, from_stage=stage,
+        trigger=WorkflowTransitionTrigger.ON_SUCCESS, context=result_context or {},
+    )
+
+
+async def handle_stage_failure(
+    session: AsyncSession, *, run: PipelineRun, stage: str, attempt_number: int, error_message: str,
+) -> None:
+    trace_id, span_id = child_span(run.trace_id)
+    run.trace_id = trace_id
+    await emit(
+        session, event_type=STAGE_FAILED, workspace_id=run.workspace_id,
+        aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
+        trace_id=trace_id, span_id=span_id,
+        payload={"stage": stage, "attempt_number": attempt_number, "error": error_message},
+        produced_by="controller",
+    )
+
+    stage_def = await _get_stage_def(session, definition_id=run.definition_id, stage_key=stage)
+    retryable = is_retryable(error_message)
+    if retryable and attempt_number < stage_def.max_attempts:
+        delay = compute_backoff_seconds(
+            attempt_number + 1, base_seconds=stage_def.backoff_base_seconds,
+            multiplier=stage_def.backoff_multiplier, max_seconds=stage_def.backoff_max_seconds,
+        )
+        await enqueue_stage(
+            session, run=run, stage_key=stage, attempt=attempt_number,
+            run_after=datetime.now(timezone.utc) + timedelta(seconds=delay),
+        )
+        return
+
+    # Exhausted retries or permanent — dead-letter and fail the run.
+    await route_to_dead_letter(
+        session, workspace_id=run.workspace_id, related_table="pipeline_runs", related_id=run.id,
+        job_type=f"stage:{stage}", payload={"stage": stage, "attempt_number": attempt_number},
+        failure_reason=error_message, attempt_count=attempt_number,
+        first_failed_at=run.started_at or datetime.now(timezone.utc),
+    )
+    await _fail_run(session, run=run, reason=error_message)
+    if stage_def.compensation_stage_key is not None:
+        await _trigger_compensation(session, run=run)
+
+
+async def handle_stage_timeout(session: AsyncSession, *, pipeline_run_id: uuid.UUID,
+    stage: str) -> None:
+    run = await session.get(PipelineRun, pipeline_run_id)
+    if run is None or run.current_stage != stage or run.status not in ("running",):
+        return  # already advanced past this stage — stale timeout, no-op
+    result = await session.execute(
+        select(func.count(PipelineStageRun.id)).where(
+            PipelineStageRun.pipeline_run_id == pipeline_run_id, PipelineStageRun.stage == stage
+        )
+    )
+    attempt_number = (result.scalar_one() or 0) + 1
+    await handle_stage_failure(
+        session, run=run, stage=stage, attempt_number=attempt_number, error_message="timeout"
+    )
+
+
+async def _fail_run(session: AsyncSession, *, run: PipelineRun, reason: str) -> None:
+    run.status = "failed"
+    run.completed_at = datetime.now(timezone.utc)
+    trace_id, span_id = child_span(run.trace_id)
+    run.trace_id = trace_id
+    await emit(
+        session, event_type=PIPELINE_FAILED, workspace_id=run.workspace_id,
+        aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
+        trace_id=trace_id, span_id=span_id, payload={"reason": reason},
+        produced_by="controller",
+    )
+    await release_all_reservations(session, run=run)
+
+
+# --- cancellation ---------------------------------------------------------
+
+async def cancel_run(session: AsyncSession, *, run: PipelineRun) -> None:
+    if run.status in ("succeeded", "failed", "cancelled"):
+        return  # idempotent — already terminal
+    from app.models.assignments import StageAssignment
+
+    open_assignments = await session.execute(
+        select(StageAssignment).where(
+            StageAssignment.pipeline_run_id == run.id,
+            StageAssignment.status.in_(
+                [
+                    StageAssignmentStatus.PENDING, StageAssignmentStatus.DISPATCHED,
+                    StageAssignmentStatus.ACKNOWLEDGED,
+                ]
+            ),
+        )
+    )
+    for assignment in open_assignments.scalars().all():
+        assignment.status = StageAssignmentStatus.CANCELLED
+
+    run.status = "cancelled"
+    run.completed_at = datetime.now(timezone.utc)
+    trace_id, span_id = child_span(run.trace_id)
+    run.trace_id = trace_id
+    await release_all_reservations(session, run=run)
+    await emit(
+        session, event_type=PIPELINE_CANCELLED, workspace_id=run.workspace_id,
+        aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
+        trace_id=trace_id, span_id=span_id, payload={}, produced_by="controller",
+    )
+
+
+# --- compensation (design doc §2.10) ---------------------------------------
+
+async def _trigger_compensation(session: AsyncSession, *, run: PipelineRun) -> None:
+    """Walk completed stages backwards and enqueue compensation stages for
+    any that declared one. M4 has exactly one concrete compensation
+    (releasing spend reservations, already done in _fail_run); this
+    mechanism is otherwise designed-for and exercised by tests, ready for
+    external-effect compensations once publishing exists.
+    """
+    run.status = "compensating"
+    completed = await session.execute(
+        select(PipelineStageRun)
+        .where(PipelineStageRun.pipeline_run_id == run.id, PipelineStageRun.status == "succeeded")
+        .order_by(PipelineStageRun.completed_at.desc())
+    )
+    for stage_run in completed.scalars().all():
+        stage_def = await _get_stage_def(session, definition_id=run.definition_id,
+            stage_key=stage_run.stage)
+        if stage_def.compensation_stage_key is not None:
+            job = JobSchedule(
+                id=uuid.uuid4(), workspace_id=run.workspace_id, job_type=JobType.COMPENSATION,
+                ref_table=stage_def.compensation_stage_key, ref_id=run.id,
+                run_after=datetime.now(timezone.utc),
+                correlation_id=run.correlation_id, trace_id=run.trace_id,
+            )
+            session.add(job)
+    run.status = "failed"  # compensation enqueued; run remains terminally failed once done
+    await session.flush()
+
+
+async def run_compensation_stage(session: AsyncSession, *, pipeline_run_id: uuid.UUID,
+    stage: str) -> None:
+    """Placeholder-free by design: with no external-effect stages defined
+    yet (publishing etc. is out of scope), the only real compensation
+    action available is spend release, already performed in _fail_run.
+    This function exists so job_schedule's COMPENSATION job_type has a
+    real handler to call, and logs the no-op explicitly rather than
+    silently dropping the job.
+    """
+    import logging
+
+    logging.getLogger(__name__).info(
+        "compensation stage executed (no external effects to compensate this milestone)",
+        extra={"pipeline_run_id": str(pipeline_run_id), "stage": stage},
+    )
+
+
+# --- human review gate (design doc §8) -------------------------------------
+
+async def pause_for_review(
+    session: AsyncSession, *, run: PipelineRun, stage_key: str, timeout_seconds: int,
+) -> ReviewGate:
+    run.status = "paused"
+    run.pause_reason = PauseReason.REVIEW_GATE.value
+    timeout_at = datetime.now(timezone.utc) + timedelta(seconds=timeout_seconds)
+    gate = ReviewGate(
+        id=uuid.uuid4(), workspace_id=run.workspace_id, pipeline_run_id=run.id, stage=stage_key,
+        requested_at=datetime.now(timezone.utc), timeout_at=timeout_at,
+    )
+    session.add(gate)
+    await session.flush()
+    session.add(JobSchedule(
+        id=uuid.uuid4(), workspace_id=run.workspace_id, job_type=JobType.REVIEW_TIMEOUT,
+        ref_table="review_gates", ref_id=gate.id, run_after=timeout_at,
+        correlation_id=run.correlation_id, trace_id=run.trace_id,
+    ))
+    trace_id, span_id = child_span(run.trace_id)
+    run.trace_id = trace_id
+    await emit(
+        session, event_type=REVIEW_REQUESTED, workspace_id=run.workspace_id,
+        aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
+        trace_id=trace_id, span_id=span_id, payload={"stage": stage_key,
+            "review_gate_id": str(gate.id)},
+        produced_by="controller",
+    )
+    return gate
+
+
+async def resume_from_review(session: AsyncSession, *, gate: ReviewGate, approved: bool) -> None:
+    if gate.status != ReviewGateStatus.AWAITING:
+        return  # idempotent — already decided
+    run = await session.get(PipelineRun, gate.pipeline_run_id)
+    gate.status = ReviewGateStatus.APPROVED if approved else ReviewGateStatus.REJECTED
+    gate.decided_at = datetime.now(timezone.utc)
+    run.status = "running"
+    run.pause_reason = None
+    trigger = (
+        WorkflowTransitionTrigger.ON_REVIEW_APPROVED if approved
+        else WorkflowTransitionTrigger.ON_REVIEW_REJECTED
+    )
+    await _advance_or_finish(session, run=run, from_stage=gate.stage, trigger=trigger, context={})
+
+
+async def handle_review_timeout(session: AsyncSession, *, review_gate_id: uuid.UUID) -> None:
+    gate = await session.get(ReviewGate, review_gate_id)
+    if gate is None or gate.status != ReviewGateStatus.AWAITING:
+        return  # already decided — stale timeout, no-op
+    run = await session.get(PipelineRun, gate.pipeline_run_id)
+    trace_id, span_id = child_span(run.trace_id if run else None)
+    if gate.escalation_level == 0:
+        gate.status = ReviewGateStatus.ESCALATED
+        gate.escalation_level += 1
+        # Re-arm a second, longer timeout before falling through to a
+        # terminal decision (design doc §8.6).
+        new_timeout = datetime.now(timezone.utc) + timedelta(hours=DEFAULT_REVIEW_TIMEOUT_HOURS)
+        gate.timeout_at = new_timeout
+        session.add(JobSchedule(
+            id=uuid.uuid4(), workspace_id=gate.workspace_id, job_type=JobType.REVIEW_TIMEOUT,
+            ref_table="review_gates", ref_id=gate.id, run_after=new_timeout,
+        ))
+        await emit(
+            session, event_type=REVIEW_ESCALATED, workspace_id=gate.workspace_id,
+            aggregate_type="pipeline_run", aggregate_id=gate.pipeline_run_id,
+            correlation_id=run.correlation_id if run else uuid.uuid4(), trace_id=trace_id, span_id=span_id,
+            payload={"review_gate_id": str(gate.id), "escalation_level": gate.escalation_level},
+            produced_by="controller",
+        )
+    else:
+        gate.status = ReviewGateStatus.TIMED_OUT
+        await emit(
+            session, event_type=REVIEW_TIMED_OUT, workspace_id=gate.workspace_id,
+            aggregate_type="pipeline_run", aggregate_id=gate.pipeline_run_id,
+            correlation_id=run.correlation_id if run else uuid.uuid4(), trace_id=trace_id, span_id=span_id,
+            payload={"review_gate_id": str(gate.id)}, produced_by="controller",
+        )
+        if run is not None:
+            await _fail_run(session, run=run, reason="review_gate_timed_out")
+
+
+# --- spend protection (design doc §9) ---------------------------------------
+
+async def _spend_committed_plus_reserved(
+    session: AsyncSession, *, workspace_id: uuid.UUID, provider: str | None
+) -> Decimal:
+    log_q = select(func.coalesce(func.sum(SpendLog.cost_usd), 0)).where(SpendLog.workspace_id == workspace_id)
+    res_q = select(func.coalesce(func.sum(SpendReservation.estimated_cost_usd), 0)).where(
+        SpendReservation.workspace_id == workspace_id, SpendReservation.status == ReservationStatus.RESERVED
+    )
+    if provider is not None:
+        log_q = log_q.where(SpendLog.provider == provider)
+        res_q = res_q.where(SpendReservation.provider == provider)
+    committed = (await session.execute(log_q)).scalar_one()
+    reserved = (await session.execute(res_q)).scalar_one()
+    return Decimal(committed) + Decimal(reserved)
+
+
+async def reserve_spend(
+    session: AsyncSession, *, run: PipelineRun, stage: str, provider: str, estimated_cost_usd: Decimal,
+) -> SpendReservation | None:
+    """Reserve estimated cost before dispatch. Returns None (and pauses
+    the run) if the reservation would exceed the workspace's cap — this
+    is the check that closes the check-then-spend race, because the
+    reservation itself (not a separate later check) is what's compared
+    against the cap (design doc §9.1, §9.4).
+    """
+    cap_result = await session.execute(
+        select(SpendCap).where(SpendCap.workspace_id == run.workspace_id,
+            SpendCap.provider == provider)
+    )
+    cap = cap_result.scalar_one_or_none()
+    if cap is None:
+        cap_result = await session.execute(
+            select(SpendCap).where(SpendCap.workspace_id == run.workspace_id,
+                SpendCap.provider.is_(None))
+        )
+        cap = cap_result.scalar_one_or_none()
+
+    if cap is not None:
+        current = await _spend_committed_plus_reserved(
+            session, workspace_id=run.workspace_id, provider=provider
+        )
+        if current + estimated_cost_usd > cap.daily_cap_usd:
+            run.status = "paused"
+            run.pause_reason = PauseReason.SPEND_HOLD.value
+            trace_id, span_id = child_span(run.trace_id)
+            run.trace_id = trace_id
+            await emit(
+                session, event_type=SPEND_BUDGET_EXCEEDED, workspace_id=run.workspace_id,
+                aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
+                trace_id=trace_id, span_id=span_id,
+                payload={"provider": provider, "stage": stage,
+                    "attempted_usd": str(estimated_cost_usd)},
+                produced_by="controller",
+            )
+            return None
+
+    reservation = SpendReservation(
+        id=uuid.uuid4(), workspace_id=run.workspace_id, content_item_id=None,
+        pipeline_run_id=run.id,
+        provider=provider, stage=stage, estimated_cost_usd=estimated_cost_usd,
+        status=ReservationStatus.RESERVED,
+    )
+    session.add(reservation)
+    await session.flush()
+    trace_id, span_id = child_span(run.trace_id)
+    run.trace_id = trace_id
+    await emit(
+        session, event_type=SPEND_RESERVED, workspace_id=run.workspace_id,
+        aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
+        trace_id=trace_id, span_id=span_id,
+        payload={"reservation_id": str(reservation.id), "estimated_usd": str(estimated_cost_usd)},
+        produced_by="controller",
+    )
+    return reservation
+
+
+async def commit_spend(
+    session: AsyncSession, *, run: PipelineRun, reservation: SpendReservation, actual_cost_usd: Decimal
+) -> None:
+    reservation.status = ReservationStatus.COMMITTED
+    session.add(SpendLog(
+        id=uuid.uuid4(), workspace_id=run.workspace_id, content_item_id=None,
+        provider=reservation.provider, stage=reservation.stage, cost_usd=actual_cost_usd,
+        occurred_at=datetime.now(timezone.utc),
+    ))
+    trace_id, span_id = child_span(run.trace_id)
+    run.trace_id = trace_id
+    await emit(
+        session, event_type=SPEND_COMMITTED, workspace_id=run.workspace_id,
+        aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
+        trace_id=trace_id, span_id=span_id,
+        payload={"reservation_id": str(reservation.id), "actual_usd": str(actual_cost_usd)},
+        produced_by="controller",
+    )
+
+
+async def release_spend(session: AsyncSession, *, run: PipelineRun,
+    reservation: SpendReservation) -> None:
+    if reservation.status != ReservationStatus.RESERVED:
+        return
+    reservation.status = ReservationStatus.RELEASED
+    trace_id, span_id = child_span(run.trace_id)
+    run.trace_id = trace_id
+    await emit(
+        session, event_type=SPEND_RELEASED, workspace_id=run.workspace_id,
+        aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
+        trace_id=trace_id, span_id=span_id, payload={"reservation_id": str(reservation.id)},
+        produced_by="controller",
+    )
+
+
+async def release_all_reservations(session: AsyncSession, *, run: PipelineRun) -> None:
+    """Release only THIS run's open reservations — scoped by
+    pipeline_run_id (migration 0020), not the whole workspace, so a
+    failed/cancelled run never releases another run's active reservation.
+    """
+    result = await session.execute(
+        select(SpendReservation).where(
+            SpendReservation.pipeline_run_id == run.id, SpendReservation.status == ReservationStatus.RESERVED
+        )
+    )
+    for reservation in result.scalars().all():
+        await release_spend(session, run=run, reservation=reservation)
+
+async def submit_review_decision(
+    session: AsyncSession, *, gate: ReviewGate, reviewer_id: uuid.UUID,
+    approved: bool, notes: str | None = None,
+) -> None:
+    """The orchestration hook a future review API calls: records the M3
+    review_decisions row and emits review.approved/review.rejected in the
+    SAME transaction, then commits are the caller's. This is the write
+    side; app.orchestration.consumers wires the emitted event to
+    resume_from_review — genuinely bus-mediated because the reviewer is a
+    separate actor with no direct call into the controller.
+    """
+    from app.models.enums import ReviewDecisionValue
+    from app.models.history import ReviewDecision
+    from app.orchestration.events.types import REVIEW_APPROVED, REVIEW_REJECTED
+
+    if gate.status != ReviewGateStatus.AWAITING:
+        return  # idempotent — already decided
+
+    run = await session.get(PipelineRun, gate.pipeline_run_id)
+    decision = ReviewDecision(
+        id=uuid.uuid4(), workspace_id=gate.workspace_id, content_item_id=run.content_item_id if run else None,
+        reviewer_id=reviewer_id,
+        decision=ReviewDecisionValue.APPROVED if approved else ReviewDecisionValue.REJECTED,
+        notes=notes,
+    )
+    session.add(decision)
+    await session.flush()
+
+    trace_id, span_id = child_span(run.trace_id if run else None)
+    await emit(
+        session,
+        event_type=REVIEW_APPROVED if approved else REVIEW_REJECTED,
+        workspace_id=gate.workspace_id, aggregate_type="pipeline_run", aggregate_id=gate.pipeline_run_id,
+        correlation_id=(run.correlation_id if run and run.correlation_id else uuid.uuid4()),
+        trace_id=trace_id, span_id=span_id,
+        payload={"review_gate_id": str(gate.id), "decision_id": str(decision.id)},
+        produced_by="review_hook",
+    )
+

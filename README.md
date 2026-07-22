@@ -27,14 +27,17 @@ packages/     Code shared across apps (empty for now)
 
 ```bash
 cp .env.example .env
-# fill in JWT_SECRET_KEY at minimum — generate with:
-python -c "import secrets; print(secrets.token_urlsafe(32))"
+# Fill in SUPABASE_JWT_SECRET (Supabase project → Settings → API → JWT
+# Settings → JWT Secret). FastAPI uses it only to VERIFY the access tokens
+# Supabase Auth issues — the app never signs or issues tokens itself.
+# Also set DATABASE_URL (owner/migration role) and APP_DATABASE_URL
+# (the non-owner app_runtime role used for request traffic under RLS).
 
 docker compose up -d postgres
 
 cd apps/api
 pip install -e ".[dev]"
-alembic upgrade head   # no-op until the first migration exists
+alembic upgrade head   # applies migration 0001 (identity & access + RLS)
 uvicorn app.main:app --reload --port 8000
 
 # separate terminal
@@ -67,12 +70,31 @@ cd apps/web && npm test
 
 ## Status
 
-**Phase 1: Repository Foundation — complete.** Monorepo scaffold, FastAPI
-app with health checks, React+TS frontend wired to the API, worker process
-skeleton, Postgres config (async SQLAlchemy + Alembic, ready for the first
-migration), CI (lint + test for all three apps), structured JSON logging.
+**Milestone 1: Repository Foundation — complete.** Monorepo scaffold,
+FastAPI app with health checks, React+TS frontend wired to the API, worker
+process skeleton, Postgres config (async SQLAlchemy + Alembic), CI (lint +
+test for all three apps), structured JSON logging.
 
-Not yet built (by design — see `docs/architecture-decisions.md` and the
-worker entrypoint's docstring for why): data model / migrations, auth,
-any provider integrations, pipeline job processing, the dashboard UI
-itself.
+**Milestone 2: Identity & Access Foundation — complete.** Supabase Auth as
+the authentication authority with FastAPI verifying (never issuing) its
+JWTs; `profiles` / `workspaces` / `workspace_memberships`; Row Level
+Security with `FORCE ROW LEVEL SECURITY` and a non-owner runtime role
+(`app_runtime`) separated from the owner/migration role; admin / editor /
+reviewer roles; `/me`, workspace CRUD, and membership management. See
+`docs/milestone-2-identity-and-access.md`.
+
+Not yet built (by design — see `docs/architecture-decisions.md`): the
+content-domain **service layer and APIs** over the M3 schema, provider
+integrations, pipeline job processing, and the dashboard UI. These are
+Milestone 4 onward.
+
+**Milestone 3: Content Domain Schema — complete.** 16 domain tables
+(content_items, content_versions, assets, pipeline_runs,
+pipeline_stage_runs, review_decisions, publish_jobs, webhook_events,
+analytics_snapshots, spend_logs, spend_reservations, dead_letter_jobs,
+provider_credentials, provider_usage, plus content_pillars and spend_caps)
+across migrations 0002–0012, with RLS on every table, optimistic
+versioning on mutable tables, DB-enforced immutability on event/history
+tables, soft deletion on business entities, and full FK/index/constraint
+definitions. Schema only — no pipeline, provider, or worker logic. See
+`docs/milestone-3-schema-review.md`.
