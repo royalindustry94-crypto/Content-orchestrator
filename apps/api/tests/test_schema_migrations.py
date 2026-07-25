@@ -115,5 +115,7 @@ async def test_version_trigger_increments_on_mutable_table():
         await s.commit()
         await s.execute(text("UPDATE content_items SET topic = 't2' WHERE id = :id"), {"id": item})
         await s.commit()
-        row = await s.execute(text("SELECT version FROM content_items WHERE id = :id"), {"id": item})
+        row = await s.execute(
+            text("SELECT version FROM content_items WHERE id = :id"), {"id": item}
+        )
         assert row.scalar_one() == 2

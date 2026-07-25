@@ -62,9 +62,12 @@ async def test_content_lineage_rejects_self_reference():
         await s.commit()
         with pytest.raises(Exception) as exc:
             await s.execute(
-                text("INSERT INTO content_lineage "
-                     "(workspace_id, parent_content_item_id, child_content_item_id, relationship_type) "
-                     "VALUES (:ws, :item, :item, 'remixed')"),
+                text(
+                    "INSERT INTO content_lineage "
+                    "(workspace_id, parent_content_item_id, "
+                    "child_content_item_id, relationship_type) "
+                    "VALUES (:ws, :item, :item, 'remixed')"
+                ),
                 {"ws": ws, "item": item},
             )
             await s.commit()

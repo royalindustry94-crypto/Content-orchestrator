@@ -30,9 +30,18 @@ from app.orchestration import controller, dispatcher
 
 async def _make_workspace_item(session):
     ws, user, item = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
-    await session.execute(text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"), {"id": user, "e": f"{user}@x.com"})
-    await session.execute(text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"), {"id": ws, "u": user})
-    await session.execute(text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't')"), {"id": item, "ws": ws})
+    await session.execute(
+        text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
+        {"id": user, "e": f"{user}@x.com"},
+    )
+    await session.execute(
+        text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
+        {"id": ws, "u": user},
+    )
+    await session.execute(
+        text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't')"),
+        {"id": item, "ws": ws},
+    )
     return uuid.UUID(ws), uuid.UUID(item)
 
 
@@ -40,7 +49,9 @@ async def _make_workspace_item(session):
 async def test_reference_worker_client_completes_a_stage_end_to_end():
     async with AsyncSessionLocal() as session:
         ws, item = await _make_workspace_item(session)
-        definition = WorkflowDefinition(id=uuid.uuid4(), workspace_id=ws, name="one-stage", version=1)
+        definition = WorkflowDefinition(
+            id=uuid.uuid4(), workspace_id=ws, name="one-stage", version=1,
+        )
         session.add(definition)
         await session.flush()
         session.add(WorkflowStage(id=uuid.uuid4(), workspace_id=ws, definition_id=definition.id,

@@ -25,14 +25,25 @@ from app.orchestration import controller
 
 async def _make_workspace_item(session):
     ws, user, item = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
-    await session.execute(text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"), {"id": user, "e": f"{user}@x.com"})
-    await session.execute(text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"), {"id": ws, "u": user})
-    await session.execute(text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't')"), {"id": item, "ws": ws})
+    await session.execute(
+        text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
+        {"id": user, "e": f"{user}@x.com"},
+    )
+    await session.execute(
+        text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
+        {"id": ws, "u": user},
+    )
+    await session.execute(
+        text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't')"),
+        {"id": item, "ws": ws},
+    )
     return uuid.UUID(ws), uuid.UUID(user), uuid.UUID(item)
 
 
 async def _two_stage_review_definition(session, workspace_id):
-    definition = WorkflowDefinition(id=uuid.uuid4(), workspace_id=workspace_id, name="simple", version=1)
+    definition = WorkflowDefinition(
+        id=uuid.uuid4(), workspace_id=workspace_id, name="simple", version=1,
+    )
     session.add(definition)
     await session.flush()
     session.add_all([
@@ -45,10 +56,16 @@ async def _two_stage_review_definition(session, workspace_id):
                       stage_key="published", ordinal=3, is_terminal=True),
     ])
     session.add_all([
-        WorkflowTransition(id=uuid.uuid4(), workspace_id=workspace_id, definition_id=definition.id,
-                            from_stage="scripting", to_stage="review", trigger=WorkflowTransitionTrigger.ON_SUCCESS),
-        WorkflowTransition(id=uuid.uuid4(), workspace_id=workspace_id, definition_id=definition.id,
-                            from_stage="review", to_stage="published", trigger=WorkflowTransitionTrigger.ON_REVIEW_APPROVED),
+        WorkflowTransition(
+            id=uuid.uuid4(), workspace_id=workspace_id, definition_id=definition.id,
+            from_stage="scripting", to_stage="review",
+            trigger=WorkflowTransitionTrigger.ON_SUCCESS,
+        ),
+        WorkflowTransition(
+            id=uuid.uuid4(), workspace_id=workspace_id, definition_id=definition.id,
+            from_stage="review", to_stage="published",
+            trigger=WorkflowTransitionTrigger.ON_REVIEW_APPROVED,
+        ),
     ])
     await session.flush()
     return definition
@@ -85,7 +102,9 @@ async def test_stage_success_advances_to_review_gate_and_pauses():
 
         assert run.status == "paused"
         assert run.pause_reason == "review_gate"
-        result = await session.execute(select(ReviewGate).where(ReviewGate.pipeline_run_id == run.id))
+        result = await session.execute(
+            select(ReviewGate).where(ReviewGate.pipeline_run_id == run.id)
+        )
         gate = result.scalar_one()
         assert gate.status == ReviewGateStatus.AWAITING
 
@@ -100,7 +119,9 @@ async def test_review_approval_resumes_and_reaches_terminal_stage():
         await session.flush()
         await controller.start_run(session, run=run, definition=definition)
         await controller.handle_stage_success(session, run=run, stage="scripting")
-        result = await session.execute(select(ReviewGate).where(ReviewGate.pipeline_run_id == run.id))
+        result = await session.execute(
+            select(ReviewGate).where(ReviewGate.pipeline_run_id == run.id)
+        )
         gate = result.scalar_one()
 
         await controller.submit_review_decision(session, gate=gate, reviewer_id=user, approved=True)
@@ -128,18 +149,25 @@ async def test_stage_failure_retries_then_dead_letters_after_max_attempts():
         await controller.start_run(session, run=run, definition=definition)
 
         # max_attempts=2 for scripting: first failure retries.
-        await controller.handle_stage_failure(session, run=run, stage="scripting", attempt_number=1, error_message="timeout")
+        await controller.handle_stage_failure(
+            session, run=run, stage="scripting", attempt_number=1, error_message="timeout",
+        )
         await session.commit()
         assert run.status != "failed"
 
         result = await session.execute(
-            select(JobSchedule).where(JobSchedule.ref_id == run.id, JobSchedule.status == JobScheduleStatus.PENDING)
+            select(JobSchedule).where(
+                JobSchedule.ref_id == run.id,
+                JobSchedule.status == JobScheduleStatus.PENDING,
+            )
         )
         retry_job = result.scalars().first()
         assert retry_job is not None
 
         # Second failure exhausts attempts -> dead-lettered, run failed.
-        await controller.handle_stage_failure(session, run=run, stage="scripting", attempt_number=2, error_message="timeout")
+        await controller.handle_stage_failure(
+            session, run=run, stage="scripting", attempt_number=2, error_message="timeout",
+        )
         await session.commit()
         assert run.status == "failed"
 
@@ -159,7 +187,8 @@ async def test_cancel_run_is_idempotent_and_releases_reservations():
         await controller.start_run(session, run=run, definition=definition)
 
         reservation = await controller.reserve_spend(
-            session, run=run, stage="scripting", provider="openai", estimated_cost_usd=Decimal("1.00")
+            session, run=run, stage="scripting",
+            provider="openai", estimated_cost_usd=Decimal("1.00"),
         )
         assert reservation is not None
 
@@ -184,14 +213,23 @@ async def test_spend_reservation_blocked_over_cap_pauses_run():
         definition = await _two_stage_review_definition(session, ws)
         run = PipelineRun(id=uuid.uuid4(), workspace_id=ws, content_item_id=item)
         session.add(run)
-        session.add(SpendCap(id=uuid.uuid4(), workspace_id=ws, provider="openai", daily_cap_usd=Decimal("5.00"), monthly_cap_usd=Decimal("100.00")))
+        session.add(SpendCap(
+            id=uuid.uuid4(), workspace_id=ws, provider="openai",
+            daily_cap_usd=Decimal("5.00"), monthly_cap_usd=Decimal("100.00"),
+        ))
         await session.flush()
         await controller.start_run(session, run=run, definition=definition)
 
-        first = await controller.reserve_spend(session, run=run, stage="scripting", provider="openai", estimated_cost_usd=Decimal("4.00"))
+        first = await controller.reserve_spend(
+            session, run=run, stage="scripting",
+            provider="openai", estimated_cost_usd=Decimal("4.00"),
+        )
         assert first is not None
 
-        second = await controller.reserve_spend(session, run=run, stage="scripting", provider="openai", estimated_cost_usd=Decimal("2.00"))
+        second = await controller.reserve_spend(
+            session, run=run, stage="scripting",
+            provider="openai", estimated_cost_usd=Decimal("2.00"),
+        )
         assert second is None
         assert run.status == "paused"
         assert run.pause_reason == "spend_hold"

@@ -33,18 +33,31 @@ from app.orchestration import controller, relay
 
 async def _make_workspace_item(session):
     ws, user, item = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
-    await session.execute(text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"), {"id": user, "e": f"{user}@x.com"})
-    await session.execute(text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"), {"id": ws, "u": user})
-    await session.execute(text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't1')"), {"id": item, "ws": ws})
+    await session.execute(
+        text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
+        {"id": user, "e": f"{user}@x.com"},
+    )
+    await session.execute(
+        text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
+        {"id": ws, "u": user},
+    )
+    await session.execute(
+        text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't1')"),
+        {"id": item, "ws": ws},
+    )
     return uuid.UUID(ws), uuid.UUID(item)
 
 
 async def _one_stage_definition(session, workspace_id):
-    definition = WorkflowDefinition(id=uuid.uuid4(), workspace_id=workspace_id, name="regress", version=1)
+    definition = WorkflowDefinition(
+        id=uuid.uuid4(), workspace_id=workspace_id, name="regress", version=1,
+    )
     session.add(definition)
     await session.flush()
-    session.add(WorkflowStage(id=uuid.uuid4(), workspace_id=workspace_id, definition_id=definition.id,
-                               stage_key="scripting", ordinal=1, is_terminal=True))
+    session.add(WorkflowStage(
+        id=uuid.uuid4(), workspace_id=workspace_id, definition_id=definition.id,
+        stage_key="scripting", ordinal=1, is_terminal=True,
+    ))
     await session.flush()
     return definition
 
@@ -71,10 +84,12 @@ async def test_regression_release_only_affects_the_failing_runs_own_reservation(
         await controller.start_run(session, run=run_b, definition=definition)
 
         reservation_a = await controller.reserve_spend(
-            session, run=run_a, stage="scripting", provider="openai", estimated_cost_usd=Decimal("1.00")
+            session, run=run_a, stage="scripting",
+            provider="openai", estimated_cost_usd=Decimal("1.00"),
         )
         reservation_b = await controller.reserve_spend(
-            session, run=run_b, stage="scripting", provider="openai", estimated_cost_usd=Decimal("1.00")
+            session, run=run_b, stage="scripting",
+            provider="openai", estimated_cost_usd=Decimal("1.00"),
         )
         assert reservation_a is not None and reservation_b is not None
         assert reservation_a.pipeline_run_id == run_a.id
@@ -85,7 +100,9 @@ async def test_regression_release_only_affects_the_failing_runs_own_reservation(
 
         await session.refresh(reservation_a)
         await session.refresh(reservation_b)
-        assert reservation_a.status == ReservationStatus.RELEASED, "run A's own reservation must be released"
+        assert reservation_a.status == ReservationStatus.RELEASED, (
+            "run A's own reservation must be released"
+        )
         assert reservation_b.status == ReservationStatus.RESERVED, (
             "run B's reservation must NOT be released by run A's cancellation — "
             "this is the exact regression the pipeline_run_id scoping fix (migration 0020) prevents"
@@ -150,9 +167,13 @@ async def test_regression_stage_completion_advances_run_exactly_once():
         from sqlalchemy import select as _select
 
         from app.models.assignments import StageAssignment
-        result = await session.execute(_select(StageAssignment).where(StageAssignment.id == assignment.id))
+        result = await session.execute(
+            _select(StageAssignment).where(StageAssignment.id == assignment.id)
+        )
         loaded_assignment = result.scalar_one()
-        await dispatcher.submit_result(session, assignment=loaded_assignment, success=True, result={})
+        await dispatcher.submit_result(
+            session, assignment=loaded_assignment, success=True, result={},
+        )
         await session.commit()
 
     # Drain the relay (delivers stage.completed to whatever IS registered
