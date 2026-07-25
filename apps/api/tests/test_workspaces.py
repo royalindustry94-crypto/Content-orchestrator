@@ -1,6 +1,22 @@
-import pytest
+import uuid as _uuid
 
+import pytest
+from sqlalchemy import text
+
+from app.db.session import AsyncSessionLocal
 from tests.conftest import make_token
+
+
+async def _register_user(user_id: str) -> None:
+    """Insert into auth.users so the profile trigger fires and the
+    workspace_memberships FK (→ profiles) can be satisfied.
+    """
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("INSERT INTO auth.users (id, email) VALUES (:id, :email) ON CONFLICT DO NOTHING"),
+            {"id": user_id, "email": f"{user_id}@test.example"},
+        )
+        await session.commit()
 
 
 @pytest.mark.asyncio
@@ -38,10 +54,8 @@ async def test_editor_and_reviewer_cannot_invite_members(client, new_user):
     workspace_id = create.json()["id"]
 
     for role in ("editor", "reviewer"):
-        member_id, member_token = None, None
-        import uuid as _uuid
-
         member_id = str(_uuid.uuid4())
+        await _register_user(member_id)
         member_token = make_token(user_id=member_id)
         member_headers = {"Authorization": f"Bearer {member_token}"}
 
@@ -72,6 +86,7 @@ async def test_member_can_leave_but_not_remove_others(client, new_user):
     workspace_id = create.json()["id"]
 
     editor_id = str(_uuid.uuid4())
+    await _register_user(editor_id)
     editor_token = make_token(user_id=editor_id)
     editor_headers = {"Authorization": f"Bearer {editor_token}"}
     await client.post(
@@ -91,6 +106,19 @@ async def test_member_can_leave_but_not_remove_others(client, new_user):
         f"/workspaces/{workspace_id}/memberships/{editor_id}", headers=editor_headers
     )
     assert ok.status_code == 204
+
+    # Verify the row is actually gone from the DB (not silently blocked by RLS).
+    from sqlalchemy import select as _select
+
+    from app.db.session import AsyncSessionLocal
+    from app.models.workspace_membership import WorkspaceMembership as WM
+    async with AsyncSessionLocal() as _s:
+        _row = await _s.execute(
+            _select(WM).where(WM.workspace_id == workspace_id, WM.user_id == editor_id)
+        )
+        assert _row.scalar_one_or_none() is None, (
+            "self-leave DELETE was silently suppressed by RLS — membership row still exists"
+        )
 
 
 @pytest.mark.asyncio

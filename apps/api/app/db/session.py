@@ -24,15 +24,24 @@ provisioned in Docker/CI to mirror what's needed against real Supabase.
 
 from __future__ import annotations
 
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 from app.core.config import get_settings
 
 settings = get_settings()
+
+# Tests set ENVIRONMENT=test so each async session gets a fresh TCP connection
+# (no connection pool). This prevents "Event loop is closed" errors that arise
+# when pytest-asyncio creates a new event loop per test while SQLAlchemy's
+# pool retains connections bound to the previous loop.
+_is_test = os.getenv("ENVIRONMENT") == "test"
+_pool_kwargs: dict = {"poolclass": NullPool} if _is_test else {"pool_pre_ping": True}
 
 
 def _asyncpg_url(dsn: str) -> str:
@@ -40,14 +49,18 @@ def _asyncpg_url(dsn: str) -> str:
 
 
 # Owner/migration connection.
-engine = create_async_engine(_asyncpg_url(str(settings.database_url)), pool_pre_ping=True, echo=False)
+engine = create_async_engine(
+    _asyncpg_url(str(settings.database_url)), echo=False, **_pool_kwargs
+)
 AsyncSessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
 
 # Runtime (RLS-enforced) connection.
 runtime_engine = create_async_engine(
-    _asyncpg_url(str(settings.app_database_url)), pool_pre_ping=True, echo=False
+    _asyncpg_url(str(settings.app_database_url)), echo=False, **_pool_kwargs
 )
-RuntimeSessionLocal = async_sessionmaker(bind=runtime_engine, expire_on_commit=False, autoflush=False)
+RuntimeSessionLocal = async_sessionmaker(
+    bind=runtime_engine, expire_on_commit=False, autoflush=False
+)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

@@ -18,3 +18,8 @@ apps/web/dist/
 
 # OS
 .DS_Store
+
+# Local Postgres data and Replit-specific files
+.pg/
+validation-logs/
+apps/api/.coverage

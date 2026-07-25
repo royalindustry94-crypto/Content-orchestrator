@@ -36,8 +36,9 @@ async def create_workspace(
     )
     db.add(membership)
 
-    await db.commit()
-    await db.refresh(workspace)
+    # Flush both objects in the same transaction so RLS set_config remains
+    # active. rls_scoped_session commits after the route returns.
+    await db.flush()
     return workspace
 
 
@@ -81,6 +82,5 @@ async def update_workspace(
     if workspace is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="workspace not found")
     workspace.name = payload.name
-    await db.commit()
-    await db.refresh(workspace)
+    await db.flush()
     return workspace

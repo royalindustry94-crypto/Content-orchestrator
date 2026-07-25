@@ -11,16 +11,18 @@ See docs/milestone-2-identity-and-access.md for the design rationale.
 
 from __future__ import annotations
 
-from typing import Sequence, Union
+from collections.abc import Sequence
 
-from alembic import op
 import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import ENUM as PG_ENUM
 from sqlalchemy.dialects.postgresql import UUID as PG_UUID
 
+from alembic import op
+
 revision: str = "0001"
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -90,19 +92,22 @@ def upgrade() -> None:
         sa.Column("id", PG_UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
         sa.Column("workspace_id", PG_UUID(as_uuid=True), sa.ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True),
         sa.Column("user_id", PG_UUID(as_uuid=True), sa.ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False),
-        sa.Column("role", workspace_role, nullable=False),
+        # Reference the type created above WITHOUT re-emitting CREATE TYPE.
+        # Passing the sa.Enum object itself makes create_table issue a second
+        # CREATE TYPE (no checkfirst) -> DuplicateObjectError on fresh DBs.
+        sa.Column("role", PG_ENUM(name="workspace_role", create_type=False), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.UniqueConstraint("workspace_id", "user_id", name="uq_workspace_user"),
     )
 
     # --- grants for app_runtime ------------------------------------------
+    # One statement per op.execute: asyncpg uses prepared statements, which
+    # reject multiple commands in a single call.
     op.execute(
-        """
-        GRANT SELECT, INSERT, UPDATE, DELETE ON profiles, workspaces, workspace_memberships TO app_runtime;
-        GRANT USAGE ON SCHEMA public TO app_runtime;
-        """
+        "GRANT SELECT, INSERT, UPDATE, DELETE ON profiles, workspaces, workspace_memberships TO app_runtime;"
     )
+    op.execute("GRANT USAGE ON SCHEMA public TO app_runtime;")
 
     # --- app_current_user_id() -------------------------------------------
     # Reads a GUC that FastAPI sets per-transaction after verifying the
@@ -203,9 +208,9 @@ def upgrade() -> None:
         $$ LANGUAGE plpgsql SECURITY DEFINER;
         """
     )
+    op.execute("DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;")
     op.execute(
         """
-        DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;
         CREATE TRIGGER on_auth_user_created
             AFTER INSERT ON auth.users
             FOR EACH ROW EXECUTE FUNCTION handle_new_auth_user();
