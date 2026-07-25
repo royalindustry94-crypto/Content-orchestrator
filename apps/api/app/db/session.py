@@ -40,14 +40,18 @@ def _asyncpg_url(dsn: str) -> str:
 
 
 # Owner/migration connection.
-engine = create_async_engine(_asyncpg_url(str(settings.database_url)), pool_pre_ping=True, echo=False)
+engine = create_async_engine(
+    _asyncpg_url(str(settings.database_url)), pool_pre_ping=True, echo=False
+)
 AsyncSessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
 
 # Runtime (RLS-enforced) connection.
 runtime_engine = create_async_engine(
     _asyncpg_url(str(settings.app_database_url)), pool_pre_ping=True, echo=False
 )
-RuntimeSessionLocal = async_sessionmaker(bind=runtime_engine, expire_on_commit=False, autoflush=False)
+RuntimeSessionLocal = async_sessionmaker(
+    bind=runtime_engine, expire_on_commit=False, autoflush=False
+)
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:

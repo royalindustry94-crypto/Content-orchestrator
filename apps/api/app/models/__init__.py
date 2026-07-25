@@ -1,10 +1,41 @@
-# Milestone 3 domain models (ContentItem, ContentVersion, Asset, pipeline,
-# review, spend, provider, and operational tables) are added in a later
-# milestone once their schema is approved. They are intentionally absent
-# from the Milestone 2 foundation.
+# All ORM models are imported here so they register on Base.metadata,
+# which Alembic autogenerate compares against. Models are schema mappings
+# only (columns, FKs, relationships) — no business logic.
 
+from app.models.assignments import StageAssignment  # noqa: F401
+
+# Milestone 3 content domain
+from app.models.config import ContentPillar, ProviderCredential, SpendCap  # noqa: F401
+from app.models.content import ContentItem, ContentLineage, ContentVersion  # noqa: F401
+from app.models.delivery import Asset, PublishJob  # noqa: F401
+from app.models.events import ConsumerCheckpoint, EventConsumer, OutboxEvent  # noqa: F401
+from app.models.history import AnalyticsSnapshot, ProviderUsage, ReviewDecision  # noqa: F401
+from app.models.operations import DeadLetterJob, WebhookEvent  # noqa: F401
+from app.models.pipeline import PipelineRun, PipelineStageRun  # noqa: F401
 from app.models.profile import Profile  # noqa: F401
+from app.models.review_gate import ReviewGate  # noqa: F401
+from app.models.scheduling import JobSchedule, WorkspaceConcurrencyLimit  # noqa: F401
+from app.models.spend import SpendLog, SpendReservation  # noqa: F401
+from app.models.workers import WorkerHeartbeat, WorkerRegistration  # noqa: F401
+
+# Milestone 4 orchestration
+from app.models.workflow import WorkflowDefinition, WorkflowStage, WorkflowTransition  # noqa: F401
 from app.models.workspace import Workspace  # noqa: F401
 from app.models.workspace_membership import WorkspaceMembership, WorkspaceRole  # noqa: F401
 
-__all__ = ["Profile", "Workspace", "WorkspaceMembership", "WorkspaceRole"]
+__all__ = [
+    "Profile", "Workspace", "WorkspaceMembership", "WorkspaceRole",
+    "ContentPillar", "ProviderCredential", "SpendCap",
+    "ContentItem", "ContentVersion", "ContentLineage",
+    "PipelineRun", "PipelineStageRun",
+    "Asset", "PublishJob",
+    "AnalyticsSnapshot", "ProviderUsage", "ReviewDecision",
+    "SpendLog", "SpendReservation",
+    "DeadLetterJob", "WebhookEvent",
+    "WorkflowDefinition", "WorkflowStage", "WorkflowTransition",
+    "OutboxEvent", "EventConsumer", "ConsumerCheckpoint",
+    "JobSchedule", "WorkspaceConcurrencyLimit",
+    "WorkerRegistration", "WorkerHeartbeat",
+    "StageAssignment",
+    "ReviewGate",
+]
