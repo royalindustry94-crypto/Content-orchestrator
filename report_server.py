@@ -14,7 +14,21 @@ class Handler(BaseHTTPRequestHandler):
         path = urllib.parse.urlparse(self.path).path
 
         if path == "/":
-            self._index()
+            # Show the report directly in the browser
+            path = "/report.html"
+            FILES["/report.html"] = ("CEO_Report_M3_Audit.html", "text/html")
+            fname, mime = FILES[path]
+            fpath = os.path.join(os.path.dirname(__file__), fname)
+            try:
+                with open(fpath, "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", mime)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+            except FileNotFoundError:
+                self.send_error(404)
             return
 
         if path in FILES:
