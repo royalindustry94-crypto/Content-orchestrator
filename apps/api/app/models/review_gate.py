@@ -5,9 +5,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, text
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Integer
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,6 +16,16 @@ from app.models.enums import ContentStage, ReviewGateStatus
 
 class ReviewGate(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):
     __tablename__ = "review_gates"
+    __table_args__ = (
+        Index(
+            "ix_review_gates_awaiting_timeout",
+            "timeout_at",
+            unique=False,
+            postgresql_where=text("status = 'awaiting'::review_gate_status"),
+        ),
+        Index("ix_review_gates_run", "pipeline_run_id", unique=False),
+        Index("ix_review_gates_workspace_status", "workspace_id", "status", unique=False),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     pipeline_run_id: Mapped[uuid.UUID] = mapped_column(

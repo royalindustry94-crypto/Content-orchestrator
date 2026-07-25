@@ -11,21 +11,24 @@ Create Date: 2026-07-21
 from __future__ import annotations
 
 import sys
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence, Union
 
 from alembic import op
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
 from migration_helpers import (  # noqa: E402
-    attach_immutable_trigger, attach_version_trigger, enable_rls, grant_runtime,
-    policy_all_roles, policy_insert_roles, policy_select_members,
+    attach_immutable_trigger,
+    enable_rls,
+    grant_runtime,
+    policy_insert_roles,
+    policy_select_members,
 )
 
 revision: str = "0014"
-down_revision: Union[str, None] = "0013"
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+down_revision: str | None = "0013"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 _EDIT = ["admin", "editor"]
 _ALL = ["admin", "editor", "reviewer"]

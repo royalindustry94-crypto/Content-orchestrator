@@ -7,9 +7,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, Index, Integer, Text, UniqueConstraint, text
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -23,12 +22,34 @@ class JobSchedule(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):
     """
 
     __tablename__ = "job_schedule"
+    __table_args__ = (
+        Index(
+            "ix_job_schedule_due",
+            "status",
+            "run_after",
+            unique=False,
+            postgresql_where=text("status = 'pending'::job_schedule_status"),
+        ),
+        Index(
+            "ix_job_schedule_lease_expiry",
+            "lease_expires_at",
+            unique=False,
+            postgresql_where=text("status = 'leased'::job_schedule_status"),
+        ),
+        Index(
+            "ix_job_schedule_workspace_due",
+            "workspace_id",
+            "run_after",
+            unique=False,
+            postgresql_where=text("status = 'pending'::job_schedule_status"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     job_type: Mapped[JobType] = mapped_column(
         SAEnum(JobType, name="job_type", native_enum=True), nullable=False
     )
-    ref_table: Mapped[str] = mapped_column(String, nullable=False)
+    ref_table: Mapped[str] = mapped_column(Text, nullable=False)
     ref_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     run_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[JobScheduleStatus] = mapped_column(
@@ -36,14 +57,16 @@ class JobSchedule(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):
         nullable=False,
         default=JobScheduleStatus.PENDING,
     )
-    lease_owner: Mapped[str | None] = mapped_column(String, nullable=True)
-    lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    lease_owner: Mapped[str | None] = mapped_column(Text, nullable=True)
+    lease_expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     attempt: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     # Propagated for tracing (amendment 1) so a scheduler action can be
     # joined back to the workflow execution and trace it belongs to.
     correlation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
-    trace_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    trace_id: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class WorkspaceConcurrencyLimit(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):

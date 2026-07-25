@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import random
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -35,7 +35,7 @@ def next_run_after(
     delay = compute_backoff_seconds(
         attempt, base_seconds=base_seconds, multiplier=multiplier, max_seconds=max_seconds
     )
-    return datetime.now(timezone.utc) + timedelta(seconds=delay)
+    return datetime.now(UTC) + timedelta(seconds=delay)
 
 
 # Known-transient error markers. Classification defaults to "not
@@ -85,7 +85,7 @@ async def route_to_dead_letter(
         failure_reason=failure_reason,
         attempt_count=attempt_count,
         first_failed_at=first_failed_at,
-        last_failed_at=datetime.now(timezone.utc),
+        last_failed_at=datetime.now(UTC),
     )
     session.add(entry)
     await session.flush()

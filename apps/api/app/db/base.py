@@ -9,7 +9,7 @@ it rather than redeclaring the column.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer
 from sqlalchemy.dialects.postgresql import UUID
@@ -17,7 +17,7 @@ from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
 def _utcnow() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Base(DeclarativeBase):
@@ -94,9 +94,13 @@ class WorkspaceScopedMixin:
     value must come from the authenticated request context.
     """
 
+    # NOTE: no index=True here. Each table declares its own workspace
+    # indexes in __table_args__, matching what the migrations actually
+    # created (usually composite indexes led by workspace_id). A blanket
+    # single-column index from the mixin made the ORM metadata disagree
+    # with the real schema on ~25 tables.
     workspace_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("workspaces.id", ondelete="CASCADE"),
         nullable=False,
-        index=True,
     )

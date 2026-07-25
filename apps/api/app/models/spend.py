@@ -3,9 +3,8 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime
+from sqlalchemy import DateTime, ForeignKey, Index, Numeric, Text, text
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -17,12 +16,21 @@ class SpendLog(Base, WorkspaceScopedMixin, CreatedAtMixin):
     """Immutable ledger — source of truth for actual spend."""
 
     __tablename__ = "spend_logs"
+    __table_args__ = (
+        Index(
+            "ix_spend_logs_workspace_provider_time",
+            "workspace_id",
+            "provider",
+            text("occurred_at DESC"),
+        ),
+        Index("ix_spend_logs_workspace_time", "workspace_id", text("occurred_at DESC")),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     content_item_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("content_items.id"), nullable=True
     )
-    provider: Mapped[str] = mapped_column(String, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
     stage: Mapped[ContentStage | None] = mapped_column(
         SAEnum(ContentStage, name="content_stage", native_enum=True), nullable=True
     )
@@ -39,6 +47,19 @@ class SpendReservation(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin)
     """
 
     __tablename__ = "spend_reservations"
+    __table_args__ = (
+        Index(
+            "ix_spend_reservations_run",
+            "pipeline_run_id",
+            postgresql_where=text("pipeline_run_id IS NOT NULL"),
+        ),
+        Index(
+            "ix_spend_reservations_workspace_status",
+            "workspace_id",
+            "status",
+            postgresql_where=text("status = 'reserved'::reservation_status"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     # Added in migration 0020 for the orchestration engine — without this,
@@ -51,7 +72,7 @@ class SpendReservation(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin)
     content_item_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("content_items.id"), nullable=True
     )
-    provider: Mapped[str] = mapped_column(String, nullable=False)
+    provider: Mapped[str] = mapped_column(Text, nullable=False)
     stage: Mapped[ContentStage | None] = mapped_column(
         SAEnum(ContentStage, name="content_stage", native_enum=True), nullable=True
     )

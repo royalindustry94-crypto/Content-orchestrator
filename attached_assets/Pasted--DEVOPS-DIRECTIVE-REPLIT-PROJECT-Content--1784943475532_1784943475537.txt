@@ -1,0 +1,75 @@
+===========================
+DEVOPS DIRECTIVE → REPLIT
+===========================
+
+PROJECT: Content Orchestrator
+
+Repository:
+https://github.com/royalindustry94-crypto/Content-orchestrator.git
+
+DO NOT START OVER.
+
+Your first job is to recover the current workspace safely and continue from the existing repository state.
+
+Before changing anything:
+
+1. Confirm the workspace is connected to the correct GitHub repository.
+2. Run:
+   - git status
+   - git branch -a
+   - git log --oneline --all -20
+   - git remote -v
+   - git rev-parse HEAD
+   - git rev-parse origin/main
+3. Inspect all uncommitted and untracked files.
+4. Preserve any valid existing work.
+5. Do not delete, reset, overwrite, force-push, or work directly on main.
+6. Fetch all remote branches.
+7. Create or resume:
+   feature/milestone-3
+8. Push the branch immediately to confirm GitHub write access.
+
+STOP and report before implementation if:
+- the repository is wrong;
+- GitHub push fails;
+- uncommitted work may be lost;
+- the branch already contains unknown work.
+
+After the safety checks pass, implement Milestone 3 in small phases:
+
+- orchestration database models and migrations;
+- pipeline state machine;
+- transactional outbox;
+- idempotency;
+- retry/backoff;
+- Human Review Gate;
+- spend reservations and ledger;
+- FastAPI endpoints;
+- PostgreSQL RLS;
+- real PostgreSQL tests;
+- documentation;
+- GitHub Actions validation.
+
+Rules:
+
+- Preserve FastAPI, SQLAlchemy, Alembic, PostgreSQL, React and the existing architecture.
+- No placeholders.
+- No TODOs.
+- No fake production logic.
+- No SQLite acceptance testing.
+- Every migration must downgrade cleanly.
+- Every workspace-owned table must enforce RLS.
+- Commit and push after each major subsystem.
+- Never leave more than one major subsystem uncommitted.
+- Do not merge the final pull request.
+
+Milestone 3 is VERIFIED only when:
+
+- all work is pushed to GitHub;
+- a pull request exists;
+- PostgreSQL migrations pass upgrade/downgrade/upgrade;
+- tests pass against real PostgreSQL;
+- cross-workspace RLS tests pass;
+- GitHub Actions is green.
+
+Begin with the workspace safety checks now and report the results before making major changes.

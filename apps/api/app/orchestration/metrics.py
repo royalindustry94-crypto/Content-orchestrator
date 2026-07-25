@@ -13,7 +13,7 @@ functions on a schedule / forwarding the log lines — not a redesign.
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -67,7 +67,7 @@ async def event_latency_seconds(session: AsyncSession, *, sample_size: int = 500
 async def workflow_execution_duration_seconds(
     session: AsyncSession, *, since: datetime | None = None
 ) -> dict[str, float]:
-    since = since or (datetime.now(timezone.utc) - timedelta(days=1))
+    since = since or (datetime.now(UTC) - timedelta(days=1))
     result = await session.execute(
         select(func.avg(func.extract("epoch", PipelineRun.completed_at - PipelineRun.started_at)))
         .where(
@@ -76,11 +76,13 @@ async def workflow_execution_duration_seconds(
         )
     )
     avg_seconds = result.scalar_one_or_none()
-    return {"avg_execution_duration_seconds": float(avg_seconds) if avg_seconds is not None else 0.0}
+    return {
+        "avg_execution_duration_seconds": float(avg_seconds) if avg_seconds is not None else 0.0
+    }
 
 
 async def retry_counts(session: AsyncSession, *, since: datetime | None = None) -> int:
-    since = since or (datetime.now(timezone.utc) - timedelta(days=1))
+    since = since or (datetime.now(UTC) - timedelta(days=1))
     result = await session.execute(
         select(func.count(PipelineStageRun.id)).where(
             PipelineStageRun.status == "failed", PipelineStageRun.created_at >= since
@@ -99,7 +101,7 @@ async def dead_letter_count(session: AsyncSession) -> int:
 async def dispatch_success_failure_rate(
     session: AsyncSession, *, since: datetime | None = None
 ) -> dict[str, float]:
-    since = since or (datetime.now(timezone.utc) - timedelta(days=1))
+    since = since or (datetime.now(UTC) - timedelta(days=1))
     result = await session.execute(
         select(StageAssignment.status, func.count(StageAssignment.id))
         .where(StageAssignment.created_at >= since)
@@ -123,14 +125,14 @@ async def worker_lease_contention(session: AsyncSession) -> int:
             StageAssignment.status.in_(
                 [StageAssignmentStatus.DISPATCHED, StageAssignmentStatus.ACKNOWLEDGED]
             ),
-            StageAssignment.lease_expires_at < datetime.now(timezone.utc),
+            StageAssignment.lease_expires_at < datetime.now(UTC),
         )
     )
     return result.scalar_one()
 
 
 async def scheduler_throughput(session: AsyncSession, *, since: datetime | None = None) -> int:
-    since = since or (datetime.now(timezone.utc) - timedelta(minutes=5))
+    since = since or (datetime.now(UTC) - timedelta(minutes=5))
     result = await session.execute(
         select(func.count(JobSchedule.id)).where(
             JobSchedule.status == JobScheduleStatus.DONE, JobSchedule.updated_at >= since

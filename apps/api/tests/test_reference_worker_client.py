@@ -6,7 +6,6 @@ worker-side contract without any real generation logic.
 import os
 import sys
 import uuid
-from datetime import datetime, timezone
 from pathlib import Path
 
 os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test")
@@ -20,14 +19,13 @@ sys.path.append(str(Path(__file__).resolve().parents[3] / "worker"))
 
 import pytest
 from sqlalchemy import select, text
+from worker.client import ReferenceWorkerClient  # noqa: E402
 
 from app.db.session import AsyncSessionLocal
-from app.models.enums import StageAssignmentStatus, WorkflowTransitionTrigger
+from app.models.enums import StageAssignmentStatus
 from app.models.pipeline import PipelineRun
-from app.models.workflow import WorkflowDefinition, WorkflowStage, WorkflowTransition
+from app.models.workflow import WorkflowDefinition, WorkflowStage
 from app.orchestration import controller, dispatcher
-
-from worker.client import ReferenceWorkerClient  # noqa: E402
 
 
 async def _make_workspace_item(session):
@@ -54,7 +52,7 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
         await session.flush()
         await controller.start_run(session, run=run, definition=definition)
 
-        assignment = await dispatcher.dispatch_stage(
+        await dispatcher.dispatch_stage(
             session, workspace_id=ws, pipeline_run_id=run.id, stage="scripting",
             attempt_number=1, correlation_id=run.correlation_id, trace_id=run.trace_id,
         )

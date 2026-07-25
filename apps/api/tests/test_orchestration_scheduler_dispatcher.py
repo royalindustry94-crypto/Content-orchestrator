@@ -4,14 +4,14 @@ lease reaping) — design doc §4, §5, §11.
 
 import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test")
 os.environ.setdefault("APP_DATABASE_URL", "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test")
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret")
 
 import pytest
-from sqlalchemy import select, text
+from sqlalchemy import text
 
 from app.db.session import AsyncSessionLocal
 from app.models.enums import JobScheduleStatus, JobType, StageAssignmentStatus, WorkerStatus
@@ -22,8 +22,14 @@ from app.orchestration import dispatcher, scheduler
 
 async def _make_workspace(session):
     ws, user = str(uuid.uuid4()), str(uuid.uuid4())
-    await session.execute(text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"), {"id": user, "e": f"{user}@x.com"})
-    await session.execute(text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"), {"id": ws, "u": user})
+    await session.execute(
+        text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
+        {"id": user, "e": f"{user}@x.com"},
+    )
+    await session.execute(
+        text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
+        {"id": ws, "u": user},
+    )
     return uuid.UUID(ws)
 
 
@@ -38,9 +44,9 @@ async def test_scheduler_fairness_caps_per_workspace_per_tick():
         # consume the whole batch.
         for _ in range(10):
             session.add(JobSchedule(id=uuid.uuid4(), workspace_id=ws_a, job_type=JobType.STAGE_TIMEOUT,
-                                     ref_table="x", ref_id=uuid.uuid4(), run_after=datetime.now(timezone.utc)))
+                                     ref_table="x", ref_id=uuid.uuid4(), run_after=datetime.now(UTC)))
         session.add(JobSchedule(id=uuid.uuid4(), workspace_id=ws_b, job_type=JobType.STAGE_TIMEOUT,
-                                 ref_table="x", ref_id=uuid.uuid4(), run_after=datetime.now(timezone.utc)))
+                                 ref_table="x", ref_id=uuid.uuid4(), run_after=datetime.now(UTC)))
         await session.commit()
 
         leased = await scheduler.poll_and_lease(session, batch_size=100)
@@ -58,8 +64,8 @@ async def test_reap_expired_scheduler_leases_returns_to_pending():
         ws = await _make_workspace(session)
         job = JobSchedule(
             id=uuid.uuid4(), workspace_id=ws, job_type=JobType.STAGE_TIMEOUT, ref_table="x", ref_id=uuid.uuid4(),
-            run_after=datetime.now(timezone.utc), status=JobScheduleStatus.LEASED,
-            lease_owner="dead-scheduler", lease_expires_at=datetime.now(timezone.utc) - timedelta(seconds=5),
+            run_after=datetime.now(UTC), status=JobScheduleStatus.LEASED,
+            lease_owner="dead-scheduler", lease_expires_at=datetime.now(UTC) - timedelta(seconds=5),
         )
         session.add(job)
         await session.commit()
@@ -75,16 +81,16 @@ async def test_reap_expired_scheduler_leases_returns_to_pending():
 @pytest.mark.asyncio
 async def test_dispatcher_selects_worker_by_health_and_load():
     async with AsyncSessionLocal() as session:
-        ws = await _make_workspace(session)
+        await _make_workspace(session)  # setup side effect only; workers below are global (workspace_id=None)
         weak = WorkerRegistration(
             id=uuid.uuid4(), workspace_id=None, name="weak", supported_stages=["scripting"],
             status=WorkerStatus.ONLINE, max_concurrency=5, current_load=0, health_score=40,
-            last_heartbeat_at=datetime.now(timezone.utc), registered_at=datetime.now(timezone.utc),
+            last_heartbeat_at=datetime.now(UTC), registered_at=datetime.now(UTC),
         )
         strong = WorkerRegistration(
             id=uuid.uuid4(), workspace_id=None, name="strong", supported_stages=["scripting"],
             status=WorkerStatus.ONLINE, max_concurrency=5, current_load=0, health_score=90,
-            last_heartbeat_at=datetime.now(timezone.utc), registered_at=datetime.now(timezone.utc),
+            last_heartbeat_at=datetime.now(UTC), registered_at=datetime.now(UTC),
         )
         session.add_all([weak, strong])
         await session.commit()
@@ -100,7 +106,7 @@ async def test_dispatcher_reaps_expired_assignment_lease_and_frees_worker_load()
         worker = WorkerRegistration(
             id=uuid.uuid4(), workspace_id=None, name="w", supported_stages=["scripting"],
             status=WorkerStatus.BUSY, max_concurrency=1, current_load=1, health_score=100,
-            last_heartbeat_at=datetime.now(timezone.utc), registered_at=datetime.now(timezone.utc),
+            last_heartbeat_at=datetime.now(UTC), registered_at=datetime.now(UTC),
         )
         session.add(worker)
         await session.execute(text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't')"),
@@ -118,7 +124,7 @@ async def test_dispatcher_reaps_expired_assignment_lease_and_frees_worker_load()
         assignment = StageAssignment(
             id=uuid.uuid4(), workspace_id=ws, pipeline_run_id=run.id, stage="scripting", attempt_number=1,
             worker_id=worker.id, status=StageAssignmentStatus.DISPATCHED,
-            lease_expires_at=datetime.now(timezone.utc) - timedelta(seconds=5),
+            lease_expires_at=datetime.now(UTC) - timedelta(seconds=5),
         )
         session.add(assignment)
         await session.commit()
@@ -154,7 +160,7 @@ async def test_dispatcher_enforces_max_concurrent_assignments_back_pressure():
         worker = WorkerRegistration(
             id=uuid.uuid4(), workspace_id=None, name="w", supported_stages=["scripting"],
             status=WorkerStatus.ONLINE, max_concurrency=5, current_load=0, health_score=100,
-            last_heartbeat_at=datetime.now(timezone.utc), registered_at=datetime.now(timezone.utc),
+            last_heartbeat_at=datetime.now(UTC), registered_at=datetime.now(UTC),
         )
         session.add(worker)
         await session.commit()

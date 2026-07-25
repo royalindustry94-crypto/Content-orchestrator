@@ -5,9 +5,9 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.assignments import StageAssignment
@@ -15,7 +15,6 @@ from app.models.enums import StageAssignmentStatus, WorkerStatus
 from app.models.pipeline import PipelineStageRun
 from app.models.scheduling import WorkspaceConcurrencyLimit
 from app.models.workers import WorkerRegistration
-from sqlalchemy import func
 from app.orchestration.events.envelope import child_span
 from app.orchestration.events.types import STAGE_ASSIGNED, STAGE_REASSIGNED
 from app.orchestration.outbox import emit
@@ -75,10 +74,16 @@ async def dispatch_stage(
     # unscheduled and is retried on a later tick (same as "no eligible
     # worker," §5.2), never dropped.
     limit_result = await session.execute(
-        select(WorkspaceConcurrencyLimit).where(WorkspaceConcurrencyLimit.workspace_id == workspace_id)
+        select(WorkspaceConcurrencyLimit).where(
+            WorkspaceConcurrencyLimit.workspace_id == workspace_id
+        )
     )
     limit_row = limit_result.scalar_one_or_none()
-    max_concurrent = limit_row.max_concurrent_assignments if limit_row else DEFAULT_MAX_CONCURRENT_ASSIGNMENTS
+    max_concurrent = (
+        limit_row.max_concurrent_assignments
+        if limit_row
+        else DEFAULT_MAX_CONCURRENT_ASSIGNMENTS
+    )
 
     in_flight_result = await session.execute(
         select(func.count(StageAssignment.id)).where(
@@ -115,9 +120,9 @@ async def dispatch_stage(
         status=StageAssignmentStatus.DISPATCHED if worker else StageAssignmentStatus.PENDING,
         idempotency_key=idempotency_key,
         lease_expires_at=(
-            datetime.now(timezone.utc) + timedelta(seconds=ACK_TIMEOUT_SECONDS) if worker else None
+            datetime.now(UTC) + timedelta(seconds=ACK_TIMEOUT_SECONDS) if worker else None
         ),
-        dispatched_at=datetime.now(timezone.utc) if worker else None,
+        dispatched_at=datetime.now(UTC) if worker else None,
         correlation_id=correlation_id,
         trace_id=trace_id,
     )
@@ -150,13 +155,13 @@ async def dispatch_stage(
 async def acknowledge(session: AsyncSession, assignment: StageAssignment, *,
     lease_seconds: int) -> None:
     assignment.status = StageAssignmentStatus.ACKNOWLEDGED
-    assignment.acknowledged_at = datetime.now(timezone.utc)
-    assignment.lease_expires_at = datetime.now(timezone.utc) + timedelta(seconds=lease_seconds)
+    assignment.acknowledged_at = datetime.now(UTC)
+    assignment.lease_expires_at = datetime.now(UTC) + timedelta(seconds=lease_seconds)
 
 
 async def renew_lease(session: AsyncSession, assignment: StageAssignment, *,
     lease_seconds: int) -> None:
-    assignment.lease_expires_at = datetime.now(timezone.utc) + timedelta(seconds=lease_seconds)
+    assignment.lease_expires_at = datetime.now(UTC) + timedelta(seconds=lease_seconds)
 
 
 async def reap_expired_leases(session: AsyncSession, *,
@@ -171,7 +176,7 @@ async def reap_expired_leases(session: AsyncSession, *,
             StageAssignment.status.in_(
                 [StageAssignmentStatus.DISPATCHED, StageAssignmentStatus.ACKNOWLEDGED]
             ),
-            StageAssignment.lease_expires_at < datetime.now(timezone.utc),
+            StageAssignment.lease_expires_at < datetime.now(UTC),
         )
         .limit(batch_size)
         .with_for_update(skip_locked=True)
@@ -182,7 +187,10 @@ async def reap_expired_leases(session: AsyncSession, *,
             worker = await session.get(WorkerRegistration, assignment.worker_id)
             if worker is not None and worker.current_load > 0:
                 worker.current_load -= 1
-                if worker.status == WorkerStatus.BUSY and worker.current_load < worker.max_concurrency:
+                if (
+                    worker.status == WorkerStatus.BUSY
+                    and worker.current_load < worker.max_concurrency
+                ):
                     worker.status = WorkerStatus.ONLINE
         assignment.status = StageAssignmentStatus.PENDING
         assignment.worker_id = None
@@ -199,7 +207,9 @@ async def reap_expired_leases(session: AsyncSession, *,
             trace_id=trace_id,
             span_id=span_id,
             payload={
-                "stage": assignment.stage, "assignment_id": str(assignment.id), "reason": "lease_expired"
+                "stage": assignment.stage,
+                "assignment_id": str(assignment.id),
+                "reason": "lease_expired",
             },
             produced_by="dispatcher.reaper",
         )
@@ -208,7 +218,7 @@ async def reap_expired_leases(session: AsyncSession, *,
 async def submit_result(
     session,
     *,
-    assignment: "StageAssignment",
+    assignment: StageAssignment,
     success: bool,
     result: dict | None = None,
     error_message: str = "",
@@ -226,13 +236,13 @@ async def submit_result(
     decisions, made by a separate actor).
     """
     import uuid as _uuid
-    from datetime import datetime, timezone as _timezone
+    from datetime import datetime
 
-    from app.models.pipeline import PipelineRun, PipelineStageRun
+    from app.models.pipeline import PipelineRun
     from app.orchestration import controller
 
     assignment.status = StageAssignmentStatus.COMPLETED if success else StageAssignmentStatus.FAILED
-    assignment.completed_at = datetime.now(_timezone.utc)
+    assignment.completed_at = datetime.now(UTC)
     assignment.result = result
 
     if assignment.worker_id is not None:

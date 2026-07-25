@@ -18,3 +18,7 @@ apps/web/dist/
 
 # OS
 .DS_Store
+
+# Local validation infra (not part of the app)
+.pg/
+validation-logs/

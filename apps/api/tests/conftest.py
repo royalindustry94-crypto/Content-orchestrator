@@ -48,7 +48,9 @@ def make_token(user_id: str | None = None, email: str = "test@example.com") -> s
         "exp": int(time.time()) + 3600,
         "role": "authenticated",
     }
-    return jwt.encode(payload, settings.supabase_jwt_secret, algorithm=settings.supabase_jwt_algorithm)
+    return jwt.encode(
+        payload, settings.supabase_jwt_secret, algorithm=settings.supabase_jwt_algorithm
+    )
 
 
 @pytest_asyncio.fixture

@@ -25,10 +25,12 @@ async def _make_workspace_and_item(s):
     ws, user, item = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
     await s.execute(text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
                     {"id": user, "e": f"{user}@x.com"})
-    await s.execute(text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
-                    {"id": ws, "u": user})
-    await s.execute(text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't')"),
-                    {"id": item, "ws": ws})
+    await s.execute(
+        text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
+        {"id": ws, "u": user})
+    await s.execute(
+        text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't')"),
+        {"id": item, "ws": ws})
     return ws, user, item
 
 
@@ -74,8 +76,9 @@ async def test_content_lineage_is_immutable():
     async with AsyncSessionLocal() as s:
         ws, _u, parent = await _make_workspace_and_item(s)
         child = str(uuid.uuid4())
-        await s.execute(text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't2')"),
-                        {"id": child, "ws": ws})
+        await s.execute(
+            text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't2')"),
+            {"id": child, "ws": ws})
         edge = str(uuid.uuid4())
         await s.execute(
             text("INSERT INTO content_lineage (id, workspace_id, parent_content_item_id, "
@@ -84,7 +87,8 @@ async def test_content_lineage_is_immutable():
         )
         await s.commit()
         with pytest.raises(Exception) as exc:
-            await s.execute(text("UPDATE content_lineage SET notes = 'x' WHERE id = :id"), {"id": edge})
+            await s.execute(
+                text("UPDATE content_lineage SET notes = 'x' WHERE id = :id"), {"id": edge})
             await s.commit()
         assert "immutable" in str(exc.value).lower()
 

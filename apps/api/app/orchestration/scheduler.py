@@ -8,15 +8,15 @@ import logging
 import socket
 import uuid
 from collections import defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import JobScheduleStatus, JobType
-from app.orchestration.retry import compute_backoff_seconds
 from app.models.scheduling import JobSchedule, WorkspaceConcurrencyLimit
 from app.orchestration import dispatcher
+from app.orchestration.retry import compute_backoff_seconds
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +59,7 @@ async def poll_and_lease(session: AsyncSession, *, batch_size: int = 100) -> lis
         select(JobSchedule)
         .where(
             JobSchedule.status == JobScheduleStatus.PENDING,
-            JobSchedule.run_after <= datetime.now(timezone.utc),
+            JobSchedule.run_after <= datetime.now(UTC),
         )
         .order_by(JobSchedule.priority.desc(), JobSchedule.run_after.asc())
         .limit(batch_size * 3)  # over-fetch; fairness trims below
@@ -91,7 +91,7 @@ async def poll_and_lease(session: AsyncSession, *, batch_size: int = 100) -> lis
             cursors[ws] += 1
             job.status = JobScheduleStatus.LEASED
             job.lease_owner = owner
-            job.lease_expires_at = datetime.now(timezone.utc) + timedelta(seconds=LEASE_SECONDS)
+            job.lease_expires_at = datetime.now(UTC) + timedelta(seconds=LEASE_SECONDS)
             leased.append(job)
 
     return leased
@@ -102,7 +102,7 @@ async def reap_expired_leases(session: AsyncSession, *, batch_size: int = 100) -
         select(JobSchedule)
         .where(
             JobSchedule.status == JobScheduleStatus.LEASED,
-            JobSchedule.lease_expires_at < datetime.now(timezone.utc),
+            JobSchedule.lease_expires_at < datetime.now(UTC),
         )
         .limit(batch_size)
         .with_for_update(skip_locked=True)
@@ -157,7 +157,7 @@ async def process_leased_job(session: AsyncSession, job: JobSchedule) -> None:
                 multiplier=2, max_seconds=NO_WORKER_RETRY_MAX_SECONDS,
             )
             job.status = JobScheduleStatus.PENDING
-            job.run_after = datetime.now(timezone.utc) + timedelta(seconds=delay)
+            job.run_after = datetime.now(UTC) + timedelta(seconds=delay)
             job.lease_owner = None
             job.lease_expires_at = None
             return

@@ -10,7 +10,7 @@ domain-change-and-event pair atomic (design doc §3.9, producer txn).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -75,7 +75,7 @@ async def emit(
         span_id=span_id,
         sequence=sequence,
         payload=payload,
-        occurred_at=datetime.now(timezone.utc),
+        occurred_at=datetime.now(UTC),
         produced_by=produced_by,
     )
     session.add(event)

@@ -4,7 +4,6 @@ spend protection — the core state-machine behaviors (design doc §2,§8,§9).
 
 import os
 import uuid
-from datetime import datetime, timezone
 from decimal import Decimal
 
 os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test")
@@ -15,7 +14,6 @@ import pytest
 from sqlalchemy import select, text
 
 from app.db.session import AsyncSessionLocal
-from app.models.content import ContentItem
 from app.models.enums import JobScheduleStatus, ReviewGateStatus, WorkflowTransitionTrigger
 from app.models.pipeline import PipelineRun
 from app.models.review_gate import ReviewGate

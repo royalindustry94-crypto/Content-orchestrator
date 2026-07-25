@@ -2,8 +2,16 @@ from __future__ import annotations
 
 import uuid
 
+from sqlalchemy import (
+    CheckConstraint,
+    ForeignKey,
+    Index,
+    Integer,
+    Text,
+    UniqueConstraint,
+    text,
+)
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import CheckConstraint, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -24,6 +32,26 @@ class ContentItem(
     Base, WorkspaceScopedMixin, TimestampMixin, ActorMixin, VersionMixin, SoftDeleteMixin
 ):
     __tablename__ = "content_items"
+    __table_args__ = (
+        Index(
+            "ix_content_items_workspace_pillar",
+            "workspace_id",
+            "pillar_id",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index(
+            "ix_content_items_workspace_stage",
+            "workspace_id",
+            "current_stage",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+        Index(
+            "ix_content_items_workspace_status",
+            "workspace_id",
+            "status",
+            postgresql_where=text("deleted_at IS NULL"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     pillar_id: Mapped[uuid.UUID | None] = mapped_column(
@@ -41,9 +69,23 @@ class ContentItem(
         nullable=False,
         default=ContentStatus.ACTIVE,
     )
-    current_version_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    current_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey(
+            "content_versions.id",
+            use_alter=True,
+            name="fk_content_items_current_version",
+        ),
+        nullable=True,
+    )
     current_pipeline_run_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey(
+            "pipeline_runs.id",
+            use_alter=True,
+            name="fk_content_items_current_run",
+        ),
+        nullable=True,
     )
 
 
@@ -51,6 +93,10 @@ class ContentVersion(Base, WorkspaceScopedMixin, CreatedAtMixin, CreatedByMixin)
     """Immutable. Each script (re)generation is a new row."""
 
     __tablename__ = "content_versions"
+    __table_args__ = (
+        Index("ix_content_versions_item", "content_item_id", text("created_at DESC")),
+        Index("ix_content_versions_workspace", "workspace_id"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     content_item_id: Mapped[uuid.UUID] = mapped_column(
@@ -60,7 +106,7 @@ class ContentVersion(Base, WorkspaceScopedMixin, CreatedAtMixin, CreatedByMixin)
     script_body: Mapped[str | None] = mapped_column(Text, nullable=True)
     script_cta: Mapped[str | None] = mapped_column(Text, nullable=True)
     prompt_used: Mapped[str | None] = mapped_column(Text, nullable=True)
-    generated_by: Mapped[str | None] = mapped_column(String, nullable=True)
+    generated_by: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
 class ContentLineage(Base, WorkspaceScopedMixin, CreatedAtMixin, CreatedByMixin):
@@ -82,6 +128,9 @@ class ContentLineage(Base, WorkspaceScopedMixin, CreatedAtMixin, CreatedByMixin)
             "parent_content_item_id <> child_content_item_id",
             name="ck_content_lineage_no_self",
         ),
+        Index("ix_content_lineage_child", "child_content_item_id"),
+        Index("ix_content_lineage_parent", "parent_content_item_id"),
+        Index("ix_content_lineage_workspace", "workspace_id"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

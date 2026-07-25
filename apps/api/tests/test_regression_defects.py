@@ -25,9 +25,9 @@ import pytest
 from sqlalchemy import select, text
 
 from app.db.session import AsyncSessionLocal
-from app.models.enums import ReservationStatus, WorkflowTransitionTrigger
+from app.models.enums import ReservationStatus
 from app.models.pipeline import PipelineRun
-from app.models.workflow import WorkflowDefinition, WorkflowStage, WorkflowTransition
+from app.models.workflow import WorkflowDefinition, WorkflowStage
 from app.orchestration import controller, relay
 
 
@@ -148,6 +148,7 @@ async def test_regression_stage_completion_advances_run_exactly_once():
 
     async with AsyncSessionLocal() as session:
         from sqlalchemy import select as _select
+
         from app.models.assignments import StageAssignment
         result = await session.execute(_select(StageAssignment).where(StageAssignment.id == assignment.id))
         loaded_assignment = result.scalar_one()

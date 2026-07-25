@@ -29,7 +29,9 @@ def enable_rls(table: str) -> None:
     op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY;")
 
 
-def grant_runtime(table: str, *, insert: bool = True, update: bool = True, delete: bool = True) -> None:
+def grant_runtime(
+    table: str, *, insert: bool = True, update: bool = True, delete: bool = True
+) -> None:
     verbs = ["SELECT"]
     if insert:
         verbs.append("INSERT")
@@ -54,14 +56,18 @@ def policy_select_members(table: str, roles: list[str], *, soft_delete: bool = F
     )
 
 
-def policy_insert_roles(table: str, roles: list[str], *, policy_suffix: str = "insert_roles") -> None:
+def policy_insert_roles(
+    table: str, roles: list[str], *, policy_suffix: str = "insert_roles"
+) -> None:
     op.execute(
         f"CREATE POLICY {table}_{policy_suffix} ON {table} FOR INSERT "
         f"WITH CHECK (app_user_has_workspace_role(workspace_id, {_roles_array(roles)}));"
     )
 
 
-def policy_update_roles(table: str, roles: list[str], *, policy_suffix: str = "update_roles") -> None:
+def policy_update_roles(
+    table: str, roles: list[str], *, policy_suffix: str = "update_roles"
+) -> None:
     op.execute(
         f"CREATE POLICY {table}_{policy_suffix} ON {table} FOR UPDATE "
         f"USING (app_user_has_workspace_role(workspace_id, {_roles_array(roles)}));"

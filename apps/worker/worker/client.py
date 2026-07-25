@@ -19,7 +19,7 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 logger = logging.getLogger("worker.client")
 
@@ -68,7 +68,7 @@ class ReferenceWorkerClient:
             supported_stages=self.supported_stages, capabilities={},
             status=WorkerStatus.ONLINE, max_concurrency=self.max_concurrency,
             current_load=0, health_score=100,
-            last_heartbeat_at=datetime.now(timezone.utc), registered_at=datetime.now(timezone.utc),
+            last_heartbeat_at=datetime.now(UTC), registered_at=datetime.now(UTC),
         )
         session.add(registration)
         await session.flush()
@@ -83,7 +83,7 @@ class ReferenceWorkerClient:
         registration = await session.get(WorkerRegistration, self.worker_id)
         if registration is None:
             return
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         registration.last_heartbeat_at = now
         # Health score recovers over time absent failures; a real
         # implementation would factor in recent success/failure ratio —
@@ -123,10 +123,9 @@ class ReferenceWorkerClient:
         """Pull-mode claim: find a pending assignment matching this
         worker's capabilities and take it (design doc §5.3, pull variant).
         """
-        from sqlalchemy import select
-
         from app.models.assignments import StageAssignment
         from app.models.enums import StageAssignmentStatus
+        from sqlalchemy import select
 
         if self._draining:
             return None
@@ -161,7 +160,9 @@ class ReferenceWorkerClient:
         the full worker-side half of the contract."""
         from app.orchestration import dispatcher
 
-        success, result, error = await self.executor({"stage": assignment.stage, "assignment_id": str(assignment.id)})
+        success, result, error = await self.executor(
+            {"stage": assignment.stage, "assignment_id": str(assignment.id)}
+        )
         await dispatcher.submit_result(
             session, assignment=assignment, success=success, result=result, error_message=error
         )

@@ -13,13 +13,12 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean
+from sqlalchemy import Boolean, ForeignKey, Index, Integer, Text, UniqueConstraint, text
 from sqlalchemy import Enum as SAEnum
-from sqlalchemy import ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import ActorMixin, Base, CreatedAtMixin, CreatedByMixin, WorkspaceScopedMixin
+from app.db.base import Base, CreatedAtMixin, CreatedByMixin, WorkspaceScopedMixin
 from app.models.enums import ContentStage, WorkflowTransitionTrigger
 
 
@@ -29,10 +28,17 @@ class WorkflowDefinition(Base, WorkspaceScopedMixin, CreatedAtMixin, CreatedByMi
     __tablename__ = "workflow_definitions"
     __table_args__ = (
         UniqueConstraint("workspace_id", "name", "version", name="uq_workflow_definition_version"),
+        Index(
+            "ix_workflow_definitions_active",
+            "workspace_id",
+            "name",
+            unique=False,
+            postgresql_where=text("is_active"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    name: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
     version: Mapped[int] = mapped_column(Integer, nullable=False)
     # Only one version per (workspace, name) may be active at a time; a new
     # active version is created by inserting a new row and the app layer
@@ -50,11 +56,14 @@ class WorkflowStage(Base, WorkspaceScopedMixin, CreatedAtMixin):
     __tablename__ = "workflow_stages"
     __table_args__ = (
         UniqueConstraint("definition_id", "stage_key", name="uq_workflow_stage_per_definition"),
+        Index("ix_workflow_stages_definition", "definition_id", "ordinal", unique=False),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     definition_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("workflow_definitions.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("workflow_definitions.id", ondelete="CASCADE"),
+        nullable=False,
     )
     stage_key: Mapped[ContentStage] = mapped_column(
         SAEnum(ContentStage, name="content_stage", native_enum=True), nullable=False
@@ -78,10 +87,21 @@ class WorkflowTransition(Base, WorkspaceScopedMixin, CreatedAtMixin):
     """
 
     __tablename__ = "workflow_transitions"
+    __table_args__ = (
+        Index(
+            "ix_workflow_transitions_lookup",
+            "definition_id",
+            "from_stage",
+            "trigger",
+            unique=False,
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     definition_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("workflow_definitions.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("workflow_definitions.id", ondelete="CASCADE"),
+        nullable=False,
     )
     from_stage: Mapped[ContentStage] = mapped_column(
         SAEnum(ContentStage, name="content_stage", native_enum=True), nullable=False

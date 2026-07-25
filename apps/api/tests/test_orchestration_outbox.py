@@ -20,8 +20,12 @@ from app.orchestration import outbox, relay
 
 async def _make_workspace(session) -> tuple[uuid.UUID, uuid.UUID]:
     ws, user = str(uuid.uuid4()), str(uuid.uuid4())
-    await session.execute(text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"), {"id": user, "e": f"{user}@x.com"})
-    await session.execute(text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"), {"id": ws, "u": user})
+    await session.execute(
+        text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
+        {"id": user, "e": f"{user}@x.com"})
+    await session.execute(
+        text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
+        {"id": ws, "u": user})
     return uuid.UUID(ws), uuid.UUID(user)
 
 
@@ -91,7 +95,10 @@ async def test_relay_dispatches_to_registered_consumer_exactly_once():
     # checkpoint already passed this event's sequence (dedup via checkpoint).
     async with AsyncSessionLocal() as session:
         result = await session.execute(
-            select(OutboxEvent).where(OutboxEvent.status == OutboxEventStatus.DISPATCHED).order_by(OutboxEvent.occurred_at.desc()).limit(1)
+            select(OutboxEvent)
+            .where(OutboxEvent.status == OutboxEventStatus.DISPATCHED)
+            .order_by(OutboxEvent.occurred_at.desc())
+            .limit(1)
         )
         dispatched = result.scalar_one()
         assert dispatched.status == OutboxEventStatus.DISPATCHED
