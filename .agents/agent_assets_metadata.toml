@@ -30,3 +30,9 @@ id = "89rn6K0Ec1rf7PlW42kCD"
 uri = "file://audit_report_milestone3.html"
 type = "unspecified"
 title = "Content Orchestrator — M3 Comprehensive Audit Report"
+
+[[outputs]]
+id = "WBMvX8dmwFYFB3sW1xTSC"
+uri = "file://Audit_Report_M3_Content_Orchestrator.docx"
+type = "word_document"
+title = "Content Orchestrator — M3 Audit Report (.docx)"
