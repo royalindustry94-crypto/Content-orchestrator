@@ -6,3 +6,9 @@ id = "ZA-hCYT_AoCqtDoy7FGko"
 uri = "file://attached_assets/milestone-2-report.pdf"
 type = "pdf"
 title = "Milestone 2 Report"
+
+[[outputs]]
+id = "dkbrQwpySTdD9PL1hAM2w"
+uri = "file://CEO_Report_Content_Orchestrator_M3_Audit.docx"
+type = "word_document"
+title = "CEO Report — Content Orchestrator M3 Audit"
