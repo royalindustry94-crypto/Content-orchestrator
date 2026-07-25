@@ -27,6 +27,7 @@ async def get_my_profile(
     if profile is None:
         profile = Profile(id=uuid.UUID(user.id), email=user.email or "")
         db.add(profile)
-        await db.commit()
-        await db.refresh(profile)
+        # Flush within the same transaction so set_config(local) remains
+        # active; rls_scoped_session commits after the route returns.
+        await db.flush()
     return profile

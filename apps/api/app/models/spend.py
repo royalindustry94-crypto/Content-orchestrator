@@ -32,7 +32,8 @@ class SpendLog(Base, WorkspaceScopedMixin, CreatedAtMixin):
     )
     provider: Mapped[str] = mapped_column(Text, nullable=False)
     stage: Mapped[ContentStage | None] = mapped_column(
-        SAEnum(ContentStage, name="content_stage", native_enum=True), nullable=True
+        SAEnum(ContentStage, name="content_stage", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=True
     )
     units: Mapped[float | None] = mapped_column(Numeric, nullable=True)
     cost_usd: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False)
@@ -74,11 +75,13 @@ class SpendReservation(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin)
     )
     provider: Mapped[str] = mapped_column(Text, nullable=False)
     stage: Mapped[ContentStage | None] = mapped_column(
-        SAEnum(ContentStage, name="content_stage", native_enum=True), nullable=True
+        SAEnum(ContentStage, name="content_stage", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=True
     )
     estimated_cost_usd: Mapped[float] = mapped_column(Numeric(10, 4), nullable=False)
     status: Mapped[ReservationStatus] = mapped_column(
-        SAEnum(ReservationStatus, name="reservation_status", native_enum=True),
+        SAEnum(ReservationStatus, name="reservation_status", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
         default=ReservationStatus.RESERVED,
     )

@@ -15,6 +15,7 @@ from decimal import Decimal
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.config import SpendCap
 from app.models.enums import (
     JobType,
     PauseReason,
@@ -26,7 +27,7 @@ from app.models.enums import (
 from app.models.pipeline import PipelineRun, PipelineStageRun
 from app.models.review_gate import ReviewGate
 from app.models.scheduling import JobSchedule
-from app.models.spend import SpendCap, SpendLog, SpendReservation
+from app.models.spend import SpendLog, SpendReservation
 from app.models.workflow import WorkflowDefinition, WorkflowStage, WorkflowTransition
 from app.orchestration.events.envelope import child_span
 from app.orchestration.events.types import (
@@ -169,10 +170,26 @@ async def _advance_or_finish(
         context=context,
     )
     if transition is None:
-        # No matching transition on success from a non-terminal stage is a
-        # workflow-definition authoring error, not a runtime failure to
-        # swallow — surfacing it loudly here is preferable to a silently
-        # stuck run.
+        # No outgoing transition — check whether the current stage is itself
+        # terminal (single-stage or last-stage workflow with no explicit
+        # outgoing edge). If so, the run is complete; otherwise it's a
+        # workflow-definition authoring error.
+        current_stage_def = await _get_stage_def(
+            session, definition_id=run.definition_id, stage_key=from_stage
+        )
+        if current_stage_def.is_terminal:
+            trace_id, span_id = child_span(run.trace_id)
+            run.trace_id = trace_id
+            run.status = "succeeded"
+            run.completed_at = datetime.now(UTC)
+            run.current_stage = from_stage
+            await emit(
+                session, event_type=PIPELINE_SUCCEEDED, workspace_id=run.workspace_id,
+                aggregate_type="pipeline_run", aggregate_id=run.id,
+                correlation_id=run.correlation_id, trace_id=trace_id, span_id=span_id,
+                payload={"final_stage": from_stage}, produced_by="controller",
+            )
+            return
         raise ValueError(
             f"no matching transition from stage={from_stage} trigger={trigger} "
             f"for definition {run.definition_id}"

@@ -66,7 +66,8 @@ class WorkflowStage(Base, WorkspaceScopedMixin, CreatedAtMixin):
         nullable=False,
     )
     stage_key: Mapped[ContentStage] = mapped_column(
-        SAEnum(ContentStage, name="content_stage", native_enum=True), nullable=False
+        SAEnum(ContentStage, name="content_stage", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=False
     )
     ordinal: Mapped[int] = mapped_column(Integer, nullable=False)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=3)
@@ -77,7 +78,8 @@ class WorkflowStage(Base, WorkspaceScopedMixin, CreatedAtMixin):
     is_review_gate: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_terminal: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     compensation_stage_key: Mapped[ContentStage | None] = mapped_column(
-        SAEnum(ContentStage, name="content_stage", native_enum=True), nullable=True
+        SAEnum(ContentStage, name="content_stage", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=True
     )
 
 
@@ -104,13 +106,16 @@ class WorkflowTransition(Base, WorkspaceScopedMixin, CreatedAtMixin):
         nullable=False,
     )
     from_stage: Mapped[ContentStage] = mapped_column(
-        SAEnum(ContentStage, name="content_stage", native_enum=True), nullable=False
+        SAEnum(ContentStage, name="content_stage", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=False
     )
     to_stage: Mapped[ContentStage] = mapped_column(
-        SAEnum(ContentStage, name="content_stage", native_enum=True), nullable=False
+        SAEnum(ContentStage, name="content_stage", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=False
     )
     trigger: Mapped[WorkflowTransitionTrigger] = mapped_column(
-        SAEnum(WorkflowTransitionTrigger, name="workflow_transition_trigger", native_enum=True),
+        SAEnum(WorkflowTransitionTrigger, name="workflow_transition_trigger", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
     )
     # Restricted, whitelisted condition expression (not arbitrary code) —

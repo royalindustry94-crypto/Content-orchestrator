@@ -32,10 +32,12 @@ class ReviewGate(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):
         UUID(as_uuid=True), ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=False
     )
     stage: Mapped[ContentStage] = mapped_column(
-        SAEnum(ContentStage, name="content_stage", native_enum=True), nullable=False
+        SAEnum(ContentStage, name="content_stage", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=False
     )
     status: Mapped[ReviewGateStatus] = mapped_column(
-        SAEnum(ReviewGateStatus, name="review_gate_status", native_enum=True),
+        SAEnum(ReviewGateStatus, name="review_gate_status", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
         default=ReviewGateStatus.AWAITING,
     )

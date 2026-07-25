@@ -47,13 +47,15 @@ class JobSchedule(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     job_type: Mapped[JobType] = mapped_column(
-        SAEnum(JobType, name="job_type", native_enum=True), nullable=False
+        SAEnum(JobType, name="job_type", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=False
     )
     ref_table: Mapped[str] = mapped_column(Text, nullable=False)
     ref_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     run_after: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[JobScheduleStatus] = mapped_column(
-        SAEnum(JobScheduleStatus, name="job_schedule_status", native_enum=True),
+        SAEnum(JobScheduleStatus, name="job_schedule_status", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
         default=JobScheduleStatus.PENDING,
     )

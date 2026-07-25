@@ -32,7 +32,8 @@ class ReviewDecision(Base, WorkspaceScopedMixin, CreatedAtMixin):
         UUID(as_uuid=True), ForeignKey("profiles.id"), nullable=False
     )
     decision: Mapped[ReviewDecisionValue] = mapped_column(
-        SAEnum(ReviewDecisionValue, name="review_decision_value", native_enum=True), nullable=False
+        SAEnum(ReviewDecisionValue, name="review_decision_value", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=False
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 

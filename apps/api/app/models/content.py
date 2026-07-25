@@ -60,12 +60,14 @@ class ContentItem(
     topic: Mapped[str] = mapped_column(Text, nullable=False)
     target_length_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
     current_stage: Mapped[ContentStage] = mapped_column(
-        SAEnum(ContentStage, name="content_stage", native_enum=True),
+        SAEnum(ContentStage, name="content_stage", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
         default=ContentStage.IDEA,
     )
     status: Mapped[ContentStatus] = mapped_column(
-        SAEnum(ContentStatus, name="content_status", native_enum=True),
+        SAEnum(ContentStatus, name="content_status", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
         default=ContentStatus.ACTIVE,
     )
@@ -141,7 +143,8 @@ class ContentLineage(Base, WorkspaceScopedMixin, CreatedAtMixin, CreatedByMixin)
         UUID(as_uuid=True), ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False
     )
     relationship_type: Mapped[ContentLineageRelationship] = mapped_column(
-        SAEnum(ContentLineageRelationship, name="content_lineage_relationship", native_enum=True),
+        SAEnum(ContentLineageRelationship, name="content_lineage_relationship", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)

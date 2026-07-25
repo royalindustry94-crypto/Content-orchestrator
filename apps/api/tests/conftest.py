@@ -13,14 +13,12 @@ import os
 import time
 import uuid
 
-os.environ.setdefault(
-    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test"
-)
-os.environ.setdefault(
-    "APP_DATABASE_URL",
-    "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test",
-)
-os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret")
+# Force test-DB URLs unconditionally so that Replit's injected DATABASE_URL
+# (pointing at the helium managed-Postgres) never bleeds into the test run.
+os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@127.0.0.1:5432/content_orchestrator_test"
+os.environ["APP_DATABASE_URL"] = "postgresql://app_runtime:app_runtime@127.0.0.1:5432/content_orchestrator_test"
+os.environ["SUPABASE_JWT_SECRET"] = "test-supabase-jwt-secret"
+os.environ["ENVIRONMENT"] = "test"
 
 import httpx
 import pytest

@@ -14,11 +14,11 @@ import pytest
 from sqlalchemy import select, text
 
 from app.db.session import AsyncSessionLocal
+from app.models.config import SpendCap
 from app.models.enums import JobScheduleStatus, ReviewGateStatus, WorkflowTransitionTrigger
 from app.models.pipeline import PipelineRun
 from app.models.review_gate import ReviewGate
 from app.models.scheduling import JobSchedule
-from app.models.spend import SpendCap
 from app.models.workflow import WorkflowDefinition, WorkflowStage, WorkflowTransition
 from app.orchestration import controller
 

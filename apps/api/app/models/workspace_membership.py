@@ -32,5 +32,6 @@ class WorkspaceMembership(Base, TimestampMixin, WorkspaceScopedMixin):
         UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
     )
     role: Mapped[WorkspaceRole] = mapped_column(
-        Enum(WorkspaceRole, name="workspace_role", native_enum=True), nullable=False
+        Enum(WorkspaceRole, name="workspace_role", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=False
     )

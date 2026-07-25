@@ -39,13 +39,16 @@ class Asset(Base, WorkspaceScopedMixin, TimestampMixin, ActorMixin, VersionMixin
         UUID(as_uuid=True), ForeignKey("content_versions.id"), nullable=True
     )
     type: Mapped[AssetType] = mapped_column(
-        SAEnum(AssetType, name="asset_type", native_enum=True), nullable=False
+        SAEnum(AssetType, name="asset_type", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=False
     )
     source: Mapped[AssetSource] = mapped_column(
-        SAEnum(AssetSource, name="asset_source", native_enum=True), nullable=False
+        SAEnum(AssetSource, name="asset_source", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=False
     )
     status: Mapped[AssetStatus] = mapped_column(
-        SAEnum(AssetStatus, name="asset_status", native_enum=True),
+        SAEnum(AssetStatus, name="asset_status", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
         default=AssetStatus.PENDING,
     )
@@ -99,7 +102,8 @@ class PublishJob(
     # duplicate job. Unique per workspace when present.
     idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[PublishJobStatus] = mapped_column(
-        SAEnum(PublishJobStatus, name="publish_job_status", native_enum=True),
+        SAEnum(PublishJobStatus, name="publish_job_status", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
         default=PublishJobStatus.PENDING,
     )

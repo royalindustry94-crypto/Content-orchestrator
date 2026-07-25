@@ -7,8 +7,9 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import ARRAY, DateTime, ForeignKey, Index, Integer, Text, text
+from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text, text
 from sqlalchemy import Enum as SAEnum
+from sqlalchemy.dialects.postgresql import ARRAY as PGARRAY
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -46,10 +47,11 @@ class WorkerRegistration(Base, TimestampMixin, VersionMixin):
         UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=True
     )
     name: Mapped[str] = mapped_column(Text, nullable=False)
-    supported_stages: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, default=list)
+    supported_stages: Mapped[list[str]] = mapped_column(PGARRAY(Text), nullable=False, default=list)
     capabilities: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[WorkerStatus] = mapped_column(
-        SAEnum(WorkerStatus, name="worker_status", native_enum=True),
+        SAEnum(WorkerStatus, name="worker_status", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
         default=WorkerStatus.OFFLINE,
     )
@@ -83,7 +85,8 @@ class WorkerHeartbeat(Base):
         UUID(as_uuid=True), ForeignKey("worker_registry.id", ondelete="CASCADE"), nullable=False
     )
     status: Mapped[WorkerStatus] = mapped_column(
-        SAEnum(WorkerStatus, name="worker_status", native_enum=True), nullable=False
+        SAEnum(WorkerStatus, name="worker_status", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=False
     )
     current_load: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

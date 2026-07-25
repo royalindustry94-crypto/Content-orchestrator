@@ -12,7 +12,6 @@ from app.core.authorization import (
     require_workspace_member,
 )
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
-from app.models.profile import Profile
 from app.models.workspace_membership import WorkspaceMembership, WorkspaceRole
 from app.schemas.membership import MembershipCreate, MembershipOut, MembershipRoleUpdate
 
@@ -60,19 +59,11 @@ async def invite_member(
             detail="user is already a member of this workspace",
         )
 
-    invitee_profile = await db.get(Profile, payload.user_id)
-    if invitee_profile is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="no profile exists for this user_id",
-        )
-
     membership = WorkspaceMembership(
         workspace_id=workspace_id, user_id=payload.user_id, role=payload.role
     )
     db.add(membership)
-    await db.commit()
-    await db.refresh(membership)
+    await db.flush()
     return membership
 
 
@@ -96,8 +87,7 @@ async def update_member_role(
             )
 
     target.role = payload.role
-    await db.commit()
-    await db.refresh(target)
+    await db.flush()
     return target
 
 
@@ -107,7 +97,7 @@ async def remove_member(
     user_id: uuid.UUID,
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_current_session),
-) -> None:
+):
     """Admins can remove anyone; any member can remove themselves
     (leave). Removing the workspace's last admin is rejected either way.
     """

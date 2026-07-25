@@ -70,18 +70,24 @@ async def test_emit_does_not_commit_caller_controls_atomicity():
 
 @pytest.mark.asyncio
 async def test_relay_dispatches_to_registered_consumer_exactly_once():
-    calls = []
+    # Use a unique aggregate_id so we can filter out stale pending events
+    # from earlier tests — the relay processes ALL pending events, not just
+    # the one created in this test.
+    target_aggregate_id = uuid.uuid4()
+    calls: list[uuid.UUID] = []
 
     async def handler(session, event):
-        calls.append(event.event_id)
+        if event.aggregate_id == target_aggregate_id:
+            calls.append(event.event_id)
 
-    relay.register_consumer("test-consumer", "content.created", handler)
+    relay.register_consumer("test-consumer-relay-exactly-once", "content.created", handler)
 
     async with AsyncSessionLocal() as session:
         ws, _ = await _make_workspace(session)
         await outbox.emit(
             session, event_type="content.created", workspace_id=ws, aggregate_type="content_item",
-            aggregate_id=uuid.uuid4(), correlation_id=uuid.uuid4(), payload={}, produced_by="test",
+            aggregate_id=target_aggregate_id, correlation_id=uuid.uuid4(), payload={},
+            produced_by="test",
         )
         await session.commit()
 
@@ -89,7 +95,7 @@ async def test_relay_dispatches_to_registered_consumer_exactly_once():
         n = await relay.poll_and_dispatch(session)
         await session.commit()
     assert n >= 1
-    assert len(calls) == 1
+    assert len(calls) == 1, f"expected exactly 1 call for this event; got {len(calls)}"
 
     # Re-running the relay must not redeliver to a consumer whose
     # checkpoint already passed this event's sequence (dedup via checkpoint).

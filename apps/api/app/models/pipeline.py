@@ -41,12 +41,14 @@ class PipelineRun(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):
     # retried "start run" request can't create a second run.
     idempotency_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     current_stage: Mapped[ContentStage] = mapped_column(
-        SAEnum(ContentStage, name="content_stage", native_enum=True),
+        SAEnum(ContentStage, name="content_stage", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
         default=ContentStage.IDEA,
     )
     status: Mapped[PipelineRunStatus] = mapped_column(
-        SAEnum(PipelineRunStatus, name="pipeline_run_status", native_enum=True),
+        SAEnum(PipelineRunStatus, name="pipeline_run_status", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]),
         nullable=False,
         default=PipelineRunStatus.RUNNING,
     )
@@ -82,11 +84,13 @@ class PipelineStageRun(Base, WorkspaceScopedMixin, CreatedAtMixin):
         UUID(as_uuid=True), ForeignKey("content_items.id", ondelete="CASCADE"), nullable=False
     )
     stage: Mapped[ContentStage] = mapped_column(
-        SAEnum(ContentStage, name="content_stage", native_enum=True), nullable=False
+        SAEnum(ContentStage, name="content_stage", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=False
     )
     attempt_number: Mapped[int] = mapped_column(Integer, nullable=False)
     status: Mapped[StageRunStatus] = mapped_column(
-        SAEnum(StageRunStatus, name="stage_run_status", native_enum=True), nullable=False
+        SAEnum(StageRunStatus, name="stage_run_status", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]), nullable=False
     )
     provider: Mapped[str | None] = mapped_column(Text, nullable=True)
     cost_usd: Mapped[float | None] = mapped_column(Numeric(10, 4), nullable=True)
