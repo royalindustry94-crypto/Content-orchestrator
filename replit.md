@@ -3,7 +3,7 @@
 ## Overview
 AI-driven faceless video content pipeline (idea → script → voiceover → visuals → render → SEO → review → publish → analytics). This repl mirrors the GitHub repo `royalindustry94-crypto/Content-orchestrator` (branch `main`).
 
-Current state: **Milestone 3 complete** — orchestration engine, worker reference client, RLS, 39/39 tests, 85% coverage. Branch `feature/milestone-3` is on GitHub with PR #1 open (CI green). Do not merge without explicit instruction.
+Current state: **Milestone 3 complete** — orchestration engine, worker reference client, RLS, 39/39 tests, 85% coverage. PR #1 squash-merged into `main` (`c03af2b`) on 2026-07-25; release tag `v0.3.0-milestone-3` → `3bc4f3e`; feature branch deleted. Milestone 4 not started.
 
 ## Structure
 - `apps/api` — FastAPI backend (async SQLAlchemy + Alembic; identity/workspaces/memberships)
