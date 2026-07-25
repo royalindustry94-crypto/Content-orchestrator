@@ -18,6 +18,7 @@ class WorkspaceRole(str, enum.Enum):
 
 class WorkspaceMembership(Base, TimestampMixin, WorkspaceScopedMixin):
     __tablename__ = "workspace_memberships"
+    __mapper_args__ = {"confirm_deleted_rows": False}
     __table_args__ = (
         UniqueConstraint("workspace_id", "user_id", name="uq_workspace_user"),
         # Matches the index created by migration 0001 (formerly implied by

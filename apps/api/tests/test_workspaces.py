@@ -107,6 +107,19 @@ async def test_member_can_leave_but_not_remove_others(client, new_user):
     )
     assert ok.status_code == 204
 
+    # Verify the row is actually gone from the DB (not silently blocked by RLS).
+    from sqlalchemy import select as _select
+
+    from app.db.session import AsyncSessionLocal
+    from app.models.workspace_membership import WorkspaceMembership as WM
+    async with AsyncSessionLocal() as _s:
+        _row = await _s.execute(
+            _select(WM).where(WM.workspace_id == workspace_id, WM.user_id == editor_id)
+        )
+        assert _row.scalar_one_or_none() is None, (
+            "self-leave DELETE was silently suppressed by RLS — membership row still exists"
+        )
+
 
 @pytest.mark.asyncio
 async def test_last_admin_cannot_be_removed(client, new_user):
