@@ -24,3 +24,9 @@ id = "0LAD04hXOLRQQJa-HPYd7"
 uri = "file://CEO_Report_M3_Audit.html"
 type = "unspecified"
 title = "CEO Report — M3 Audit (HTML)"
+
+[[outputs]]
+id = "89rn6K0Ec1rf7PlW42kCD"
+uri = "file://audit_report_milestone3.html"
+type = "unspecified"
+title = "Content Orchestrator — M3 Comprehensive Audit Report"
