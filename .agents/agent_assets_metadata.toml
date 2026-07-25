@@ -12,3 +12,9 @@ id = "dkbrQwpySTdD9PL1hAM2w"
 uri = "file://CEO_Report_Content_Orchestrator_M3_Audit.docx"
 type = "word_document"
 title = "CEO Report — Content Orchestrator M3 Audit"
+
+[[outputs]]
+id = "TztbCG6OwvuSDKqcdRuYx"
+uri = "file://CEO_Report_Content_Orchestrator_M3_Audit.pdf"
+type = "pdf"
+title = "CEO Report — Content Orchestrator M3 Audit"
