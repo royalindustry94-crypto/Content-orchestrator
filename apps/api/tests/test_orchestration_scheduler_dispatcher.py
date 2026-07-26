@@ -36,6 +36,15 @@ async def _make_workspace(session):
 @pytest.mark.asyncio
 async def test_scheduler_fairness_caps_per_workspace_per_tick():
     async with AsyncSessionLocal() as session:
+        # Isolate from shared-DB pollution: poll_and_lease over-fetches only
+        # batch_size*3 candidates ordered by run_after ASC, so leftover due
+        # PENDING jobs from earlier suite runs (which sort *before* this
+        # test's now-dated jobs) can push our jobs out of the window. Retire
+        # all pre-existing pending/leased jobs so only ours are due.
+        await session.execute(
+            text("UPDATE job_schedule SET status = 'cancelled' WHERE status IN "
+                 "('pending'::job_schedule_status, 'leased'::job_schedule_status)")
+        )
         ws_a = await _make_workspace(session)
         ws_b = await _make_workspace(session)
         session.add(WorkspaceConcurrencyLimit(
@@ -71,6 +80,12 @@ async def test_scheduler_fairness_caps_per_workspace_per_tick():
 @pytest.mark.asyncio
 async def test_reap_expired_scheduler_leases_returns_to_pending():
     async with AsyncSessionLocal() as session:
+        # Isolate: reap_expired_leases has a batch_size cap, so accumulated
+        # expired leases from earlier runs could crowd out this test's job.
+        await session.execute(
+            text("UPDATE job_schedule SET status = 'cancelled' WHERE status IN "
+                 "('pending'::job_schedule_status, 'leased'::job_schedule_status)")
+        )
         ws = await _make_workspace(session)
         job = JobSchedule(
             id=uuid.uuid4(), workspace_id=ws, job_type=JobType.STAGE_TIMEOUT,

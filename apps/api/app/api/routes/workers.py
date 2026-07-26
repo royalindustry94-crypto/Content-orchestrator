@@ -388,6 +388,12 @@ async def rotate_worker_credential(
     now = datetime.now(UTC)
     grace_until = now + timedelta(seconds=settings.worker_credential_rotation_grace_seconds)
     async with AsyncSessionLocal() as session:
+        # Serialize against a concurrent revoke (kill switch) on the SAME
+        # worker: both take the worker row lock first, so their credential
+        # mutations can never interleave. Without this, revoke could SELECT
+        # the active set before rotate inserts the new credential and then
+        # leave that new credential ACTIVE after the admin "killed" all.
+        await session.get(WorkerRegistration, worker_id, with_for_update=True)
         result = await session.execute(
             select(WorkerCredential).where(
                 WorkerCredential.worker_id == worker_id,
@@ -432,6 +438,10 @@ async def revoke_worker_credentials(
     no grace, unlike rotation)."""
     await _get_workspace_worker(db, workspace_id, worker_id)
     async with AsyncSessionLocal() as session:
+        # Lock the worker row first so a concurrent rotate cannot insert a
+        # fresh ACTIVE credential between our SELECT and UPDATE — the kill
+        # switch must revoke everything active at the instant it runs.
+        await session.get(WorkerRegistration, worker_id, with_for_update=True)
         result = await session.execute(
             select(WorkerCredential).where(
                 WorkerCredential.worker_id == worker_id,

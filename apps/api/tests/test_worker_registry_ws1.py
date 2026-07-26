@@ -14,7 +14,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 import pytest_asyncio
-from sqlalchemy import text
+from sqlalchemy import select, text
 
 from app.core.config import get_settings
 from app.db.session import AsyncSessionLocal, RuntimeSessionLocal
@@ -415,6 +415,69 @@ async def test_stale_heartbeat_offline_detection(client, workspace_admin):
     assert detail.json()["current_load"] == 0
     assert detail.json()["liveness"] == "dead"
     del flipped, again  # counts vary with other tests' workers; state asserted above
+
+
+@pytest.mark.asyncio
+async def test_rotate_revoke_serialized_kill_switch(client, workspace_admin):
+    """Adversarial: a revoke (kill switch) concurrent with an in-flight
+    rotate must not leave a live credential. We simulate rotate holding
+    the worker row lock with a freshly-inserted (uncommitted) ACTIVE
+    credential; revoke must BLOCK on that lock, and once rotate commits,
+    revoke must see and kill the new credential too — final ACTIVE = 0.
+
+    Without worker-row locking in both paths, revoke's SELECT would run
+    before the new credential is committed, revoke only the old one, and
+    strand the new credential ACTIVE after a "kill".
+    """
+    from app.core.worker_auth import generate_worker_secret, hash_worker_secret
+    from app.models.enums import WorkerCredentialStatus
+    from app.models.workers import WorkerCredential, WorkerRegistration
+
+    workspace_id, headers, _ = workspace_admin
+    provisioned = await _provision(client, headers, workspace_id)
+    worker_id = uuid.UUID(provisioned["worker_id"])
+
+    hold = AsyncSessionLocal()
+    await hold.__aenter__()
+    try:
+        # rotate-in-flight: lock the worker row, insert a new ACTIVE cred, no commit yet.
+        await hold.get(WorkerRegistration, worker_id, with_for_update=True)
+        hold.add(
+            WorkerCredential(
+                worker_id=worker_id,
+                workspace_id=uuid.UUID(workspace_id),
+                secret_hash=hash_worker_secret(generate_worker_secret()),
+            )
+        )
+        await hold.flush()
+
+        revoke_task = asyncio.create_task(
+            client.post(
+                f"/workspaces/{workspace_id}/workers/{worker_id}/credentials/revoke",
+                headers=headers,
+            )
+        )
+        await asyncio.sleep(0.5)
+        assert not revoke_task.done(), "revoke did not serialize behind the worker row lock"
+
+        await hold.commit()  # rotate commits its new credential
+    finally:
+        await hold.__aexit__(None, None, None)
+
+    response = await revoke_task
+    assert response.status_code == 200
+    assert response.json()["revoked"] >= 2  # old + the concurrently-created one
+
+    async with AsyncSessionLocal() as session:
+        active = (
+            await session.execute(
+                select(WorkerCredential).where(
+                    WorkerCredential.worker_id == worker_id,
+                    WorkerCredential.status == WorkerCredentialStatus.ACTIVE,
+                )
+            )
+        ).scalars().all()
+    assert active == []  # kill switch left nothing alive
 
 
 def test_liveness_thresholds():
