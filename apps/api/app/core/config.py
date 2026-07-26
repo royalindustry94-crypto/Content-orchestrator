@@ -46,6 +46,19 @@ class Settings(BaseSettings):
     # --- CORS ---
     cors_allow_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
 
+    # --- Worker registry (Workstream 1) ---
+    # Liveness thresholds, server-clock only (see app/services/workers.py).
+    worker_suspect_after_seconds: int = Field(default=30)
+    worker_offline_after_seconds: int = Field(default=90)
+    # Old credential stays valid this long after rotation (zero-downtime).
+    worker_credential_rotation_grace_seconds: int = Field(default=3600)
+    # Capability protocol versions this server accepts (negotiation).
+    worker_capability_protocol_versions: list[int] = Field(default_factory=lambda: [1])
+    # Server-driven offline sweep interval; the sweep task is disabled in
+    # tests (they call mark_stale_workers_offline directly with a
+    # controlled clock).
+    worker_offline_sweep_interval_seconds: int = Field(default=30)
+
     # --- Spend controls (defaults; per-workspace overrides live in DB) ---
     default_daily_spend_cap_usd: float = Field(default=50.0)
     default_monthly_spend_cap_usd: float = Field(default=1000.0)

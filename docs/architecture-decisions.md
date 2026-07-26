@@ -33,6 +33,42 @@ Postgres only for v1 (structured data + logs/events). The 369 spec's
 "potentially NoSQL for logs" suggestion was not adopted — no second
 datastore without a concrete scale reason.
 
+## Worker identity & authentication (Milestone 4 · Workstream 1)
+
+Workers authenticate with **per-worker credentials** (`worker_credentials`
+table), not a shared global token. Bearer format `<credential_id>.<secret>`;
+the secret is a server-generated 256-bit random token stored only as a
+SHA-256 hash and compared in constant time. Rationale: individual worker
+identity (audit, kill switch per worker), zero-downtime rotation (old
+credential gets a grace `expires_at` while a new one is issued), and no
+single shared secret whose leak compromises the whole fleet. Failure modes
+(unknown, malformed, revoked, expired, wrong secret) all return the same
+401 so credential state cannot be enumerated.
+
+**Soft deregistration**: worker rows are never hard-deleted. Deregistering
+sets `deregistered_at` (+ offline, load 0, enforced by a DB check
+constraint); re-registration revives the same row. History and heartbeat
+FKs remain intact for audit.
+
+**Server-driven liveness**: heartbeat timestamps are assigned server-side;
+worker clocks are never consulted, so clock skew is irrelevant by
+construction. Liveness (healthy/suspect/dead) is computed from
+`last_heartbeat_at` on read; a background sweep flips stale workers to
+OFFLINE with a single idempotent UPDATE. `status` (observation) is separate
+from `drain` (admin intent) — registration never clears drain.
+
+**RLS refinement**: `worker_registry` FORCE RLS — global workers visible to
+any authenticated user, workspace-pinned workers to members only; no write
+policies for `app_runtime` (all writes go through the service role).
+`worker_heartbeats` readable only by workspace admins (telemetry is
+operator-facing, not member-facing). `worker_credentials` has zero policies
+and zero grants — service-role only; app roles cannot even SELECT.
+
+**Capability negotiation**: registration payloads carry a versioned
+capability spec (`protocol_version`, `extra="forbid"`); the server rejects
+unsupported versions (accepted set: `[1]`) and echoes the accepted version
+back — no silent downgrades.
+
 ## Workspace scoping
 
 Single workspace per account at launch (v2 spec). Every tenant-owned table

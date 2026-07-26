@@ -174,3 +174,8 @@ class PauseReason(str, enum.Enum):
     REVIEW_GATE = "review_gate"
     MANUAL = "manual"
     SPEND_HOLD = "spend_hold"
+
+
+class WorkerCredentialStatus(str, enum.Enum):
+    ACTIVE = "active"
+    REVOKED = "revoked"

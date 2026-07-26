@@ -6,12 +6,11 @@ just returns a canned success — enough to exercise the whole contract in
 tests without pretending to do AI generation (out of scope this
 milestone).
 
-This client talks to the API's database directly (same Postgres, via the
-shared apps/api SQLAlchemy models) rather than over HTTP, matching the
-"in-process reference client" scope agreed for M4. A future real worker
-process would either import this client the same way or reimplement the
-same protocol over an HTTP/gRPC facade — the protocol is what's fixed,
-not the transport.
+Lifecycle (register / heartbeat / deregister) goes over HTTP against the
+API's worker endpoints, authenticated with a per-worker credential
+(Workstream 1 — this replaced the M3 direct-database registration path).
+Work transport (claim / renew / submit) still talks to Postgres directly
+via the shared apps/api models; moving it to HTTP is a later workstream.
 """
 
 from __future__ import annotations
@@ -19,9 +18,12 @@ from __future__ import annotations
 import logging
 import uuid
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+
+import httpx
 
 logger = logging.getLogger("worker.client")
+
+CAPABILITY_PROTOCOL_VERSION = 1
 
 # Type for the pluggable stage-execution function a real worker provides.
 # Returns (success, result_dict_or_None, error_message).
@@ -43,12 +45,21 @@ class ReferenceWorkerClient:
         *,
         name: str,
         supported_stages: list[str],
+        http: httpx.AsyncClient,
+        credential: str,
+        worker_id: uuid.UUID | str,
         max_concurrency: int = 1,
         workspace_id: uuid.UUID | None = None,
         executor: StageExecutor = _default_executor,
         heartbeat_interval_seconds: int = 10,
         lease_seconds: int = 60,
+        worker_version: str = "reference-0.4.0",
     ) -> None:
+        """`http` is an httpx.AsyncClient pointed at the API (tests inject
+        an ASGI-transport client); `credential` is the
+        `<credential_id>.<secret>` string issued at provisioning, and
+        `worker_id` the provisioned identity.
+        """
         self.name = name
         self.supported_stages = supported_stages
         self.max_concurrency = max_concurrency
@@ -56,68 +67,51 @@ class ReferenceWorkerClient:
         self.executor = executor
         self.heartbeat_interval_seconds = heartbeat_interval_seconds
         self.lease_seconds = lease_seconds
-        self.worker_id: uuid.UUID | None = None
+        self.worker_version = worker_version
+        self._http = http
+        self._auth_headers = {"Authorization": f"Bearer {credential}"}
+        self.worker_id: uuid.UUID = (
+            worker_id if isinstance(worker_id, uuid.UUID) else uuid.UUID(worker_id)
+        )
+        self.current_load = 0
         self._draining = False
 
-    async def register(self, session) -> uuid.UUID:
-        from app.models.enums import WorkerStatus
-        from app.models.workers import WorkerRegistration
-
-        registration = WorkerRegistration(
-            id=uuid.uuid4(), workspace_id=self.workspace_id, name=self.name,
-            supported_stages=self.supported_stages, capabilities={},
-            status=WorkerStatus.ONLINE, max_concurrency=self.max_concurrency,
-            current_load=0, health_score=100,
-            last_heartbeat_at=datetime.now(UTC), registered_at=datetime.now(UTC),
+    async def register(self) -> uuid.UUID:
+        response = await self._http.post(
+            "/workers/register",
+            headers=self._auth_headers,
+            json={
+                "supported_stages": self.supported_stages,
+                "capabilities": {
+                    "protocol_version": CAPABILITY_PROTOCOL_VERSION,
+                    "providers": [],
+                    "features": [],
+                },
+                "worker_version": self.worker_version,
+                "max_concurrency": self.max_concurrency,
+            },
         )
-        session.add(registration)
-        await session.flush()
-        self.worker_id = registration.id
-        return registration.id
+        response.raise_for_status()
+        return self.worker_id
 
-    async def heartbeat(self, session) -> None:
-        from app.models.workers import WorkerHeartbeat, WorkerRegistration
-
-        if self.worker_id is None:
-            return
-        registration = await session.get(WorkerRegistration, self.worker_id)
-        if registration is None:
-            return
-        now = datetime.now(UTC)
-        registration.last_heartbeat_at = now
-        # Health score recovers over time absent failures; a real
-        # implementation would factor in recent success/failure ratio —
-        # this reference version keeps it simple and honest about that.
-        registration.health_score = min(100, registration.health_score + 1)
-        session.add(
-            WorkerHeartbeat(
-                id=uuid.uuid4(), worker_id=self.worker_id, status=registration.status,
-                current_load=registration.current_load, heartbeat_at=now,
-            )
+    async def heartbeat(self) -> None:
+        status = "draining" if self._draining else ("busy" if self.current_load else "online")
+        response = await self._http.post(
+            "/workers/heartbeat",
+            headers=self._auth_headers,
+            json={"status": status, "current_load": self.current_load},
         )
+        response.raise_for_status()
 
-    async def drain(self, session) -> None:
+    async def drain(self) -> None:
         """Graceful shutdown: stop accepting new work, let in-flight
         assignments finish naturally (their leases aren't touched)."""
-        from app.models.enums import WorkerStatus
-        from app.models.workers import WorkerRegistration
-
         self._draining = True
-        if self.worker_id is None:
-            return
-        registration = await session.get(WorkerRegistration, self.worker_id)
-        if registration is not None:
-            registration.status = WorkerStatus.DRAINING
+        await self.heartbeat()
 
-    async def go_offline(self, session) -> None:
-        from app.models.enums import WorkerStatus
-        from app.models.workers import WorkerRegistration
-
-        if self.worker_id is None:
-            return
-        registration = await session.get(WorkerRegistration, self.worker_id)
-        if registration is not None:
-            registration.status = WorkerStatus.OFFLINE
+    async def deregister(self) -> None:
+        response = await self._http.post("/workers/deregister", headers=self._auth_headers)
+        response.raise_for_status()
 
     async def claim_next(self, session):
         """Pull-mode claim: find a pending assignment matching this

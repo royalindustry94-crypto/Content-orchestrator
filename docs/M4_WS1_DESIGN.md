@@ -1,6 +1,15 @@
 # Milestone 4 — Workstream 1 Design: Worker Registry, Heartbeats, Capability Model
 
-**Status:** DESIGN — awaiting approval. No implementation yet.
+**Status:** APPROVED WITH AMENDMENTS — implemented (see "Amendments" below).
+
+## Amendments (approved 2026-07-26, as built)
+
+The implementation diverges from this design where the approval mandated changes:
+
+1. **No global `WORKER_AUTH_TOKEN`.** Replaced by a `worker_credentials` table (per-worker `credential_id` + SHA-256-hashed secret, workspace-pinned, `active|revoked` status, `expires_at`, `rotated_at`). Bearer format `<credential_id>.<secret>`; constant-time comparison; identical 401 for every failure mode. Admin endpoints: provision (secret shown once), rotate (zero-downtime — old credential gets a grace `expires_at`), revoke (immediate kill switch).
+2. **Heartbeat telemetry is admin/operator-visible**, not hidden: `GET /workspaces/{id}/workers/{worker_id}/heartbeats` (workspace admin) with a matching admin-only RLS policy on `worker_heartbeats`.
+3. Registration is idempotent (row created at provisioning; register updates it, revives soft-deregistered rows, never clears admin `drain`). Heartbeats are duplicate/replay-tolerant with server-assigned timestamps. Offline detection is server-driven (`mark_stale_workers_offline`, background sweep). Structured audit events with request IDs on every endpoint. Capabilities are versioned with protocol negotiation (accepted set `[1]`; server echoes accepted version). Clock skew: only the server clock is used anywhere — worker clocks are never consulted.
+4. `worker_credentials` is service-role-only: FORCE RLS, zero policies, zero grants for app roles.
 **Scope:** registry, heartbeats, capabilities only. Explicitly excluded: scheduling, claiming, leases, queues, back-pressure, DLQ, execution.
 
 ## 0. What already exists (M3) vs. what WS1 adds
