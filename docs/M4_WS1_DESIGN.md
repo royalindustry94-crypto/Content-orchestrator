@@ -10,6 +10,8 @@ The implementation diverges from this design where the approval mandated changes
 2. **Heartbeat telemetry is admin/operator-visible**, not hidden: `GET /workspaces/{id}/workers/{worker_id}/heartbeats` (workspace admin) with a matching admin-only RLS policy on `worker_heartbeats`.
 3. Registration is idempotent (row created at provisioning; register updates it, revives soft-deregistered rows, never clears admin `drain`). Heartbeats are duplicate/replay-tolerant with server-assigned timestamps. Offline detection is server-driven (`mark_stale_workers_offline`, background sweep). Structured audit events with request IDs on every endpoint. Capabilities are versioned with protocol negotiation (accepted set `[1]`; server echoes accepted version). Clock skew: only the server clock is used anywhere — worker clocks are never consulted.
 4. `worker_credentials` is service-role-only: FORCE RLS, zero policies, zero grants for app roles.
+
+> **Operator note:** `drain` is currently an administrative *intent* flag on the registry row only. Dispatcher enforcement (excluding drained workers from new assignments) is deliberately out of WS1 scope and lands with the scheduling workstream.
 **Scope:** registry, heartbeats, capabilities only. Explicitly excluded: scheduling, claiming, leases, queues, back-pressure, DLQ, execution.
 
 ## 0. What already exists (M3) vs. what WS1 adds
