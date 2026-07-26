@@ -126,3 +126,29 @@ class HeartbeatRecordOut(BaseModel):
     status: WorkerStatus
     current_load: int
     heartbeat_at: datetime
+
+
+class ClaimIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # Optional idempotency token: a retried claim with the same token
+    # returns the assignment already held rather than consuming a new one.
+    claim_token: uuid.UUID | None = None
+
+
+class ClaimedAssignmentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    stage: str
+    pipeline_run_id: uuid.UUID
+    attempt_number: int
+    lease_expires_at: datetime | None
+    correlation_id: uuid.UUID | None
+    trace_id: str | None
+
+
+class ClaimOut(BaseModel):
+    assignment: ClaimedAssignmentOut | None
+    outcome: str  # granted | no_work | capacity | ineligible
+    reason: str

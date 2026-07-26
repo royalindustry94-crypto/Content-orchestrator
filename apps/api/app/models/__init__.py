@@ -3,6 +3,7 @@
 # only (columns, FKs, relationships) — no business logic.
 
 from app.models.assignments import StageAssignment  # noqa: F401
+from app.models.claim_audit import StageClaimAudit  # noqa: F401
 
 # Milestone 3 content domain
 from app.models.config import ContentPillar, ProviderCredential, SpendCap  # noqa: F401

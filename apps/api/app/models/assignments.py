@@ -7,7 +7,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text, text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, Text, text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -49,6 +49,20 @@ class StageAssignment(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):
             unique=True,
             postgresql_where=text("idempotency_key IS NOT NULL"),
         ),
+        # WS2: workspace-scoped claim poll (matches the claim predicate/order).
+        Index(
+            "ix_stage_assignments_claim",
+            "workspace_id",
+            "stage",
+            "created_at",
+            unique=False,
+            postgresql_where=text("status = 'pending'::stage_assignment_status"),
+        ),
+        # WS2: claimed_by (audit) is always the same worker as worker_id.
+        CheckConstraint(
+            "claimed_by IS NULL OR claimed_by = worker_id",
+            name="ck_stage_assignments_claimed_by_matches",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -82,3 +96,12 @@ class StageAssignment(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):
     # Tracing (amendment 1): carried onto every assignment.
     correlation_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
     trace_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # WS2 atomic claiming: set transactionally when a worker pulls this row.
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    claimed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("worker_registry.id"), nullable=True
+    )
+    claim_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    # Optional client-supplied token so a retried claim returns the same
+    # assignment instead of consuming a second row (WS2 idempotency).
+    claim_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)

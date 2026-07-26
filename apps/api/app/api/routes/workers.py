@@ -41,7 +41,11 @@ from app.db.session import AsyncSessionLocal
 from app.models.enums import WorkerCredentialStatus, WorkerStatus
 from app.models.workers import WorkerCredential, WorkerHeartbeat, WorkerRegistration
 from app.models.workspace_membership import WorkspaceMembership
+from app.orchestration.claiming import claim_assignment
 from app.schemas.workers import (
+    ClaimedAssignmentOut,
+    ClaimIn,
+    ClaimOut,
     CredentialRotateOut,
     HeartbeatRecordOut,
     WorkerDrainIn,
@@ -222,6 +226,48 @@ async def deregister_worker(
         out = _worker_out(registration)
     audit(request, "worker_deregistered", worker_id=str(worker.worker_id))
     return out
+
+
+@worker_router.post("/claim", response_model=ClaimOut)
+async def claim_assignment_endpoint(
+    payload: ClaimIn,
+    request: Request,
+    worker: AuthenticatedWorker = Depends(get_current_worker),
+) -> ClaimOut:
+    """Atomic worker-pull claim (WS2). The credential is the identity — a
+    worker can only ever claim work in its own workspace, for stages it
+    supports, when online with fresh heartbeat and spare capacity. The
+    assignment state change and the worker's load increment happen in one
+    transaction; on any failure nothing moves (no partial state).
+
+    Non-grants (no_work / capacity / ineligible) return 200 with
+    ``assignment: null`` and a reason — they are normal states, not
+    errors. A revoked/expired credential never reaches here (401 from auth).
+    """
+    async with AsyncSessionLocal() as session:
+        result = await claim_assignment(
+            session,
+            worker_id=worker.worker_id,
+            claim_token=payload.claim_token,
+        )
+        await session.commit()
+        assignment_out = (
+            ClaimedAssignmentOut.model_validate(result.assignment)
+            if result.assignment is not None
+            else None
+        )
+    audit(
+        request,
+        "worker_claim",
+        worker_id=str(worker.worker_id),
+        outcome=result.outcome.value,
+        assignment_id=str(result.assignment.id) if result.assignment else None,
+    )
+    return ClaimOut(
+        assignment=assignment_out,
+        outcome=result.outcome.value,
+        reason=result.reason,
+    )
 
 
 # --------------------------------------------------------------------------

@@ -179,3 +179,15 @@ class PauseReason(str, enum.Enum):
 class WorkerCredentialStatus(str, enum.Enum):
     ACTIVE = "active"
     REVOKED = "revoked"
+
+
+class ClaimOutcome(str, enum.Enum):
+    """Outcome of a worker's atomic claim attempt (WS2). Recorded on every
+    attempt in stage_claim_audit. Only `granted` hands out work; the rest
+    are normal, audited non-grants (never silent failures).
+    """
+
+    GRANTED = "granted"
+    NO_WORK = "no_work"
+    CAPACITY = "capacity"
+    INELIGIBLE = "ineligible"
