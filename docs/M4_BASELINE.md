@@ -64,6 +64,28 @@ All protected routes require a valid JWT (aud/sub/exp enforced); RLS is the seco
 
 28/28 user-data tables FORCE RLS; 54 policies; helper functions `app_current_user_id()`, `is_workspace_member()`, `is_workspace_admin()` (+1 membership-insert definer). Policy history: 0021 fixed recursion, 0022 insert policy, 0023 security-definer insert, 0024 self-leave delete.
 
+## 7a. Authentication
+
+- Bearer JWT (`python-jose`), validated for audience, subject, and expiry; `SUPABASE_JWT_SECRET` is required at startup with no default.
+- 401 on missing, malformed, garbage, or expired tokens (verified by live probe in the M3 final audit).
+- DB session sets `request.jwt.claim.sub` via `set_config` per request so RLS enforces the same identity at the data layer; mid-route commits are forbidden while the config is active (flush only).
+
+## 7b. Human Review Gate
+
+- `pause_for_review` creates a `review_gates` row and emits `REVIEW_REQUESTED`; approve/reject resume the state machine via `on_review_approved` / `on_review_rejected` transitions.
+- Gate timeout is scheduled as a `REVIEW_TIMEOUT` job; expiry fails the run loudly (no silent auto-approve).
+
+## 7c. Spend Controls
+
+- `reserve_spend` checks committed + reserved spend against daily/monthly caps before dispatch; over-cap pauses the run in `SPEND_HOLD`.
+- Reservations are linked to pipeline runs (migration 0020) and released on failure/cancel.
+- **Known gap:** no cap-row locking — see Technical Debt #1.
+
+## 7d. Transactional Outbox
+
+- `emit()` writes events inside the caller's transaction; per-aggregate monotonic sequences via `pg_advisory_xact_lock` + unique index; producers never commit.
+- Relay polls PENDING with `FOR UPDATE SKIP LOCKED`, per-consumer checkpoints (`last_sequence`) give exactly-once effect; poison events → DLQ after max attempts.
+
 ## 8. Outstanding Technical Debt (health-audit findings)
 
 1. **Spend-cap race** — `reserve_spend` does not lock the cap row (`SELECT FOR UPDATE`); concurrent reservations can both pass. *Highest-priority M4 fix.*
@@ -91,6 +113,17 @@ No production-code defects found; per instructions, no code was modified.
 | RLS policy changes for new tables | Data leak regression | Mandatory adversarial RLS probes per new table (M3 audit pattern) |
 | Outbox growth under real volume | Relay lag | Retention/archival job; index-only scans already in place |
 | Secrets for AI providers | Leakage | Replit secrets manager only; never in config defaults |
+
+## 10a. Missing Tests (gaps to close in M4)
+
+Current suite: 39 tests across 10 files (workspaces/memberships, outbox, workflow, scheduler/dispatcher, worker client, cross-workspace isolation, schema/migrations, regression defects, health, M3 amendments). Gaps:
+
+1. **Spend-cap concurrency** — no test for two simultaneous `reserve_spend` calls racing past the cap (blocked on the locking fix).
+2. **Relay poison-event path** — DLQ routing after max delivery attempts is code-verified but has no dedicated test.
+3. **Review-gate timeout** — `REVIEW_TIMEOUT` job handling lacks an end-to-end test (schedule → expire → run fails).
+4. **Lease-expiry recovery under contention** — reaping is tested single-worker; no multi-worker race test.
+5. **Retry exhaustion → DLQ** — backoff computation is tested; the exhaustion hand-off is not.
+6. **API negative-path coverage** — 403-vs-404 distinctions on cross-workspace access are tested via RLS probes but not via HTTP for every route.
 
 ## 11. Milestone 4 Prerequisites
 
