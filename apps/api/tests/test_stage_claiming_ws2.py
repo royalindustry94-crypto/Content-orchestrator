@@ -343,6 +343,90 @@ async def test_invalid_transition_claim_of_nonpending_skipped(ctx):
 
 # ---- audit & RLS ---------------------------------------------------------
 
+# ---- direct-service branch coverage (deterministic, not via ASGI) --------
+# The claim service is exercised end-to-end through the API above, but the
+# async tracer under-measures code reached through the ASGI transport (a
+# known artifact, see WS1). These call the service directly so each
+# eligibility branch is both proven and measured.
+
+@pytest.mark.asyncio
+async def test_service_worker_not_found(ctx):
+    async with AsyncSessionLocal() as s:
+        res = await claiming.claim_assignment(s, worker_id=uuid.uuid4())
+    assert res.outcome == ClaimOutcome.INELIGIBLE
+    assert "not found" in res.reason
+
+
+@pytest.mark.asyncio
+async def test_service_offline_and_stale_and_capacity_and_nowork(ctx):
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"], max_concurrency=1)
+    await _bring_online(ctx["client"], prov, max_concurrency=1)
+    wid = uuid.UUID(prov["worker_id"])
+
+    async def _set(**cols):
+        async with AsyncSessionLocal() as s:
+            w = await s.get(WorkerRegistration, wid)
+            for k, v in cols.items():
+                setattr(w, k, v)
+            await s.commit()
+
+    # offline → ineligible
+    await _set(status=WorkerStatus.OFFLINE)
+    async with AsyncSessionLocal() as s:
+        r = await claiming.claim_assignment(s, worker_id=wid)
+        assert r.outcome == ClaimOutcome.INELIGIBLE
+        await s.commit()
+
+    # online but stale heartbeat → ineligible
+    await _set(
+        status=WorkerStatus.ONLINE,
+        last_heartbeat_at=datetime.now(UTC) - timedelta(seconds=999),
+    )
+    async with AsyncSessionLocal() as s:
+        r = await claiming.claim_assignment(s, worker_id=wid)
+        assert r.outcome == ClaimOutcome.INELIGIBLE and "stale" in r.reason
+        await s.commit()
+
+    # fresh + at capacity → capacity
+    await _set(last_heartbeat_at=datetime.now(UTC), current_load=1)
+    async with AsyncSessionLocal() as s:
+        assert (await claiming.claim_assignment(s, worker_id=wid)).outcome == ClaimOutcome.CAPACITY
+        await s.commit()
+
+    # fresh + free but no supported stages → no_work
+    await _set(current_load=0, supported_stages=[])
+    async with AsyncSessionLocal() as s:
+        r = await claiming.claim_assignment(s, worker_id=wid)
+        assert r.outcome == ClaimOutcome.NO_WORK and "no stages" in r.reason
+        await s.commit()
+
+    # fresh + free + capable but nothing pending → no_work
+    await _set(supported_stages=[STAGE])
+    async with AsyncSessionLocal() as s:
+        assert (await claiming.claim_assignment(s, worker_id=wid)).outcome == ClaimOutcome.NO_WORK
+        await s.commit()
+
+
+@pytest.mark.asyncio
+async def test_service_granted_then_idempotent_replay(ctx):
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"], max_concurrency=3)
+    await _bring_online(ctx["client"], prov, max_concurrency=3)
+    wid = uuid.UUID(prov["worker_id"])
+    await _seed_assignment(ctx["ws"])
+    token = uuid.uuid4()
+    async with AsyncSessionLocal() as s:
+        r1 = await claiming.claim_assignment(s, worker_id=wid, claim_token=token)
+        await s.commit()
+    async with AsyncSessionLocal() as s:
+        r2 = await claiming.claim_assignment(s, worker_id=wid, claim_token=token)
+        await s.commit()
+    assert r1.outcome == ClaimOutcome.GRANTED and r2.outcome == ClaimOutcome.GRANTED
+    assert r1.assignment.id == r2.assignment.id
+    async with AsyncSessionLocal() as s:
+        w = await s.get(WorkerRegistration, wid)
+        assert w.current_load == 1
+
+
 @pytest.mark.asyncio
 async def test_claim_writes_audit_row(ctx):
     prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
