@@ -107,6 +107,14 @@ async def claim_assignment(
         )
         existing = held.scalar_one_or_none()
         if existing is not None:
+            await _record(
+                session,
+                worker=worker,
+                outcome=ClaimOutcome.GRANTED,
+                reason="idempotent replay",
+                assignment=existing,
+                stage=existing.stage,
+            )
             return ClaimResult(existing, ClaimOutcome.GRANTED, "idempotent replay")
 
     # 2. Worker eligibility (status / heartbeat freshness / capacity).

@@ -195,6 +195,13 @@ async def reap_expired_leases(session: AsyncSession, *,
         assignment.status = StageAssignmentStatus.PENDING
         assignment.worker_id = None
         assignment.lease_expires_at = None
+        # Pull-claimed rows carry claim bookkeeping; clear it so the row is
+        # re-claimable and ck_stage_assignments_claimed_by_matches holds
+        # (claimed_by must be NULL when worker_id is NULL). claim_count is
+        # kept — it is a lifetime counter.
+        assignment.claimed_by = None
+        assignment.claimed_at = None
+        assignment.claim_token = None
         trace_id, span_id = child_span(assignment.trace_id)
         assignment.trace_id = trace_id
         await emit(

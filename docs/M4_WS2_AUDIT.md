@@ -26,8 +26,9 @@ mismatch; workspace mismatch; revoked worker; expired credential; stale
 heartbeat; offline worker; worker at capacity; concurrent workers claiming one
 assignment; duplicate request; rollback after failure; invalid transition
 (claim of a non-pending row → skipped); RLS adversarial probes; migration
-upgrade/downgrade/upgrade. **Warnings are promoted to errors** in the final run
-(`pytest -W error`).
+upgrade/downgrade/upgrade. Additional recovery proofs: pull-claim lease-expiry
+reap and audited idempotent replay. **Warnings are promoted to errors** in the
+final run (`pytest -W error`).
 
 ## RLS results
 - `stage_claim_audit`: ENABLE + FORCE RLS, one `SELECT` policy
@@ -60,14 +61,26 @@ The mechanism: worker-row `FOR UPDATE` serializes capacity math; candidate row
 - Initial `_bring_online` test helper hardcoded `max_concurrency=2` in the
   register body, masking the capacity path; fixed to honor the provisioned
   value (test-only).
-- No product defects found in the claim path under the attack battery.
+- **Independent architect review (post-build) found two defects, both fixed:**
+  1. *Severe — reaper/constraint conflict:* `reap_expired_leases` returned
+     expired rows to PENDING without clearing `claimed_by`/`claimed_at`/
+     `claim_token`, which would violate
+     `ck_stage_assignments_claimed_by_matches` for pull-claimed rows and
+     strand expired work. Fixed: the reaper now clears all claim bookkeeping
+     (keeping `claim_count` as a lifetime counter). Regression test
+     `test_reap_recovers_pull_claimed_assignment` proves pull-claim → lease
+     expiry → reap → re-claim end to end, with load restored.
+  2. *Medium — audit gap:* the `claim_token` idempotent-replay short-circuit
+     returned without writing an audit row. Fixed: replays are now audited
+     (`granted` / "idempotent replay"); covered by
+     `test_idempotent_replay_is_audited`.
 
 ## Final state
 | Item | Value |
 |---|---|
 | Migration head | 0026 (up/down/up round-trip verified) |
-| Test totals | 88 passed / 0 failed (deterministic; `-W error`) |
-| WS2 tests | 19 |
+| Test totals | 90 passed / 0 failed (deterministic; `-W error`) |
+| WS2 tests | 21 |
 | Coverage | 84% total; `claiming.py` 99% |
 | Lint | `ruff check app tests` clean |
 

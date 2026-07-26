@@ -343,6 +343,67 @@ async def test_invalid_transition_claim_of_nonpending_skipped(ctx):
 
 # ---- audit & RLS ---------------------------------------------------------
 
+@pytest.mark.asyncio
+async def test_reap_recovers_pull_claimed_assignment(ctx):
+    """Pull-claim → lease expires → reaper returns the row to PENDING with
+    all claim bookkeeping cleared (no check-constraint violation) and the
+    worker's load decremented; the row is then re-claimable."""
+    from app.orchestration.dispatcher import reap_expired_leases
+
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
+    wh = await _bring_online(ctx["client"], prov)
+    assignment_id = await _seed_assignment(ctx["ws"])
+    r = await ctx["client"].post(
+        "/workers/claim", headers=wh, json={"claim_token": str(uuid.uuid4())}
+    )
+    assert r.json()["outcome"] == "granted"
+
+    async with AsyncSessionLocal() as s:
+        a = await s.get(StageAssignment, assignment_id)
+        a.lease_expires_at = datetime.now(UTC) - timedelta(seconds=5)
+        await s.commit()
+
+    async with AsyncSessionLocal() as s:
+        reaped = await reap_expired_leases(s)
+        assert assignment_id in [x.id for x in reaped]
+        await s.commit()
+
+    async with AsyncSessionLocal() as s:
+        a = await s.get(StageAssignment, assignment_id)
+        assert a.status == StageAssignmentStatus.PENDING
+        assert a.worker_id is None and a.claimed_by is None
+        assert a.claimed_at is None and a.claim_token is None
+        assert a.claim_count == 1  # lifetime counter preserved
+        w = await s.get(WorkerRegistration, uuid.UUID(prov["worker_id"]))
+        assert w.current_load == 0
+
+    # Row is re-claimable after recovery.
+    r = await ctx["client"].post("/workers/claim", headers=wh, json={})
+    assert r.json()["outcome"] == "granted"
+    assert r.json()["assignment"]["id"] == str(assignment_id)
+
+
+@pytest.mark.asyncio
+async def test_idempotent_replay_is_audited(ctx):
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"], max_concurrency=3)
+    wh = await _bring_online(ctx["client"], prov, max_concurrency=3)
+    await _seed_assignment(ctx["ws"])
+    token = str(uuid.uuid4())
+    await ctx["client"].post("/workers/claim", headers=wh, json={"claim_token": token})
+    await ctx["client"].post("/workers/claim", headers=wh, json={"claim_token": token})
+    async with AsyncSessionLocal() as s:
+        rows = (
+            await s.execute(
+                select(StageClaimAudit).where(
+                    StageClaimAudit.worker_id == uuid.UUID(prov["worker_id"]),
+                    StageClaimAudit.outcome == ClaimOutcome.GRANTED,
+                )
+            )
+        ).scalars().all()
+        assert len(rows) == 2  # original grant + audited replay
+        assert "idempotent replay" in [x.detail for x in rows]
+
+
 # ---- direct-service branch coverage (deterministic, not via ASGI) --------
 # The claim service is exercised end-to-end through the API above, but the
 # async tracer under-measures code reached through the ASGI transport (a
