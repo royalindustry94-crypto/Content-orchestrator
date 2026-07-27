@@ -29,6 +29,9 @@ select = ["E", "F", "I", "UP", "B"]
 asyncio_mode = "auto"
 testpaths = ["tests"]
 
+[tool.setuptools.packages.find]
+include = ["worker*"]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"

@@ -39,10 +39,14 @@ jobs:
         run: pip install -e ".[dev]"
       - name: Run migrations
         run: alembic upgrade head
+      - name: Migration replay
+        run: |
+          alembic downgrade base
+          alembic upgrade head
       - name: Lint
         run: ruff check .
-      - name: Test
-        run: pytest
+      - name: Test with coverage gate
+        run: pytest --cov=app --cov-fail-under=75
 
   worker:
     runs-on: ubuntu-latest
@@ -81,3 +85,53 @@ jobs:
         run: npm run lint
       - name: Typecheck + build
         run: npm run build
+      # Known high findings in eslint/vite transitive tree; fail-closed once deps are patched.
+      # Until then report but do not block the pipeline.
+      - name: npm audit (high+)
+        continue-on-error: true
+        run: npm audit --audit-level=high
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install API package (for dependency graph)
+        working-directory: apps/api
+        run: pip install -e .
+      - name: pip-audit (API)
+        # Existing transitive CVEs (starlette/pyjwt/jinja2/etc.) make
+        # fail-on-high too noisy until pins are upgraded. This step fails
+        # the job only if pip-audit itself errors; findings are still logged.
+        # Tighten to fail on high once the dependency baseline is clean.
+        working-directory: apps/api
+        run: |
+          pip install pip-audit
+          pip-audit || {
+            status=$?
+            echo "pip-audit exited with status ${status} (vulnerability findings are expected until deps are upgraded)."
+            if [ "$status" -gt 1 ]; then
+              echo "pip-audit tool failure — failing the job."
+              exit "$status"
+            fi
+            exit 0
+          }
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API image
+        run: docker build -t content-orchestrator-api:ci ./apps/api
+      - name: Build worker image
+        run: docker build -t content-orchestrator-worker:ci ./apps/worker
+      - name: Build web image
+        run: docker build -t content-orchestrator-web:ci ./apps/web
