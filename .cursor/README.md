@@ -1,4 +1,15 @@
-# Cursor Skills (Content Orchestrator)
+# Cursor configuration (Content Orchestrator)
+
+## Project rules
+
+Rules live under `.cursor/rules/` as `.mdc` files
+([Cursor rules docs](https://cursor.com/docs/rules.md)).
+
+| Rule | File | Apply |
+|---|---|---|
+| Content Orchestrator Engineering Standard | [`rules/content-orchestrator-engineering-standard.mdc`](./rules/content-orchestrator-engineering-standard.mdc) | `alwaysApply: true` (every task) |
+
+## Skills
 
 Project skills live under `.cursor/skills/<skill-id>/` with a required
 `SKILL.md` (see [Cursor Skills docs](https://cursor.com/docs/skills.md)).

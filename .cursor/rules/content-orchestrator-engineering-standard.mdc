@@ -1,0 +1,57 @@
+---
+description: Content Orchestrator Engineering Standard — mandatory quality, architecture, security, and release gates for every task
+alwaysApply: true
+---
+
+# Content Orchestrator Engineering Standard
+
+This rule applies to **every task** in this repository. Skills under
+`.cursor/skills/` specialize roles; this rule is the non-negotiable baseline.
+
+## Architecture
+
+- Follow the **approved architecture** and stack: FastAPI, **SQLAlchemy 2.x**,
+  **Alembic**, **PostgreSQL** (source of truth), React + TypeScript, Python workers.
+- **Never introduce architecture drift** (no alternate SoT, ORM, queue-as-SoT,
+  or second orchestration engine without an accepted ADR + `/ceo`).
+- Prefer **existing project patterns** over inventing new ones.
+- Keep implementations **simple, maintainable, and production-ready**.
+- Protect **backward compatibility** unless an **approved migration plan** exists.
+- Architecture changes require documentation (`/documentation-writer` /
+  `/chief-architect` as applicable).
+
+## Non-negotiable product controls
+
+- **Human Review Gate** is mandatory — no bypass paths.
+- **Spend controls** are mandatory — no “just run it” around caps/reservations.
+- **Workspace isolation** is mandatory — tenant data stays workspace-scoped.
+- **FORCE RLS** is mandatory on tenant-owned tables — app filters alone are insufficient.
+- **PostgreSQL** is the orchestration **source of truth**.
+
+## Schema & migrations
+
+- Use **SQLAlchemy 2.x** for models/queries.
+- Use **Alembic for all schema changes** — no ad-hoc production DDL as SoT.
+- **All migrations must be reversible** (or an explicit expand/contract +
+  forward-fix plan approved by `/postgresql-expert` and accepted by `/ceo`).
+
+## Quality bar
+
+- **No TODOs** on in-scope production paths claimed complete.
+- **No placeholders** or mock success presented as production behavior.
+- **No silent failures** — errors must surface; no swallowed exceptions that drop work.
+- Every feature requires **comprehensive tests** (real PostgreSQL for API/DB behavior).
+
+## Independent verification (mandatory)
+
+- Every **security-sensitive** change requires **`/security-auditor`** review.
+- Every implementation requires **`/qa-breaker`** review before release claims.
+- Every release requires **`/release-manager`** approval (readiness evidence).
+- **Never merge** without independent verification (human order + QA + security).
+- **Never claim VERIFIED** without **factual evidence** (CI URL + SHA, tests,
+  migration head, specialist reports as applicable).
+
+## Role pointers
+
+See `.cursor/skills/AUTHORITY_MATRIX.md` and `.cursor/README.md` for who owns
+what. Do not exceed skill authority; escalate instead of improvising.

@@ -16,7 +16,8 @@
 | Documentation Writer | `/documentation-writer` | [`.cursor/skills/documentation-writer/`](../.cursor/skills/documentation-writer/) |
 
 **Authority matrix:** [`.cursor/skills/AUTHORITY_MATRIX.md`](../.cursor/skills/AUTHORITY_MATRIX.md)  
-**Full audit:** [`CURSOR_SKILLS_AUDIT.md`](./CURSOR_SKILLS_AUDIT.md)
+**Full audit:** [`CURSOR_SKILLS_AUDIT.md`](./CURSOR_SKILLS_AUDIT.md)  
+**Always-on engineering rule:** [`ENGINEERING_STANDARD_RULE.md`](./ENGINEERING_STANDARD_RULE.md)
 
 Individual pointers: `CEO_SKILL.md`, `CONTENT_ORCHESTRATOR_EXPERT_SKILL.md`,
 `CHIEF_ARCHITECT_SKILL.md`, `EXECUTIVE_OPERATIONS_HUB_ARCHITECT_SKILL.md`,
