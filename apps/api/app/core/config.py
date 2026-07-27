@@ -71,6 +71,17 @@ class Settings(BaseSettings):
     # Used when a workflow stage definition cannot be resolved at recovery.
     assignment_default_max_attempts: int = Field(default=3)
 
+    # --- Priority / back-pressure / provider budgets (Workstream 4) ---
+    assignment_age_boost_interval_seconds: int = Field(default=60, ge=1)
+    assignment_age_boost_per_interval: int = Field(default=1, ge=0)
+    assignment_age_boost_max: int = Field(default=100, ge=0)
+    workspace_tier_priority_weight: int = Field(default=10, ge=1)
+    queue_soft_limit_default: int = Field(default=50, ge=1)
+    queue_hard_limit_default: int = Field(default=200, ge=1)
+    backpressure_eval_interval_seconds: int = Field(default=15, ge=1)
+    # How many PENDING candidates a claim may lock while skipping saturated providers.
+    claim_candidate_batch_size: int = Field(default=32, ge=1)
+
     # --- Spend controls (defaults; per-workspace overrides live in DB) ---
     default_daily_spend_cap_usd: float = Field(default=50.0)
     default_monthly_spend_cap_usd: float = Field(default=1000.0)

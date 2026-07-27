@@ -19,9 +19,12 @@ from app.models.enums import StageAssignmentStatus, WorkerStatus
 from app.models.pipeline import PipelineStageRun
 from app.models.scheduling import WorkspaceConcurrencyLimit
 from app.models.workers import WorkerRegistration
+from app.models.workspace import Workspace
 from app.orchestration.events.envelope import child_span
 from app.orchestration.events.types import STAGE_ASSIGNED
 from app.orchestration.outbox import emit
+from app.orchestration.priority import base_priority_for_tier
+from app.orchestration.provider_budgets import has_provider_capacity
 from app.orchestration.recovery import (  # noqa: F401 — re-export for existing callers/tests
     reap_expired_leases,
     reap_worker_assignments,
@@ -131,10 +134,16 @@ async def dispatch_stage(
     attempt_number: int,
     correlation_id: uuid.UUID,
     trace_id: str | None,
+    provider: str | None = None,
+    priority: int | None = None,
 ) -> StageAssignment | None:
     """Select a worker and create the assignment. Returns None (leaving
     the caller to reschedule) if no eligible worker exists right now —
     work is never dropped for lack of a worker (design doc §5.2).
+
+    WS4: ``priority`` defaults from the workspace tier; ``provider`` is
+    stored for budget accounting. When a provider budget is exhausted the
+    assignment is still created as PENDING (never dropped).
     """
     lease_seconds = _lease_seconds()
     limit_result = await session.execute(
@@ -158,9 +167,20 @@ async def dispatch_stage(
         )
     )
     if in_flight_result.scalar_one() >= max_concurrent:
-        return None  # over back-pressure cap — caller reschedules, nothing is dropped
+        return None  # over workspace concurrency cap — caller reschedules, nothing is dropped
 
-    worker = await select_worker(session, stage_key=stage)
+    if priority is None:
+        workspace = await session.get(Workspace, workspace_id)
+        priority = base_priority_for_tier(
+            workspace.priority_tier if workspace is not None else 0
+        )
+
+    provider_ok = await has_provider_capacity(
+        session, workspace_id=workspace_id, provider=provider
+    )
+    worker = (
+        await select_worker(session, stage_key=stage) if provider_ok else None
+    )
 
     idempotency_key = f"{pipeline_run_id}:{stage}:{attempt_number}"
     existing = await session.execute(
@@ -190,6 +210,8 @@ async def dispatch_stage(
         dispatched_at=now if worker else None,
         correlation_id=correlation_id,
         trace_id=trace_id,
+        priority=priority,
+        provider=provider,
     )
     session.add(assignment)
     if worker is not None:
@@ -211,6 +233,8 @@ async def dispatch_stage(
             "stage": stage, "attempt_number": attempt_number,
             "worker_id": str(worker.id) if worker else None,
             "assignment_id": str(assignment.id),
+            "priority": priority,
+            "provider": provider,
         },
         produced_by="dispatcher",
     )

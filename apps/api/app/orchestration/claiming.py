@@ -1,4 +1,4 @@
-"""Atomic worker claiming (Milestone 4 Workstream 2).
+"""Atomic worker claiming (Milestone 4 Workstream 2 + WS4 priority/budgets).
 
 A worker pulls at most one eligible stage assignment per claim. The whole
 operation is one transaction on the service-role session (workers use
@@ -8,9 +8,14 @@ scoping is enforced in the query predicate). Locking:
 - the worker's own registry row is locked ``FOR UPDATE`` so its capacity
   math is serialized (two concurrent claims by the same worker cannot both
   read load=N);
-- the candidate assignment is locked ``FOR UPDATE SKIP LOCKED`` so N
-  workers polling concurrently each grab a *different* pending row — the
+- candidate assignments are locked ``FOR UPDATE SKIP LOCKED`` so N
+  workers polling concurrently each grab *different* pending rows — the
   guarantee that two workers cannot claim one job.
+
+WS4: candidates are ordered by effective priority (base + age boost)
+descending, then ``created_at`` ascending. Rows whose provider concurrency
+budget is exhausted are skipped so one saturated provider cannot block
+another stage.
 
 Every attempt returns a ``ClaimResult`` and is recorded in
 ``stage_claim_audit``. Only ``GRANTED`` hands out work; capacity / stale /
@@ -34,6 +39,8 @@ from app.models.workers import WorkerRegistration
 from app.orchestration.events.envelope import child_span
 from app.orchestration.events.types import STAGE_ASSIGNED
 from app.orchestration.outbox import emit
+from app.orchestration.priority import effective_priority_expr
+from app.orchestration.provider_budgets import has_provider_capacity
 
 # Back-compat module aliases; prefer Settings at call sites.
 CLAIM_HEARTBEAT_MAX_AGE_SECONDS = 90
@@ -158,9 +165,9 @@ async def claim_assignment(
         )
         return ClaimResult(None, ClaimOutcome.CAPACITY, reason)
 
-    # 3. Select one eligible assignment: same workspace, a supported stage,
-    #    still pending — oldest first (FIFO, bounds starvation). SKIP LOCKED
-    #    so concurrent claimers never contend for the same row.
+    # 3. Select eligible PENDING assignments ordered by effective priority
+    #    (WS4), then created_at. SKIP LOCKED so concurrent claimers never
+    #    contend for the same row. Over-budget providers are skipped.
     if not worker.supported_stages:
         reason = "worker supports no stages"
         await _record(
@@ -169,6 +176,10 @@ async def claim_assignment(
         )
         return ClaimResult(None, ClaimOutcome.NO_WORK, reason)
 
+    batch = get_settings().claim_candidate_batch_size
+    effective = effective_priority_expr(
+        StageAssignment.priority, StageAssignment.created_at, now=now
+    )
     candidate = await session.execute(
         select(StageAssignment)
         .where(
@@ -176,18 +187,42 @@ async def claim_assignment(
             StageAssignment.status == StageAssignmentStatus.PENDING,
             StageAssignment.stage.in_(list(worker.supported_stages)),
         )
-        .order_by(StageAssignment.created_at.asc())
-        .limit(1)
+        .order_by(effective.desc(), StageAssignment.created_at.asc())
+        .limit(batch)
         .with_for_update(skip_locked=True)
     )
-    assignment = candidate.scalar_one_or_none()
-    if assignment is None:
+    candidates = list(candidate.scalars().all())
+    if not candidates:
         reason = "no eligible assignment"
         await _record(
             session, worker=worker, outcome=ClaimOutcome.NO_WORK,
             reason=reason, assignment=None, stage=None,
         )
         return ClaimResult(None, ClaimOutcome.NO_WORK, reason)
+
+    assignment: StageAssignment | None = None
+    saw_provider_budget_block = False
+    for row in candidates:
+        if not await has_provider_capacity(
+            session, workspace_id=worker.workspace_id, provider=row.provider
+        ):
+            saw_provider_budget_block = True
+            continue
+        assignment = row
+        break
+
+    if assignment is None:
+        reason = (
+            "provider budget exhausted"
+            if saw_provider_budget_block
+            else "no eligible assignment"
+        )
+        outcome = ClaimOutcome.CAPACITY if saw_provider_budget_block else ClaimOutcome.NO_WORK
+        await _record(
+            session, worker=worker, outcome=outcome,
+            reason=reason, assignment=None, stage=None,
+        )
+        return ClaimResult(None, outcome, reason)
 
     # 4. Mutate assignment + worker load in the SAME transaction.
     lease_seconds = _claim_lease_seconds()
@@ -227,6 +262,8 @@ async def claim_assignment(
             "worker_id": str(worker.id),
             "assignment_id": str(assignment.id),
             "via": "claim",
+            "priority": assignment.priority,
+            "provider": assignment.provider,
         },
         produced_by="claiming",
     )

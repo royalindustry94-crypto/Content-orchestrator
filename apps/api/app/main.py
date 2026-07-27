@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes.concurrency import router as concurrency_router
 from app.api.routes.health import router as health_router
 from app.api.routes.memberships import router as memberships_router
 from app.api.routes.profiles import router as profiles_router
@@ -25,14 +26,15 @@ logger = logging.getLogger(__name__)
 
 
 async def _orchestration_maintenance_loop() -> None:
-    """WS3 maintenance tick: flip stale workers offline, reap their
-    holdings, then reap any other expired leases. Multi-replica safe
+    """Maintenance tick: offline sweep + lease reaping (WS3) and
+    queue-depth back-pressure evaluation (WS4). Multi-replica safe
     (SKIP LOCKED + idempotent UPDATEs). Ordering matters: offline flip
     and that worker's assignment reap share one transaction so we never
     leave load=0 with DISPATCHED holdings for a dead worker.
     """
     from app.db.session import AsyncSessionLocal
     from app.models.enums import RecoveryReason
+    from app.orchestration.backpressure import evaluate_all_active_workspaces
     from app.orchestration.recovery import reap_expired_leases, reap_worker_assignments
     from app.services.workers import mark_stale_workers_offline
 
@@ -50,14 +52,17 @@ async def _orchestration_maintenance_loop() -> None:
                     )
                     reaped_offline += len(outcomes)
                 expired = await reap_expired_leases(session)
+                bp_snapshots = await evaluate_all_active_workspaces(session)
                 await session.commit()
-            if flipped or expired or reaped_offline:
+            bp_changed = sum(1 for s in bp_snapshots if s.changed)
+            if flipped or expired or reaped_offline or bp_changed:
                 logger.info(
                     "maintenance tick",
                     extra={
                         "workers_flipped": len(flipped),
                         "assignments_reaped_offline": reaped_offline,
                         "assignments_reaped_expired": len(expired),
+                        "backpressure_transitions": bp_changed,
                     },
                 )
         except Exception:  # noqa: BLE001 — tick must survive transient DB errors
@@ -103,5 +108,6 @@ app.include_router(health_router)
 app.include_router(profiles_router)
 app.include_router(workspaces_router)
 app.include_router(memberships_router)
+app.include_router(concurrency_router)
 app.include_router(workers_machine_router)
 app.include_router(workers_admin_router)
