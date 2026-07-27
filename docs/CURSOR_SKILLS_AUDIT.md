@@ -231,3 +231,7 @@ Skill **`executive-operations-hub-architect`** (`/executive-operations-hub-archi
 ## Addendum — Engineering Director subagent (2026-07-27)
 
 Project subagent **`engineering-director`** was added on branch `cursor/engineering-director-subagent-b52d` at `.cursor/agents/engineering-director.md`. Coordinates specialist skills for CEO-assigned engineering work; requires independent QA + Security; Release Manager before release recommendations; produces engineering summaries. Does not replace `/ceo` VERIFIED. Separately reviewable.
+
+## Addendum — Operations Director subagent (2026-07-27)
+
+Project subagent **`operations-director`** was added on branch `cursor/operations-director-subagent-b52d` at `.cursor/agents/operations-director.md`. Day-to-day ops coordination for Content Orchestrator and future Executive Operations Hub; lifecycle enforcement; blockers/risks/spend/Review Gate watch; daily and milestone reports. Never implements production code; never approves releases without RM+QA+Security. Separately reviewable.
