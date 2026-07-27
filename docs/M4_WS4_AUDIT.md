@@ -2,7 +2,7 @@
 
 **Branch:** `feature/milestone-4`  
 **Scope:** Priority Queue, Back-pressure & Resource Protection  
-**Status:** VERIFIED · CI green on `bfb7f49`
+**Status:** VERIFIED · CI green on `3c365b5`
 
 ## Invariants preserved
 
@@ -62,8 +62,11 @@
 
 ## Blockers
 
-None for WS4 scope. CI must confirm green on PR after final push.
+None for WS4 scope.
 
 ## Final status
 
-**VERIFIED** (local PostgreSQL gates pending CI confirmation in completion report).
+**VERIFIED**
+
+- Local: API `136 passed` (`pytest -W error`), worker `1 passed`, `ruff` clean, migration `0029` up/down/fresh, coverage **83%**
+- CI: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/30276059715 (api/worker/web success on `bfb7f49`)
