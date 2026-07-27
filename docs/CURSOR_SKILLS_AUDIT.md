@@ -227,3 +227,7 @@ Skill **`content-orchestrator-expert`** (`/content-orchestrator-expert`) was add
 ## Addendum — Executive Operations Hub Architect (2026-07-27)
 
 Skill **`executive-operations-hub-architect`** (`/executive-operations-hub-architect`) was added on branch `cursor/exec-ops-hub-architect-skill-b52d`. Owns Ops Hub architecture (agents, ops approvals, dashboards, GitHub/Cursor/CI integrations). Hub is not content-orchestration SoT. Product stack ADRs remain `/chief-architect`. Separately reviewable.
+
+## Addendum — Engineering Director subagent (2026-07-27)
+
+Project subagent **`engineering-director`** was added on branch `cursor/engineering-director-subagent-b52d` at `.cursor/agents/engineering-director.md`. Coordinates specialist skills for CEO-assigned engineering work; requires independent QA + Security; Release Manager before release recommendations; produces engineering summaries. Does not replace `/ceo` VERIFIED. Separately reviewable.

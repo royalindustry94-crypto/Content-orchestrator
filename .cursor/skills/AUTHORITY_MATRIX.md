@@ -5,7 +5,8 @@ silently exceed authority or approve their own work.
 
 | Concern | Primary | Must consult | Must not |
 |---|---|---|---|
-| Product scope, quality bar, go/no-go, product VERIFIED label | `/ceo` | Specialists + `/content-orchestrator-expert` impact + `/release-manager` readiness + `/security-auditor` when security-sensitive | Implement specialist deep work as substitute for delegation |
+| Product scope, quality bar, go/no-go, product VERIFIED label | `/ceo` | Specialists + Engineering Director coordination + `/release-manager` readiness + `/security-auditor` when security-sensitive | Implement specialist deep work as substitute for delegation |
+| Engineering coordination, specialist sequencing, anti-duplication, engineering summary | **Engineering Director** subagent (`.cursor/agents/engineering-director.md`) | `/ceo` for conflicts/go-no-go; specialists for deep work; `/qa-breaker` + `/security-auditor` independent review; `/release-manager` before release recs | Implement specialist deep work by default; merge without QA+Security; skip independent review |
 | Domain fit, platform principles, roadmap alignment, feature creep/drift, product impact assessment | `/content-orchestrator-expert` | `/ceo` for go/no-go; `/chief-architect` for SoT/boundaries; specialists for impl facts | Replace CEO VERIFIED; accept ADRs; implement features as primary; merge PRs |
 | Stack freeze, SoT, service boundaries, ADR acceptance | `/chief-architect` | `/postgresql-expert` for schema/RLS/SQL; `/content-orchestrator-expert` for domain fit; `/executive-operations-hub-architect` for Hub; `/ceo` for product/security escalate | Replace backend/PG implementation; merge PRs |
 | Executive Operations Hub architecture (agents, ops approvals, dashboards, GitHub/Cursor/CI integrations) | `/executive-operations-hub-architect` | `/chief-architect` when product SoT/boundaries touched; `/ceo` for scope; `/content-orchestrator-expert` for product principles; `/devops-engineer` for CI runners/secrets | Make Hub content-orchestration SoT; bypass Review Gate/spend; merge PRs |
@@ -47,3 +48,9 @@ FastAPI · SQLAlchemy 2.x · Alembic · PostgreSQL · React + TypeScript · Pyth
 | Baseline | `.cursor/rules/content-orchestrator-engineering-standard.mdc` — subordinate on conflict |
 
 No skill may waive the CEO Master Rule.
+
+## Project subagents
+
+| Subagent | Path | Owns |
+|---|---|---|
+| Engineering Director | `.cursor/agents/engineering-director.md` | Specialist sequencing, anti-duplication, require QA+Security, engineering summary to CEO |

@@ -10,13 +10,23 @@ Rules live under `.cursor/rules/` as `.mdc` files
 | **CEO Master Rule** | [`rules/ceo-master-rule.mdc`](./rules/ceo-master-rule.mdc) | `alwaysApply: true` | **Highest** — overrides conflicting project guidance unless Founder-approved |
 | Content Orchestrator Engineering Standard | [`rules/content-orchestrator-engineering-standard.mdc`](./rules/content-orchestrator-engineering-standard.mdc) | `alwaysApply: true` | Baseline; subordinate to CEO Master Rule on conflict |
 
+## Project subagents
+
+Subagents live under `.cursor/agents/` as markdown files with YAML frontmatter
+([Cursor subagents docs](https://cursor.com/docs/subagents.md)).
+
+| Subagent | File | Role |
+|---|---|---|
+| Engineering Director | [`agents/engineering-director.md`](./agents/engineering-director.md) | Coordinates specialists; requires QA + Security; summary to CEO |
+
 ## Skills
 
 Project skills live under `.cursor/skills/<skill-id>/` with a required
 `SKILL.md` (see [Cursor Skills docs](https://cursor.com/docs/skills.md)).
 
 **Authority matrix:** [skills/AUTHORITY_MATRIX.md](./skills/AUTHORITY_MATRIX.md)  
-**Audit:** [docs/CURSOR_SKILLS_AUDIT.md](../docs/CURSOR_SKILLS_AUDIT.md)
+**Audit:** [docs/CURSOR_SKILLS_AUDIT.md](../docs/CURSOR_SKILLS_AUDIT.md)  
+**Engineering Director:** [docs/ENGINEERING_DIRECTOR_SUBAGENT.md](../docs/ENGINEERING_DIRECTOR_SUBAGENT.md)
 
 ## Installed skills
 

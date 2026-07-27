@@ -12,6 +12,7 @@ DESIGN → specialist APPROVALS → IMPLEMENT → TESTS + MIGRATIONS → AUDIT �
 | Step | Owner |
 |---|---|
 | Design doc | Workstream author; CEO accepts scope; `/content-orchestrator-expert` for domain impact |
+| Multi-specialist delivery plan | Engineering Director subagent |
 | Architecture ADR / boundary | `/chief-architect` |
 | Executive Operations Hub architecture | `/executive-operations-hub-architect` |
 | Schema / RLS / Alembic | `/postgresql-expert` |
