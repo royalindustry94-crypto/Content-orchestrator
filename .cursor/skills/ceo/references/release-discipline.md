@@ -15,9 +15,9 @@ DESIGN → specialist APPROVALS → IMPLEMENT → TESTS + MIGRATIONS → AUDIT �
 | Architecture ADR / boundary | `/chief-architect` |
 | Schema / RLS / Alembic | `/postgresql-expert` |
 | FastAPI / worker implementation | `/backend-engineer` |
-| QA (full suite, ruff, migration replay) | Independent checklist; not self-only |
+| QA (`/qa-breaker`) | Adversarial matrix, `pytest -W error`, migration replay, concurrency/recovery; not self-only |
 | Security (`/security-auditor`) | Required when auth/RLS/workers/spend/review/CI secrets touched |
-| VERIFIED label | `/ceo` only, with evidence including security report when applicable |
+| VERIFIED label | `/ceo` only, with evidence including QA + security reports when applicable |
 
 ## Verification checklist
 

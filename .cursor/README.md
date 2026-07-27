@@ -15,6 +15,7 @@ Project skills live under `.cursor/skills/<skill-id>/` with a required
 | [`backend-engineer`](./skills/backend-engineer/) | `/backend-engineer` | FastAPI / Python worker implementation + app tests |
 | [`postgresql-expert`](./skills/postgresql-expert/) | `/postgresql-expert` | Schema, RLS, Alembic, SQL concurrency, DB correctness |
 | [`security-auditor`](./skills/security-auditor/) | `/security-auditor` | Independent security audit; blocks Critical/High |
+| [`qa-breaker`](./skills/qa-breaker/) | `/qa-breaker` | Adversarial QA; concurrency/recovery/migration/frontend gates |
 
 ## Hard rules for all skills
 
