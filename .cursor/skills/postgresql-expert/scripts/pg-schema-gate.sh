@@ -34,16 +34,17 @@ else
 fi
 
 if command -v rg >/dev/null 2>&1; then
-  # Float money heuristics in models/migrations (advisory; numeric is required)
-  if rg -n -i --glob '!**/node_modules/**' \
-      -e 'Mapped\[float\].*cost|cost_usd.*Float|Float\(.*money|DOUBLE PRECISION.*cap' \
+  # Float money heuristics: flag SQLAlchemy Float()/FLOAT/DOUBLE columns, not
+  # Mapped[float] paired with Numeric (common Decimal-at-rest pattern).
+  if rg -n --glob '!**/node_modules/**' \
+      -e 'mapped_column\(\s*Float\b|Column\(\s*Float\b|DOUBLE PRECISION|^\s*FLOAT\b' \
       apps/api/app/models apps/api/alembic/versions 2>/dev/null | head -20 | grep -q .; then
-    fail "possible float/double money storage found (use numeric):"
-    rg -n -i --glob '!**/node_modules/**' \
-      -e 'Mapped\[float\].*cost|cost_usd.*Float|Float\(.*money|DOUBLE PRECISION.*cap' \
+    fail "possible float/double column types found (money must use numeric):"
+    rg -n --glob '!**/node_modules/**' \
+      -e 'mapped_column\(\s*Float\b|Column\(\s*Float\b|DOUBLE PRECISION|^\s*FLOAT\b' \
       apps/api/app/models apps/api/alembic/versions 2>/dev/null | head -20 || true
   else
-    ok "no obvious float money markers in models/versions"
+    ok "no Float/DOUBLE column types in models/versions"
   fi
 
   if rg -n --glob '!**/node_modules/**' \
