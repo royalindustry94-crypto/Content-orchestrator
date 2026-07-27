@@ -33,7 +33,7 @@ Invoke when the task involves:
 
 Do **not** use this skill as a substitute for `/ceo`, `/chief-architect`,
 `/backend-engineer`, `/frontend-engineer`, `/postgresql-expert`,
-`/security-auditor`, or `/qa-breaker`.
+`/security-auditor`, `/qa-breaker`, or `/release-manager`.
 
 ## Project context (must preserve)
 
@@ -82,6 +82,7 @@ Do **not** use this skill as a substitute for `/ceo`, `/chief-architect`,
 | Migration design, RLS, irreversible DDL, lock hazards | `/postgresql-expert` |
 | Secrets exposure, workflow supply-chain, auth in CI | `/security-auditor` |
 | Adversarial proof of migrate/rollback/concurrency failure | `/qa-breaker` |
+| Release readiness packaging / version/tag/notes | `/release-manager` |
 
 ## Hard rules
 

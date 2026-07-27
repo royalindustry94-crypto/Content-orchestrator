@@ -211,3 +211,7 @@ Skill **`frontend-engineer`** (`/frontend-engineer`) was added after this audit 
 ## Addendum — DevOps Engineer (2026-07-27)
 
 Skill **`devops-engineer`** (`/devops-engineer`) was added on branch `cursor/devops-engineer-skill-b52d`. Covers CI/CD, Actions least privilege, deploy/rollback, secrets/env, migration-safe rollout ops. Wired into authority matrix and CEO release discipline. Separately reviewable; does not re-open the four-skill audit VERIFIED above.
+
+## Addendum — Release Manager (2026-07-27)
+
+Skill **`release-manager`** (`/release-manager`) was added on branch `cursor/release-manager-skill-b52d`. Owns release readiness reports, versioning/changelog/tag plans, and gate evidence assembly. Product go/no-go **VERIFIED** remains `/ceo`. Separately reviewable.

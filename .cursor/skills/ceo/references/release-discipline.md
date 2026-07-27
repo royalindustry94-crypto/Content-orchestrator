@@ -17,9 +17,10 @@ DESIGN → specialist APPROVALS → IMPLEMENT → TESTS + MIGRATIONS → AUDIT �
 | FastAPI / worker implementation | `/backend-engineer` |
 | React+TypeScript UI | `/frontend-engineer` |
 | CI/CD / deploy / rollback ops | `/devops-engineer` |
+| Release readiness report (version, SHA, gates, notes) | `/release-manager` |
 | QA (`/qa-breaker`) | Adversarial matrix, `pytest -W error`, migration replay, concurrency/recovery; not self-only |
 | Security (`/security-auditor`) | Required when auth/RLS/workers/spend/review/CI secrets touched |
-| VERIFIED label | `/ceo` only, with evidence including QA + security reports when applicable |
+| VERIFIED label | `/ceo` only, after `/release-manager` readiness evidence + QA + security when applicable |
 
 ## Verification checklist
 
@@ -28,6 +29,7 @@ DESIGN → specialist APPROVALS → IMPLEMENT → TESTS + MIGRATIONS → AUDIT �
 - [ ] `/postgresql-expert` sign-off if schema/RLS/migration touched
 - [ ] `/frontend-engineer` sign-off if `apps/web` UI touched
 - [ ] `/devops-engineer` sign-off if workflows/deploy/secrets/rollback touched
+- [ ] `/release-manager` readiness report (version, SHA, Actions, QA, Security, migrations, rollback)
 - [ ] Fresh DB `upgrade` → `downgrade` → `upgrade` for new revisions
 - [ ] `ruff` clean (api + worker); web lint/typecheck/build if UI touched (`/frontend-engineer` gates)
 - [ ] `pytest -W error` full API suite + worker tests

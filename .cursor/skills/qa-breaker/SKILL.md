@@ -89,6 +89,7 @@ Detail: `references/attack-matrix.md`, `references/test-quality.md`,
 | Production backend/worker remediations | `/backend-engineer` |
 | Production UI remediations | `/frontend-engineer` |
 | CI/CD / deploy / rollback remediations | `/devops-engineer` |
+| Release packaging / readiness report | `/release-manager` |
 | Architecture enabling systemic failure | `/chief-architect` |
 | Release VERIFIED / scope | `/ceo` |
 
