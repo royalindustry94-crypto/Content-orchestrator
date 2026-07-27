@@ -83,6 +83,14 @@ async def test_relay_dispatches_to_registered_consumer_exactly_once():
     relay.register_consumer("test-consumer-relay-exactly-once", "content.created", handler)
 
     async with AsyncSessionLocal() as session:
+        # Clear backlog so this event is not starved behind thousands of
+        # STAGE_* events left by shared-DB orchestration suites.
+        await session.execute(
+            text(
+                "UPDATE outbox_events SET status = 'dispatched'::outbox_event_status "
+                "WHERE status = 'pending'::outbox_event_status"
+            )
+        )
         ws, _ = await _make_workspace(session)
         await outbox.emit(
             session, event_type="content.created", workspace_id=ws, aggregate_type="content_item",
@@ -92,7 +100,7 @@ async def test_relay_dispatches_to_registered_consumer_exactly_once():
         await session.commit()
 
     async with AsyncSessionLocal() as session:
-        n = await relay.poll_and_dispatch(session)
+        n = await relay.poll_and_dispatch(session, batch_size=100)
         await session.commit()
     assert n >= 1
     assert len(calls) == 1, f"expected exactly 1 call for this event; got {len(calls)}"

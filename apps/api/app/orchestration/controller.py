@@ -29,6 +29,7 @@ from app.models.review_gate import ReviewGate
 from app.models.scheduling import JobSchedule
 from app.models.spend import SpendLog, SpendReservation
 from app.models.workflow import WorkflowDefinition, WorkflowStage, WorkflowTransition
+from app.models.workspace import Workspace
 from app.orchestration.events.envelope import child_span
 from app.orchestration.events.types import (
     PIPELINE_CANCELLED,
@@ -44,6 +45,7 @@ from app.orchestration.events.types import (
     STAGE_FAILED,
 )
 from app.orchestration.outbox import emit
+from app.orchestration.priority import base_priority_for_tier
 from app.orchestration.retry import compute_backoff_seconds, is_retryable, route_to_dead_letter
 
 DEFAULT_REVIEW_TIMEOUT_HOURS = 48
@@ -115,6 +117,10 @@ async def enqueue_stage(
     session: AsyncSession, *, run: PipelineRun, stage_key: str, attempt: int = 0,
     run_after: datetime | None = None,
 ) -> JobSchedule:
+    workspace = await session.get(Workspace, run.workspace_id)
+    priority = base_priority_for_tier(
+        workspace.priority_tier if workspace is not None else 0
+    )
     job = JobSchedule(
         id=uuid.uuid4(),
         workspace_id=run.workspace_id,
@@ -124,6 +130,7 @@ async def enqueue_stage(
         ref_id=run.id,
         run_after=run_after or datetime.now(UTC),
         attempt=attempt,
+        priority=priority,
         correlation_id=run.correlation_id,
         trace_id=run.trace_id,
     )
@@ -495,16 +502,28 @@ async def reserve_spend(
     is the check that closes the check-then-spend race, because the
     reservation itself (not a separate later check) is what's compared
     against the cap (design doc §9.1, §9.4).
+
+    WS4: the spend_caps row is locked ``FOR UPDATE`` so concurrent
+    reservations serialize and cannot both slip under the remaining
+    budget (§14 / missing test #1).
     """
     cap_result = await session.execute(
-        select(SpendCap).where(SpendCap.workspace_id == run.workspace_id,
-            SpendCap.provider == provider)
+        select(SpendCap)
+        .where(
+            SpendCap.workspace_id == run.workspace_id,
+            SpendCap.provider == provider,
+        )
+        .with_for_update()
     )
     cap = cap_result.scalar_one_or_none()
     if cap is None:
         cap_result = await session.execute(
-            select(SpendCap).where(SpendCap.workspace_id == run.workspace_id,
-                SpendCap.provider.is_(None))
+            select(SpendCap)
+            .where(
+                SpendCap.workspace_id == run.workspace_id,
+                SpendCap.provider.is_(None),
+            )
+            .with_for_update()
         )
         cap = cap_result.scalar_one_or_none()
 

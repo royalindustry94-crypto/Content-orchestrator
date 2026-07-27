@@ -81,6 +81,14 @@ async def update_workspace(
     workspace = await db.get(Workspace, workspace_id)
     if workspace is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="workspace not found")
-    workspace.name = payload.name
+    if payload.name is None and payload.priority_tier is None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="at least one of name or priority_tier is required",
+        )
+    if payload.name is not None:
+        workspace.name = payload.name
+    if payload.priority_tier is not None:
+        workspace.priority_tier = payload.priority_tier
     await db.flush()
     return workspace

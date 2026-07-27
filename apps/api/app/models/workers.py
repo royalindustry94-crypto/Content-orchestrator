@@ -7,14 +7,14 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text, text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer, Text, text
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import ARRAY as PGARRAY
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base, TimestampMixin, VersionMixin
-from app.models.enums import WorkerStatus
+from app.models.enums import WorkerCredentialStatus, WorkerStatus
 
 
 class WorkerRegistration(Base, TimestampMixin, VersionMixin):
@@ -63,6 +63,51 @@ class WorkerRegistration(Base, TimestampMixin, VersionMixin):
         DateTime(timezone=True), nullable=True
     )
     registered_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # WS1 identity/lifecycle columns (migration 0025).
+    instance_key: Mapped[str] = mapped_column(
+        Text, nullable=False, default=lambda: str(uuid.uuid4())
+    )
+    worker_version: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Admin *intent* to decommission — deliberately separate from `status`,
+    # which is an observation reported by the worker/liveness sweep.
+    drain: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    # Soft deregistration: rows are never hard-deleted (heartbeat history
+    # and audit trails keep valid FKs). Re-registration revives the row.
+    deregistered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+
+class WorkerCredential(Base):
+    """Per-worker machine credential (WS1 design amendment 1). The secret
+    is stored only as a SHA-256 hash of a high-entropy random token —
+    never plaintext. Multiple ACTIVE credentials per worker are legal so
+    rotation is zero-downtime (old credential keeps a grace `expires_at`
+    while the new one is already in use). Service-role-only table: FORCE
+    RLS with no policies and no user-role grants.
+    """
+
+    __tablename__ = "worker_credentials"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    worker_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("worker_registry.id", ondelete="CASCADE"), nullable=False
+    )
+    workspace_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False
+    )
+    secret_hash: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[WorkerCredentialStatus] = mapped_column(
+        SAEnum(WorkerCredentialStatus, name="worker_credential_status", native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj]),
+        nullable=False,
+        default=WorkerCredentialStatus.ACTIVE,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=text("now()")
+    )
+    rotated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class WorkerHeartbeat(Base):

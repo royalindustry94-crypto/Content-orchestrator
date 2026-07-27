@@ -1,13 +1,10 @@
 """Worker service entrypoint.
 
-Scope for this milestone: process bootstrap, structured logging, and a
-graceful-shutdown-aware run loop only. The background agents (Idea
-Scraper, Content Auditor, API Health Monitor) and pipeline-stage job
-processing belong to a later milestone: they require the data model and
-provider integrations, which do not exist yet, and writing them before
-those foundations would mean job logic with nothing real to act on.
-They land in the milestone that introduces
-the data model and the first real provider integration.
+Bootstraps structured logging and a graceful-shutdown-aware run loop.
+When WORKER_CREDENTIAL / WORKER_ID / API_BASE_URL are configured, the
+loop registers, heartbeats, claims, and submits via the HTTP worker
+protocol (WS1–WS3). Without credentials the process idles until signal
+(local scaffold / CI without a provisioned worker).
 """
 
 from __future__ import annotations
@@ -15,6 +12,9 @@ from __future__ import annotations
 import asyncio
 import logging
 import signal
+import uuid
+
+import httpx
 
 from worker.core.config import get_settings
 from worker.core.logging import configure_logging
@@ -22,6 +22,66 @@ from worker.core.logging import configure_logging
 settings = get_settings()
 configure_logging(service_name=settings.service_name, level=settings.log_level)
 logger = logging.getLogger(__name__)
+
+
+async def _run_http_loop(stop_event: asyncio.Event) -> None:
+    from worker.client import ReferenceWorkerClient
+
+    credential = settings.worker_credential
+    worker_id = settings.worker_id
+    if not credential or not worker_id:
+        logger.warning("worker credential/id not configured; idling until shutdown")
+        await stop_event.wait()
+        return
+
+    async with httpx.AsyncClient(base_url=settings.api_base_url, timeout=30.0) as http:
+        client = ReferenceWorkerClient(
+            name=settings.worker_name,
+            supported_stages=settings.supported_stages,
+            http=http,
+            credential=credential,
+            worker_id=uuid.UUID(worker_id) if isinstance(worker_id, str) else worker_id,
+            max_concurrency=settings.max_concurrency,
+            heartbeat_interval_seconds=settings.heartbeat_interval_seconds,
+        )
+        await client.register()
+        logger.info("worker registered", extra={"worker_id": str(client.worker_id)})
+
+        async def _heartbeat_loop() -> None:
+            while not stop_event.is_set():
+                try:
+                    await client.heartbeat()
+                except Exception:  # noqa: BLE001
+                    logger.exception("heartbeat failed")
+                try:
+                    await asyncio.wait_for(
+                        stop_event.wait(), timeout=client.heartbeat_interval_seconds
+                    )
+                except TimeoutError:
+                    continue
+
+        hb_task = asyncio.create_task(_heartbeat_loop())
+        try:
+            while not stop_event.is_set():
+                try:
+                    assignment = await client.claim_next()
+                    if assignment is None:
+                        try:
+                            await asyncio.wait_for(stop_event.wait(), timeout=2.0)
+                        except TimeoutError:
+                            continue
+                        break
+                    await client.run_one(assignment=assignment)
+                except Exception:  # noqa: BLE001
+                    logger.exception("claim/execute cycle failed")
+                    await asyncio.sleep(1.0)
+        finally:
+            hb_task.cancel()
+            try:
+                await client.drain()
+                await client.deregister()
+            except Exception:  # noqa: BLE001
+                logger.exception("shutdown deregister failed")
 
 
 async def main() -> None:
@@ -36,7 +96,7 @@ async def main() -> None:
         extra={"service": settings.service_name, "environment": settings.environment},
     )
 
-    await stop_event.wait()
+    await _run_http_loop(stop_event)
 
     logger.info("worker shutting down", extra={"service": settings.service_name})
 

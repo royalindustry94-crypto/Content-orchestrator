@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.enums import JobScheduleStatus, JobType
 from app.models.scheduling import JobSchedule, WorkspaceConcurrencyLimit
 from app.orchestration import dispatcher
+from app.orchestration.backpressure import effective_scheduler_tick_limit
 from app.orchestration.retry import compute_backoff_seconds
 
 logger = logging.getLogger(__name__)
@@ -42,7 +43,9 @@ async def _fairness_limits(session: AsyncSession,
     )
     limits = {row.workspace_id: row.max_per_scheduler_tick for row in result.scalars().all()}
     for ws in workspace_ids:
-        limits.setdefault(ws, DEFAULT_MAX_PER_WORKSPACE_PER_TICK)
+        configured = limits.setdefault(ws, DEFAULT_MAX_PER_WORKSPACE_PER_TICK)
+        # WS4: THROTTLED workspaces get halved tick allowance (min 1).
+        limits[ws] = await effective_scheduler_tick_limit(session, ws, configured)
     return limits
 
 
