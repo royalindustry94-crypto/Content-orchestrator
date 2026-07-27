@@ -17,7 +17,7 @@ The Cursor engineering environment was rebuilt on `main` as a **lean foundation*
 4. **CI** gained migration replay, coverage gate, format check, placeholder scan, secret scan, CodeQL; MyPy is present but **non-blocking** until typing debt is cleared without logic rewrites.  
 5. **Executable invariants** added (DB + static).  
 
-**Final status: NOT VERIFIED** — local Postgres daemon unavailable in this environment; full pytest/coverage/migration-replay and GitHub Actions green on the PR SHA were not proven in-agent. Structure and static checks are in place.
+**Final status: NOT VERIFIED** — pending green `api` job after FK-index invariant allowlist fix. Other jobs (web, worker, secret-scan, codeql) passed on run `30290979626`. Alembic upgrade/downgrade/replay and coverage ≥70% (80.58%) succeeded on that run; one new invariant assertion was too strict vs historical schema and is being corrected.
 
 ---
 
@@ -135,7 +135,9 @@ Planner · Migration Reviewer · Security Reviewer · Test Writer
 2. **Migration downgrade base** — not executed here; may fail if any revision downgrade is incomplete. Static check requires non-empty `downgrade()`.  
 3. **Gitleaks/CodeQL** — first-run permissions/license quirks possible on GH.  
 4. **Coverage 70%** — may fail if suite coverage dipped; not measured locally without Postgres.  
-5. **Skill retirement** — operators must use AGENTS.md + reviewer agents; old `/skill` names from unmerged branches will not exist on this foundation until intentionally reintroduced.
+5. **Coverage 70%** — measured **80.58%** on CI before the FK-index test fix.  
+6. **Skill retirement** — operators must use AGENTS.md + reviewer agents; old `/skill` names from unmerged branches will not exist on this foundation until intentionally reintroduced.
+7. **Unindexed FKs (historical)** — allowlisted in `test_foreign_key_index_gaps_are_allowlisted` / workspace_id gaps; add a follow-up Alembic migration for actor FKs + remaining `workspace_id` leaders.
 
 ## Risks resolved
 
