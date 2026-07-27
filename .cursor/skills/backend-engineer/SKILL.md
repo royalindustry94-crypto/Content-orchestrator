@@ -48,6 +48,7 @@ Read `.cursor/skills/AUTHORITY_MATRIX.md` before acting.
 | Bypass review gate, spend caps, or ship half-built scope | `/ceo` |
 | Claim release VERIFIED | `/ceo` with evidence pack |
 | Build or redesign `apps/web` UI as the primary deliverable | `/frontend-engineer` |
+| Change GitHub Actions, deploy topology, or production secret injection | `/devops-engineer` |
 
 ## Approved stack (do not drift)
 

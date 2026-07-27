@@ -28,7 +28,7 @@ Invoke when the task involves:
 - Review Gate, spend, budget, and audit **operator surfaces**
 - Frontend unit / component tests, lint, typecheck, build
 
-Do **not** use this skill as a substitute for `/ceo`, `/chief-architect`, `/backend-engineer`, `/postgresql-expert`, `/security-auditor`, or `/qa-breaker`.
+Do **not** use this skill as a substitute for `/ceo`, `/chief-architect`, `/backend-engineer`, `/postgresql-expert`, `/security-auditor`, `/qa-breaker`, or `/devops-engineer`.
 
 ## Project context (must preserve)
 
@@ -77,6 +77,7 @@ Approved stack reminder: FastAPI, SQLAlchemy 2.x, Alembic, PostgreSQL, **React +
 | Schema / RLS / migration needed for UI data | `/postgresql-expert` (via Architect/Backend as appropriate) |
 | AuthZ bypass in UI+API, XSS, token handling, secrets in client | `/security-auditor` |
 | Adversarial proof of broken flows / a11y / tenancy in UI | `/qa-breaker` |
+| CI web job, deploy of static assets, env for web hosting | `/devops-engineer` |
 
 ## Hard rules
 

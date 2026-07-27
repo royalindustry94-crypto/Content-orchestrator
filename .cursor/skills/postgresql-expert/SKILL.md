@@ -51,7 +51,7 @@ Read `.cursor/skills/AUTHORITY_MATRIX.md` before acting.
 
 | You deliver | Hand off |
 |---|---|
-| Migration SQL, RLS, constraints, rollback notes, PG verdict | `/backend-engineer` for models alignment, routes, orchestration, app tests |
+| Migration SQL, RLS, constraints, rollback notes, PG verdict | `/backend-engineer` for models alignment, routes, orchestration, app tests; `/devops-engineer` for deploy order / CI migrate step / rollback rehearsal |
 | Isolation/financial/migration danger | `/ceo` escalate |
 | Second database / dual SoT / new data plane | `/chief-architect` first |
 

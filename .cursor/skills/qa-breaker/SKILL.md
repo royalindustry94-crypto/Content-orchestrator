@@ -88,6 +88,7 @@ Detail: `references/attack-matrix.md`, `references/test-quality.md`,
 | Schema/RLS design defects | `/postgresql-expert` |
 | Production backend/worker remediations | `/backend-engineer` |
 | Production UI remediations | `/frontend-engineer` |
+| CI/CD / deploy / rollback remediations | `/devops-engineer` |
 | Architecture enabling systemic failure | `/chief-architect` |
 | Release VERIFIED / scope | `/ceo` |
 

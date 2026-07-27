@@ -95,6 +95,7 @@ Detail: `references/audit-checklist.md`, `references/threat-surfaces.md`,
 | Stack/SoT drift enabling insecurity | `/chief-architect` |
 | Implementation of backend remediations | `/backend-engineer` (you re-audit after) |
 | Implementation of UI remediations | `/frontend-engineer` (you re-audit after) |
+| Implementation of CI/CD / secrets-in-pipeline remediations | `/devops-engineer` (you re-audit after) |
 | Release VERIFIED / scope accept of Medium residuals | `/ceo` |
 
 ## Required output

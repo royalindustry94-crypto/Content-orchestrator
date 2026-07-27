@@ -16,6 +16,7 @@ DESIGN → specialist APPROVALS → IMPLEMENT → TESTS + MIGRATIONS → AUDIT �
 | Schema / RLS / Alembic | `/postgresql-expert` |
 | FastAPI / worker implementation | `/backend-engineer` |
 | React+TypeScript UI | `/frontend-engineer` |
+| CI/CD / deploy / rollback ops | `/devops-engineer` |
 | QA (`/qa-breaker`) | Adversarial matrix, `pytest -W error`, migration replay, concurrency/recovery; not self-only |
 | Security (`/security-auditor`) | Required when auth/RLS/workers/spend/review/CI secrets touched |
 | VERIFIED label | `/ceo` only, with evidence including QA + security reports when applicable |
@@ -26,6 +27,7 @@ DESIGN → specialist APPROVALS → IMPLEMENT → TESTS + MIGRATIONS → AUDIT �
 - [ ] `/chief-architect` sign-off if stack/boundaries/ADR touched
 - [ ] `/postgresql-expert` sign-off if schema/RLS/migration touched
 - [ ] `/frontend-engineer` sign-off if `apps/web` UI touched
+- [ ] `/devops-engineer` sign-off if workflows/deploy/secrets/rollback touched
 - [ ] Fresh DB `upgrade` → `downgrade` → `upgrade` for new revisions
 - [ ] `ruff` clean (api + worker); web lint/typecheck/build if UI touched (`/frontend-engineer` gates)
 - [ ] `pytest -W error` full API suite + worker tests

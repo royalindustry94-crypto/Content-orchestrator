@@ -47,6 +47,7 @@ Read `.cursor/skills/AUTHORITY_MATRIX.md` before acting.
 | Table DDL, indexes, constraints, RLS policies, grants, Alembic revisions, EXPLAIN, SKIP LOCKED details | `/postgresql-expert` |
 | Route handlers, orchestration functions, worker client code, app-level tests | `/backend-engineer` |
 | React+TypeScript screens, reusable UI, frontend tests/build | `/frontend-engineer` |
+| CI/CD workflows, deploy/rollback runbooks, Actions permissions, runtime secrets injection | `/devops-engineer` |
 | Product scope, Lovable bar, release VERIFIED, merge policy | `/ceo` |
 
 You may still **REJECT** a proposal that violates stack freeze before specialists start.
@@ -95,6 +96,8 @@ financial controls, or major maintainability/SoT changes.
 **REQUIRE `/backend-engineer`** before treating a backend ADR as implemented.
 
 **REQUIRE `/frontend-engineer`** before treating a UI ADR as implemented.
+
+**REQUIRE `/devops-engineer`** before treating a deploy/CI topology ADR as operational.
 
 ## Merge & VERIFIED
 

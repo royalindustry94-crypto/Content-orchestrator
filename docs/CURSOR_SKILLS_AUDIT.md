@@ -207,3 +207,7 @@
 ## Addendum — Frontend Engineer (2026-07-27)
 
 Skill **`frontend-engineer`** (`/frontend-engineer`) was added after this audit on branch `cursor/frontend-engineer-skill-b52d`. Authority matrix, CEO/Architect/QA/Security cross-links, and `docs/CURSOR_SKILLS.md` were updated to include it. This addendum does **not** re-open the four-skill audit status above; treat the new skill as separately reviewable.
+
+## Addendum — DevOps Engineer (2026-07-27)
+
+Skill **`devops-engineer`** (`/devops-engineer`) was added on branch `cursor/devops-engineer-skill-b52d`. Covers CI/CD, Actions least privilege, deploy/rollback, secrets/env, migration-safe rollout ops. Wired into authority matrix and CEO release discipline. Separately reviewable; does not re-open the four-skill audit VERIFIED above.

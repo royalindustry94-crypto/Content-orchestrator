@@ -17,6 +17,7 @@ Project skills live under `.cursor/skills/<skill-id>/` with a required
 | [`security-auditor`](./skills/security-auditor/) | `/security-auditor` | Independent security audit; blocks Critical/High |
 | [`qa-breaker`](./skills/qa-breaker/) | `/qa-breaker` | Adversarial QA; concurrency/recovery/migration/frontend gates |
 | [`frontend-engineer`](./skills/frontend-engineer/) | `/frontend-engineer` | React+TypeScript UI, reusable components, API UX, a11y, frontend gates |
+| [`devops-engineer`](./skills/devops-engineer/) | `/devops-engineer` | CI/CD, Actions least privilege, deploy/rollback, secrets/env, migration-safe rollout |
 
 ## Hard rules for all skills
 
