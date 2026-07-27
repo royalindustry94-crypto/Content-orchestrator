@@ -92,9 +92,16 @@ async def test_relay_dispatches_to_registered_consumer_exactly_once():
         await session.commit()
 
     async with AsyncSessionLocal() as session:
-        n = await relay.poll_and_dispatch(session)
+        # Drain pending events across ticks — shared-DB suites (WS3 recovery
+        # especially) can leave > batch_size pending ahead of this event.
+        seen = 0
+        for _ in range(50):
+            n = await relay.poll_and_dispatch(session, batch_size=100)
+            seen += n
+            if len(calls) >= 1 or n == 0:
+                break
         await session.commit()
-    assert n >= 1
+    assert seen >= 1
     assert len(calls) == 1, f"expected exactly 1 call for this event; got {len(calls)}"
 
     # Re-running the relay must not redeliver to a consumer whose

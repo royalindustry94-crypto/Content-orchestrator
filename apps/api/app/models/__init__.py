@@ -4,8 +4,6 @@
 
 from app.models.assignments import StageAssignment  # noqa: F401
 from app.models.claim_audit import StageClaimAudit  # noqa: F401
-from app.models.provider_effects import ProviderEffectKey  # noqa: F401
-from app.models.recovery_audit import StageRecoveryAudit  # noqa: F401
 
 # Milestone 3 content domain
 from app.models.config import ContentPillar, ProviderCredential, SpendCap  # noqa: F401
@@ -16,6 +14,8 @@ from app.models.history import AnalyticsSnapshot, ProviderUsage, ReviewDecision 
 from app.models.operations import DeadLetterJob, WebhookEvent  # noqa: F401
 from app.models.pipeline import PipelineRun, PipelineStageRun  # noqa: F401
 from app.models.profile import Profile  # noqa: F401
+from app.models.provider_effects import ProviderEffectKey  # noqa: F401
+from app.models.recovery_audit import StageRecoveryAudit  # noqa: F401
 from app.models.review_gate import ReviewGate  # noqa: F401
 from app.models.scheduling import JobSchedule, WorkspaceConcurrencyLimit  # noqa: F401
 from app.models.spend import SpendLog, SpendReservation  # noqa: F401

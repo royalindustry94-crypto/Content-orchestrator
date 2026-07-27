@@ -80,7 +80,10 @@ def assert_lease_extendable(
             f"assignment status is {assignment.status.value}, expected dispatched or acknowledged",
         )
     if assignment.lease_expires_at is None or assignment.lease_expires_at < now:
-        raise LeaseConflict("lease_expired", "lease has expired; assignment is eligible for recovery")
+        raise LeaseConflict(
+            "lease_expired",
+            "lease has expired; assignment is eligible for recovery",
+        )
     started = assignment.lease_started_at or assignment.dispatched_at or now
     if now + timedelta(seconds=seconds) > started + timedelta(seconds=_max_lease_seconds()):
         raise LeaseConflict(

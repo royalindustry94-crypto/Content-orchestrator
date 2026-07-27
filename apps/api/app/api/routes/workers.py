@@ -49,7 +49,6 @@ from app.models.workers import WorkerCredential, WorkerHeartbeat, WorkerRegistra
 from app.models.workspace_membership import WorkspaceMembership
 from app.orchestration.claiming import claim_assignment
 from app.orchestration.dispatcher import (
-    LeaseConflict,
     LeaseError,
     LeaseNotOwned,
     acknowledge,

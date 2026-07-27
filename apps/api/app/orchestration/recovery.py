@@ -190,6 +190,8 @@ async def recover_assignment(
         if run is not None and run.status not in ("failed", "succeeded", "cancelled"):
             from app.orchestration import controller
 
+            if run.correlation_id is None:
+                run.correlation_id = assignment.correlation_id or uuid.uuid4()
             await controller._fail_run(  # noqa: SLF001 — shared fail path
                 session,
                 run=run,

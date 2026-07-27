@@ -127,13 +127,15 @@ async def _claim(client, wh) -> dict:
 async def ctx(client):
     u = await _make_user()
     ws = await _make_workspace(client, u["headers"])
-    # Retire stale in-flight leftovers from shared DB so reapers stay focused.
+    # Retire leftovers scoped to THIS workspace only (shared-DB safety).
     async with AsyncSessionLocal() as s:
         await s.execute(
             text(
                 "UPDATE stage_assignments SET status = 'cancelled' "
-                "WHERE status IN ('dispatched','acknowledged','pending')"
-            )
+                "WHERE workspace_id = :ws "
+                "AND status IN ('dispatched','acknowledged','pending')"
+            ),
+            {"ws": ws},
         )
         await s.commit()
     return {"client": client, "headers": u["headers"], "user_id": u["user_id"], "ws": ws}
