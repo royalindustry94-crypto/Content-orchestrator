@@ -57,7 +57,7 @@
 
 **Bootstrapped note:** Include paid tools and contractor content; **founder time** should be tracked in hours even if not dollarized at first.
 
-**Payback target (assumption):** &lt; 6 months for Pro/Agency blended; Starter may be longer — don’t over-invest paid CAC there.
+**Payback target (assumption):** < 6 months for Pro/Agency blended; Starter may be longer — don’t over-invest paid CAC there.
 
 ### LTV (Lifetime Value)
 
@@ -86,7 +86,7 @@ Or cohort-based revenue until churn.
 
 **Definition:** Median minutes from signup to first artifact in Review Gate.
 
-**Target (assumption):** &lt; 30 minutes for guided path; &lt; 24 hours wall-clock for real-world busy users.
+**Target (assumption):** < 30 minutes for guided path; < 24 hours wall-clock for real-world busy users.
 
 ### Churn
 
@@ -98,8 +98,8 @@ Or cohort-based revenue until churn.
 
 **Directional early targets (assumptions, SMB SaaS realism):**
 - Monthly logo churn Starter: can be **5–8%+** — don’t panic alone; fix activation mix
-- Pro/Agency monthly logo churn: aim **&lt; 3–4%** once product stabilizes
-- NRR: aim **&gt; 100%** only after expansion motions exist (workspaces/seats)
+- Pro/Agency monthly logo churn: aim **< 3–4%** once product stabilizes
+- NRR: aim **> 100%** only after expansion motions exist (workspaces/seats)
 
 ### WAU / DAU
 
