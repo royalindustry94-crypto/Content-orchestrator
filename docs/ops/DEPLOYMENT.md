@@ -60,7 +60,7 @@ See `.env.example` for the full annotated list. Staging-relevant knobs:
 | Variable | Default / notes |
 |----------|-----------------|
 | `ENVIRONMENT` | `staging` in compose override |
-| `AUTH_MODE` | Documented reserved value; API today always verifies Supabase JWTs |
+| `AUTH_MODE` | `local` (default): `POST /auth/signup|/login` mint Supabase-shaped JWTs. `supabase`: local auth routes return 404; use Supabase-issued tokens. |
 | `CORS_ALLOW_ORIGINS` | Include the web origin, e.g. `["http://localhost:8080"]` |
 | `RUN_MIGRATIONS` | Set to `1` on the API container for migrate-on-start |
 | `OUTBOX_RELAY_INTERVAL_SECONDS` | API outbox relay tick |

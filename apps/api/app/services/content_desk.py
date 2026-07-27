@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.models.content import ContentItem, ContentVersion
 from app.models.enums import (
     ContentStage,
@@ -29,10 +31,15 @@ from app.services.draft_desk import generate_script_draft
 
 DESK_WORKFLOW_NAME = "agency_content_desk"
 DESK_WORKFLOW_VERSION = 1
+DRAFT_DESK_PROVIDER = "draft_desk"
 
 
 class ReviewGateNotFoundError(Exception):
     """Review gate missing for the given workspace (not a SQLAlchemy LookupError)."""
+
+
+class SpendBudgetExceededError(Exception):
+    """Workspace daily/monthly spend cap would be exceeded by this job."""
 
 
 @dataclass(frozen=True)
@@ -246,11 +253,34 @@ async def create_content_job(
     item.current_pipeline_run_id = run.id
 
     await controller.start_run(session, run=run, definition=definition)
+    estimate = Decimal(str(get_settings().default_stage_estimate_usd))
+    reservation = await controller.reserve_spend(
+        session,
+        run=run,
+        stage=ContentStage.SCRIPTING.value,
+        provider=DRAFT_DESK_PROVIDER,
+        estimated_cost_usd=estimate,
+    )
+    if reservation is None:
+        # Run is paused with spend_hold; do not enter the Review Gate.
+        raise SpendBudgetExceededError(
+            "workspace spend cap exceeded; pipeline run paused on spend_hold"
+        )
     await controller.handle_stage_success(
         session,
         run=run,
         stage=ContentStage.SCRIPTING.value,
-        result_context={"draft_version_id": str(version.id)},
+        result_context={
+            "draft_version_id": str(version.id),
+            "estimated_cost_usd": str(estimate),
+            "provider": DRAFT_DESK_PROVIDER,
+        },
+    )
+    await controller.commit_spend(
+        session,
+        run=run,
+        reservation=reservation,
+        actual_cost_usd=estimate,
     )
 
     gate = (

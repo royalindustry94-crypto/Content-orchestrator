@@ -50,6 +50,11 @@ async def create_content_job(
             status_code=status.HTTP_409_CONFLICT,
             detail="content job conflicts with an existing idempotency key",
         ) from exc
+    except content_desk.SpendBudgetExceededError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=str(exc),
+        ) from exc
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,

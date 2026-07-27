@@ -27,6 +27,7 @@ jobs:
       APP_DATABASE_URL: postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test
       SUPABASE_JWT_SECRET: ci-test-supabase-jwt-secret
       ENVIRONMENT: test
+      AUTH_MODE: local
     defaults:
       run:
         working-directory: apps/api

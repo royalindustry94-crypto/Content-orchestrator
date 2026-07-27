@@ -168,6 +168,8 @@ async def lifespan(app: FastAPI):
     yield
     for task in background_tasks:
         task.cancel()
+    if background_tasks:
+        await asyncio.gather(*background_tasks, return_exceptions=True)
     automation_state.tasks_running = []
     logger.info("service shutting down", extra={"service": settings.service_name})
 

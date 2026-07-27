@@ -135,6 +135,78 @@ async def test_monthly_cap_pauses_run():
 
 
 @pytest.mark.asyncio
+async def test_workspace_cap_counts_all_providers():
+    """Regression: workspace-wide monthly cap must not be bypassed by
+    spending on provider A then reserving against provider B.
+    """
+    async with AsyncSessionLocal() as session:
+        ws, _user_id, item = await _user_workspace(session)
+        await session.execute(
+            text(
+                "UPDATE spend_caps SET daily_cap_usd = 1000, monthly_cap_usd = 1 "
+                "WHERE workspace_id = :ws"
+            ),
+            {"ws": str(ws.id)},
+        )
+        session.add(
+            SpendLog(
+                id=uuid.uuid4(),
+                workspace_id=ws.id,
+                provider="openai",
+                stage=ContentStage.SCRIPTING,
+                cost_usd=Decimal("0.99"),
+                occurred_at=datetime.now(UTC),
+            )
+        )
+        run = PipelineRun(
+            id=uuid.uuid4(),
+            workspace_id=ws.id,
+            content_item_id=item.id,
+            status=PipelineRunStatus.RUNNING,
+            correlation_id=uuid.uuid4(),
+        )
+        session.add(run)
+        await session.flush()
+        reservation = await controller.reserve_spend(
+            session,
+            run=run,
+            stage="scripting",
+            provider="draft_desk",
+            estimated_cost_usd=Decimal("0.05"),
+        )
+        assert reservation is None
+        assert run.status == PipelineRunStatus.PAUSED
+        assert run.pause_reason == "spend_hold"
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_content_job_blocked_when_monthly_cap_exceeded(client, new_user):
+    _user_id, _token, headers = new_user
+    create = await client.post("/workspaces", headers=headers, json={"name": "Tight Cap"})
+    ws_id = create.json()["id"]
+    # spend_caps use Numeric(10, 2) — zero is the reliable hard block.
+    patched = await client.patch(
+        f"/workspaces/{ws_id}/spend",
+        headers=headers,
+        json={"daily_cap_usd": 0.0, "monthly_cap_usd": 0.0},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["monthly_cap_usd"] == 0.0
+    blocked = await client.post(
+        f"/workspaces/{ws_id}/content-jobs",
+        headers=headers,
+        json={"topic": "should not land in review"},
+    )
+    assert blocked.status_code == 402, blocked.text
+    gates = await client.get(
+        f"/workspaces/{ws_id}/review-gates?status=awaiting", headers=headers
+    )
+    assert gates.status_code == 200
+    assert gates.json() == []
+
+
+@pytest.mark.asyncio
 async def test_daily_cap_still_enforced():
     async with AsyncSessionLocal() as session:
         ws, user_id, item = await _user_workspace(session)

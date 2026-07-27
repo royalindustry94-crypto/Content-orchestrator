@@ -4,7 +4,7 @@
 **Audience:** CEO / leadership  
 **Date:** 2026-07-27  
 **Branch:** `cursor/master-repo-audit-b52d` (PR #26)  
-**Audit type:** Independent re-verification after P0 closure
+**Audit type:** Fresh independent adversarial re-audit after P0 closure
 
 ---
 
@@ -12,7 +12,7 @@
 
 **P0 COMPLETE**
 
-All Private Beta P0 blockers from the Master Repository Audit are closed with automated evidence and a fresh live probe (signup → workspace → spend seed → content-job → paused run ORM reload → review-gates list).
+Independent adversarial re-audit found **3 P0 defects** in the prior “complete” claim; all were fixed with regression tests and re-verified before this verdict.
 
 ---
 
@@ -21,48 +21,46 @@ All Private Beta P0 blockers from the Master Repository Audit are closed with au
 | Question | Answer |
 |----------|--------|
 | P0 launch blockers closed? | **YES — P0 COMPLETE** |
-| Ready for private beta invite? | **Conditionally yes** — after operator staging smoke on compose stack |
-| Ready for production? | **NOT READY FOR PRODUCTION** |
+| Beta readiness | **READY FOR BETA** after hosted staging smoke |
+| Production readiness | **NOT READY FOR PRODUCTION** |
 
-**Launch completeness:** **~58%** (was ~22% before P0 closure)  
+**Launch completeness:** **~60%**  
 **Engine completeness:** **~85%**  
-**Customer-reachable product (Review Desk):** **~70%**
+**Customer-reachable Review Desk:** **~75%**
 
 ---
 
-## What changed in P0 closure
+## Defects found in this re-audit (and fixed)
 
-1. Gate ORM enum fix + reload regression tests  
-2. Review Desk APIs + UI (content-jobs, review-gates)  
-3. Scheduler + outbox relay + automation health  
-4. Draft Desk worker executor (non-empty generation)  
-5. Monthly/daily spend enforcement, seed, spend API  
-6. Local email/password auth + web login  
-7. Docker images, staging compose, backup/deploy docs  
-8. CI: coverage gate, migration replay, gitleaks, audits, docker build  
-9. Truthful README + vite `/api` rewrite  
+| # | Severity | Defect | Fix |
+|---|----------|--------|-----|
+| 1 | CRITICAL | Workspace monthly/daily cap bypassed by spending on provider A then reserving on provider B | Workspace-wide caps now aggregate **all** providers |
+| 2 | CRITICAL | Review Desk `content-jobs` path never called spend controls | Desk path reserves+commits Draft Desk cost; **402** when blocked |
+| 3 | HIGH | Lifespan shutdown cancelled tasks without awaiting | `asyncio.gather(..., return_exceptions=True)` after cancel |
+| 4 | MEDIUM (docs) | `DEPLOYMENT.md` claimed AUTH_MODE unused | Corrected for local/supabase modes |
 
 ---
 
-## Still blocking production (P1 — not started)
-
-- Stripe / billing  
-- Hosted backup restore sign-off  
-- Dependency CVE floor / OpenAPI lockdown  
-- Observability / on-call  
-- Full BYOK providers  
-
----
-
-## Evidence snapshot (fresh)
+## Fresh evidence
 
 | Check | Result |
 |-------|--------|
-| Migrate → downgrade → re-upgrade to `0030` | PASS |
-| API tests | **155 passed**, coverage **~80%** (≥75% gate) |
-| Worker tests | **4 passed** |
-| Web lint + build + unit | PASS |
-| Live P0 probe (auth/spend/jobs/gates/ORM) | PASS |
+| API tests | **158 passed**, coverage **~82%** (≥75%) |
+| Worker / web | **PASS** |
+| Migration replay → `0030` | **PASS** |
+| Cross-provider spend attack | **BLOCKED** after fix |
+| Content-job at zero cap | **402**, empty review queue |
+| Lifespan start/stop + ticks | **PASS** |
+| Cross-workspace IDOR (gates/spend/jobs) | **403** |
+| FORCE RLS tables | **36** |
+| Dockerfiles + staging compose + backup/restore docs | **PRESENT** (daemon unavailable in this agent host; CI `docker-build` job defined) |
+| Prior CI on branch | **success** (re-run required after this fix commit) |
+
+---
+
+## Remaining blockers (P1 — not started)
+
+Stripe/billing, hosted DR sign-off, CVE fail-closed, OpenAPI lockdown, FK indexes, observability, AGENTS.md on default branch, Numeric(10,2) spend precision limits.
 
 ---
 

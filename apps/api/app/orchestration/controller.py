@@ -690,16 +690,21 @@ async def reserve_spend(
     )
 
     if cap is not None:
+        # Workspace-wide caps (provider IS NULL) must aggregate ALL providers.
+        # Provider-specific caps only count that provider's spend. Filtering
+        # by the reservation provider against a workspace-wide cap would
+        # allow cross-provider monthly/daily bypass.
+        usage_provider = None if cap.provider is None else provider
         daily = await _spend_committed_plus_reserved(
             session,
             workspace_id=run.workspace_id,
-            provider=provider,
+            provider=usage_provider,
             since=_utc_day_start(),
         )
         monthly = await _spend_committed_plus_reserved(
             session,
             workspace_id=run.workspace_id,
-            provider=provider,
+            provider=usage_provider,
             since=_utc_month_start(),
         )
         daily_cap = Decimal(str(cap.daily_cap_usd))
