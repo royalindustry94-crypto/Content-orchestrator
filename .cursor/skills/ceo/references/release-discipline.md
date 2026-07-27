@@ -18,6 +18,7 @@ DESIGN → specialist APPROVALS → IMPLEMENT → TESTS + MIGRATIONS → AUDIT �
 | React+TypeScript UI | `/frontend-engineer` |
 | CI/CD / deploy / rollback ops | `/devops-engineer` |
 | Release readiness report (version, SHA, gates, notes) | `/release-manager` |
+| Docs sync (ADR drafts, impl/audit/release prose, API/migration docs) | `/documentation-writer` |
 | QA (`/qa-breaker`) | Adversarial matrix, `pytest -W error`, migration replay, concurrency/recovery; not self-only |
 | Security (`/security-auditor`) | Required when auth/RLS/workers/spend/review/CI secrets touched |
 | VERIFIED label | `/ceo` only, after `/release-manager` readiness evidence + QA + security when applicable |
@@ -30,6 +31,7 @@ DESIGN → specialist APPROVALS → IMPLEMENT → TESTS + MIGRATIONS → AUDIT �
 - [ ] `/frontend-engineer` sign-off if `apps/web` UI touched
 - [ ] `/devops-engineer` sign-off if workflows/deploy/secrets/rollback touched
 - [ ] `/release-manager` readiness report (version, SHA, Actions, QA, Security, migrations, rollback)
+- [ ] `/documentation-writer` completeness for milestone (impl + audit docs; no invented features)
 - [ ] Fresh DB `upgrade` → `downgrade` → `upgrade` for new revisions
 - [ ] `ruff` clean (api + worker); web lint/typecheck/build if UI touched (`/frontend-engineer` gates)
 - [ ] `pytest -W error` full API suite + worker tests

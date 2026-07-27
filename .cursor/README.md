@@ -19,6 +19,7 @@ Project skills live under `.cursor/skills/<skill-id>/` with a required
 | [`frontend-engineer`](./skills/frontend-engineer/) | `/frontend-engineer` | React+TypeScript UI, reusable components, API UX, a11y, frontend gates |
 | [`devops-engineer`](./skills/devops-engineer/) | `/devops-engineer` | CI/CD, Actions least privilege, deploy/rollback, secrets/env, migration-safe rollout |
 | [`release-manager`](./skills/release-manager/) | `/release-manager` | Release readiness, versioning/changelog, gate evidence, RELEASE READY report |
+| [`documentation-writer`](./skills/documentation-writer/) | `/documentation-writer` | Docs/ADRs/reports accuracy; no invention; doc↔code sync |
 
 ## Hard rules for all skills
 

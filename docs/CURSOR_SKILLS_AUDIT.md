@@ -215,3 +215,7 @@ Skill **`devops-engineer`** (`/devops-engineer`) was added on branch `cursor/dev
 ## Addendum — Release Manager (2026-07-27)
 
 Skill **`release-manager`** (`/release-manager`) was added on branch `cursor/release-manager-skill-b52d`. Owns release readiness reports, versioning/changelog/tag plans, and gate evidence assembly. Product go/no-go **VERIFIED** remains `/ceo`. Separately reviewable.
+
+## Addendum — Documentation Writer (2026-07-27)
+
+Skill **`documentation-writer`** (`/documentation-writer`) was added on branch `cursor/documentation-writer-skill-b52d`. Owns accurate docs/ADR drafts/reports with no invented features and no doc↔code drift. ADR acceptance remains `/chief-architect`. Separately reviewable.
