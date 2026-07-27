@@ -49,9 +49,7 @@ def _asyncpg_url(dsn: str) -> str:
 
 
 # Owner/migration connection.
-engine = create_async_engine(
-    _asyncpg_url(str(settings.database_url)), echo=False, **_pool_kwargs
-)
+engine = create_async_engine(_asyncpg_url(str(settings.database_url)), echo=False, **_pool_kwargs)
 AsyncSessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
 
 # Runtime (RLS-enforced) connection.

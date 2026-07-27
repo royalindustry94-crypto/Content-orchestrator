@@ -153,9 +153,7 @@ async def dispatch_stage(
     )
     limit_row = limit_result.scalar_one_or_none()
     max_concurrent = (
-        limit_row.max_concurrent_assignments
-        if limit_row
-        else DEFAULT_MAX_CONCURRENT_ASSIGNMENTS
+        limit_row.max_concurrent_assignments if limit_row else DEFAULT_MAX_CONCURRENT_ASSIGNMENTS
     )
 
     in_flight_result = await session.execute(
@@ -171,16 +169,10 @@ async def dispatch_stage(
 
     if priority is None:
         workspace = await session.get(Workspace, workspace_id)
-        priority = base_priority_for_tier(
-            workspace.priority_tier if workspace is not None else 0
-        )
+        priority = base_priority_for_tier(workspace.priority_tier if workspace is not None else 0)
 
-    provider_ok = await has_provider_capacity(
-        session, workspace_id=workspace_id, provider=provider
-    )
-    worker = (
-        await select_worker(session, stage_key=stage) if provider_ok else None
-    )
+    provider_ok = await has_provider_capacity(session, workspace_id=workspace_id, provider=provider)
+    worker = await select_worker(session, stage_key=stage) if provider_ok else None
 
     idempotency_key = f"{pipeline_run_id}:{stage}:{attempt_number}"
     existing = await session.execute(
@@ -230,7 +222,8 @@ async def dispatch_stage(
         trace_id=trace_id,
         span_id=span_id,
         payload={
-            "stage": stage, "attempt_number": attempt_number,
+            "stage": stage,
+            "attempt_number": attempt_number,
             "worker_id": str(worker.id) if worker else None,
             "assignment_id": str(assignment.id),
             "priority": priority,
@@ -256,9 +249,7 @@ async def acknowledge(
     now = now or datetime.now(UTC)
     seconds = lease_seconds if lease_seconds is not None else _lease_seconds()
     if worker_id is not None:
-        assert_lease_extendable(
-            assignment, worker_id=worker_id, now=now, lease_seconds=seconds
-        )
+        assert_lease_extendable(assignment, worker_id=worker_id, now=now, lease_seconds=seconds)
         if assignment.status != StageAssignmentStatus.DISPATCHED:
             raise LeaseConflict(
                 "invalid_status",
@@ -283,9 +274,7 @@ async def renew_lease(
     now = now or datetime.now(UTC)
     seconds = lease_seconds if lease_seconds is not None else _lease_seconds()
     if worker_id is not None:
-        assert_lease_extendable(
-            assignment, worker_id=worker_id, now=now, lease_seconds=seconds
-        )
+        assert_lease_extendable(assignment, worker_id=worker_id, now=now, lease_seconds=seconds)
     assignment.lease_expires_at = now + timedelta(seconds=seconds)
     if assignment.lease_started_at is None:
         assignment.lease_started_at = assignment.dispatched_at or now
@@ -359,12 +348,16 @@ async def submit_result(
         return
 
     stage_run = PipelineStageRun(
-        id=_uuid.uuid4(), workspace_id=assignment.workspace_id,
-        pipeline_run_id=assignment.pipeline_run_id, content_item_id=run.content_item_id,
-        stage=assignment.stage, attempt_number=assignment.attempt_number,
+        id=_uuid.uuid4(),
+        workspace_id=assignment.workspace_id,
+        pipeline_run_id=assignment.pipeline_run_id,
+        content_item_id=run.content_item_id,
+        stage=assignment.stage,
+        attempt_number=assignment.attempt_number,
         status="succeeded" if success else "failed",
         error_message=None if success else error_message,
-        started_at=assignment.dispatched_at, completed_at=assignment.completed_at,
+        started_at=assignment.dispatched_at,
+        completed_at=assignment.completed_at,
     )
     session.add(stage_run)
     await session.flush()
@@ -376,12 +369,17 @@ async def submit_result(
     if success:
         trace_id, span_id = child_span(assignment.trace_id)
         await _emit(
-            session, event_type=STAGE_COMPLETED, workspace_id=assignment.workspace_id,
-            aggregate_type="pipeline_run", aggregate_id=assignment.pipeline_run_id,
+            session,
+            event_type=STAGE_COMPLETED,
+            workspace_id=assignment.workspace_id,
+            aggregate_type="pipeline_run",
+            aggregate_id=assignment.pipeline_run_id,
             correlation_id=assignment.correlation_id or run.correlation_id or _uuid.uuid4(),
-            trace_id=trace_id, span_id=span_id,
+            trace_id=trace_id,
+            span_id=span_id,
             payload={
-                "stage": assignment.stage, "attempt_number": assignment.attempt_number,
+                "stage": assignment.stage,
+                "attempt_number": assignment.attempt_number,
                 "context": result or {},
             },
             produced_by="dispatcher",
@@ -392,6 +390,9 @@ async def submit_result(
         )
     else:
         await controller.handle_stage_failure(
-            session, run=run, stage=assignment.stage,
-            attempt_number=assignment.attempt_number, error_message=error_message,
+            session,
+            run=run,
+            stage=assignment.stage,
+            attempt_number=assignment.attempt_number,
+            error_message=error_message,
         )

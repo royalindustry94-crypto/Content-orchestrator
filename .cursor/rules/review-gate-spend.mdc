@@ -1,0 +1,11 @@
+---
+description: Human Review Gate and spend controls — non-bypassable
+alwaysApply: true
+---
+
+# Review Gate & spend
+
+- Human Review Gate is mandatory and cannot be bypassed
+- Spend controls are mandatory and must remain enforceable
+- Over-cap behavior must hold/pause — never silent continue
+- Escalate immediately if a change weakens either control

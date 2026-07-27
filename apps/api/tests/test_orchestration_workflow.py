@@ -6,8 +6,13 @@ import os
 import uuid
 from decimal import Decimal
 
-os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test")
-os.environ.setdefault("APP_DATABASE_URL", "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test")
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test"
+)
+os.environ.setdefault(
+    "APP_DATABASE_URL",
+    "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test",
+)
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret")
 
 import pytest
@@ -42,31 +47,66 @@ async def _make_workspace_item(session):
 
 async def _two_stage_review_definition(session, workspace_id):
     definition = WorkflowDefinition(
-        id=uuid.uuid4(), workspace_id=workspace_id, name="simple", version=1,
+        id=uuid.uuid4(),
+        workspace_id=workspace_id,
+        name="simple",
+        version=1,
     )
     session.add(definition)
     await session.flush()
-    session.add_all([
-        WorkflowStage(id=uuid.uuid4(), workspace_id=workspace_id, definition_id=definition.id,
-                      stage_key="scripting", ordinal=1, max_attempts=2, backoff_base_seconds=1,
-                      backoff_multiplier=2, backoff_max_seconds=5, timeout_seconds=60),
-        WorkflowStage(id=uuid.uuid4(), workspace_id=workspace_id, definition_id=definition.id,
-                      stage_key="review", ordinal=2, is_review_gate=True, timeout_seconds=3600),
-        WorkflowStage(id=uuid.uuid4(), workspace_id=workspace_id, definition_id=definition.id,
-                      stage_key="published", ordinal=3, is_terminal=True),
-    ])
-    session.add_all([
-        WorkflowTransition(
-            id=uuid.uuid4(), workspace_id=workspace_id, definition_id=definition.id,
-            from_stage="scripting", to_stage="review",
-            trigger=WorkflowTransitionTrigger.ON_SUCCESS,
-        ),
-        WorkflowTransition(
-            id=uuid.uuid4(), workspace_id=workspace_id, definition_id=definition.id,
-            from_stage="review", to_stage="published",
-            trigger=WorkflowTransitionTrigger.ON_REVIEW_APPROVED,
-        ),
-    ])
+    session.add_all(
+        [
+            WorkflowStage(
+                id=uuid.uuid4(),
+                workspace_id=workspace_id,
+                definition_id=definition.id,
+                stage_key="scripting",
+                ordinal=1,
+                max_attempts=2,
+                backoff_base_seconds=1,
+                backoff_multiplier=2,
+                backoff_max_seconds=5,
+                timeout_seconds=60,
+            ),
+            WorkflowStage(
+                id=uuid.uuid4(),
+                workspace_id=workspace_id,
+                definition_id=definition.id,
+                stage_key="review",
+                ordinal=2,
+                is_review_gate=True,
+                timeout_seconds=3600,
+            ),
+            WorkflowStage(
+                id=uuid.uuid4(),
+                workspace_id=workspace_id,
+                definition_id=definition.id,
+                stage_key="published",
+                ordinal=3,
+                is_terminal=True,
+            ),
+        ]
+    )
+    session.add_all(
+        [
+            WorkflowTransition(
+                id=uuid.uuid4(),
+                workspace_id=workspace_id,
+                definition_id=definition.id,
+                from_stage="scripting",
+                to_stage="review",
+                trigger=WorkflowTransitionTrigger.ON_SUCCESS,
+            ),
+            WorkflowTransition(
+                id=uuid.uuid4(),
+                workspace_id=workspace_id,
+                definition_id=definition.id,
+                from_stage="review",
+                to_stage="published",
+                trigger=WorkflowTransitionTrigger.ON_REVIEW_APPROVED,
+            ),
+        ]
+    )
     await session.flush()
     return definition
 
@@ -130,6 +170,7 @@ async def test_review_approval_resumes_and_reaches_terminal_stage():
         # The review.approved event was emitted; the relay + registered
         # consumer (app.orchestration.consumers) resolves it to resume.
         from app.orchestration import consumers, relay
+
         consumers.register_all()
         await relay.poll_and_dispatch(session)
         await session.commit()
@@ -150,7 +191,11 @@ async def test_stage_failure_retries_then_dead_letters_after_max_attempts():
 
         # max_attempts=2 for scripting: first failure retries.
         await controller.handle_stage_failure(
-            session, run=run, stage="scripting", attempt_number=1, error_message="timeout",
+            session,
+            run=run,
+            stage="scripting",
+            attempt_number=1,
+            error_message="timeout",
         )
         await session.commit()
         assert run.status != "failed"
@@ -166,12 +211,17 @@ async def test_stage_failure_retries_then_dead_letters_after_max_attempts():
 
         # Second failure exhausts attempts -> dead-lettered, run failed.
         await controller.handle_stage_failure(
-            session, run=run, stage="scripting", attempt_number=2, error_message="timeout",
+            session,
+            run=run,
+            stage="scripting",
+            attempt_number=2,
+            error_message="timeout",
         )
         await session.commit()
         assert run.status == "failed"
 
         from app.models.operations import DeadLetterJob
+
         dlq = await session.execute(select(DeadLetterJob).where(DeadLetterJob.related_id == run.id))
         assert dlq.scalar_one_or_none() is not None
 
@@ -187,8 +237,11 @@ async def test_cancel_run_is_idempotent_and_releases_reservations():
         await controller.start_run(session, run=run, definition=definition)
 
         reservation = await controller.reserve_spend(
-            session, run=run, stage="scripting",
-            provider="openai", estimated_cost_usd=Decimal("1.00"),
+            session,
+            run=run,
+            stage="scripting",
+            provider="openai",
+            estimated_cost_usd=Decimal("1.00"),
         )
         assert reservation is not None
 
@@ -197,6 +250,7 @@ async def test_cancel_run_is_idempotent_and_releases_reservations():
         assert run.status == "cancelled"
 
         from app.models.enums import ReservationStatus
+
         await session.refresh(reservation)
         assert reservation.status == ReservationStatus.RELEASED
 
@@ -213,22 +267,33 @@ async def test_spend_reservation_blocked_over_cap_pauses_run():
         definition = await _two_stage_review_definition(session, ws)
         run = PipelineRun(id=uuid.uuid4(), workspace_id=ws, content_item_id=item)
         session.add(run)
-        session.add(SpendCap(
-            id=uuid.uuid4(), workspace_id=ws, provider="openai",
-            daily_cap_usd=Decimal("5.00"), monthly_cap_usd=Decimal("100.00"),
-        ))
+        session.add(
+            SpendCap(
+                id=uuid.uuid4(),
+                workspace_id=ws,
+                provider="openai",
+                daily_cap_usd=Decimal("5.00"),
+                monthly_cap_usd=Decimal("100.00"),
+            )
+        )
         await session.flush()
         await controller.start_run(session, run=run, definition=definition)
 
         first = await controller.reserve_spend(
-            session, run=run, stage="scripting",
-            provider="openai", estimated_cost_usd=Decimal("4.00"),
+            session,
+            run=run,
+            stage="scripting",
+            provider="openai",
+            estimated_cost_usd=Decimal("4.00"),
         )
         assert first is not None
 
         second = await controller.reserve_spend(
-            session, run=run, stage="scripting",
-            provider="openai", estimated_cost_usd=Decimal("2.00"),
+            session,
+            run=run,
+            stage="scripting",
+            provider="openai",
+            estimated_cost_usd=Decimal("2.00"),
         )
         assert second is None
         assert run.status == "paused"

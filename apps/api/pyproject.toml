@@ -23,6 +23,7 @@ dev = [
     "pytest-cov>=6.0,<7.0",
     "httpx>=0.27,<0.28",
     "ruff>=0.7,<0.8",
+    "mypy>=1.13,<2.0",
 ]
 
 [tool.ruff]
@@ -56,6 +57,23 @@ extend-immutable-calls = [
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "session"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["app"]
+
+[tool.coverage.report]
+fail_under = 70
+show_missing = true
+skip_empty = true
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+check_untyped_defs = true
+packages = ["app"]
 
 [tool.setuptools.packages.find]
 include = ["app*"]

@@ -42,6 +42,7 @@ def emit_histogram(name: str, value: float, **labels: object) -> None:
 
 # --- table-derived collectors ---------------------------------------------
 
+
 async def queue_depth(session: AsyncSession) -> dict[str, int]:
     result = await session.execute(
         select(JobSchedule.status, func.count(JobSchedule.id)).group_by(JobSchedule.status)
@@ -49,8 +50,9 @@ async def queue_depth(session: AsyncSession) -> dict[str, int]:
     return {status.value: count for status, count in result.all()}
 
 
-async def event_latency_seconds(session: AsyncSession, *, sample_size: int = 500) -> dict[str,
-    float]:
+async def event_latency_seconds(
+    session: AsyncSession, *, sample_size: int = 500
+) -> dict[str, float]:
     """Average seconds between occurred_at and updated_at for recently
     dispatched events — a proxy for outbox relay latency.
     """
@@ -69,9 +71,11 @@ async def workflow_execution_duration_seconds(
 ) -> dict[str, float]:
     since = since or (datetime.now(UTC) - timedelta(days=1))
     result = await session.execute(
-        select(func.avg(func.extract("epoch", PipelineRun.completed_at - PipelineRun.started_at)))
-        .where(
-            PipelineRun.completed_at.isnot(None), PipelineRun.started_at.isnot(None),
+        select(
+            func.avg(func.extract("epoch", PipelineRun.completed_at - PipelineRun.started_at))
+        ).where(
+            PipelineRun.completed_at.isnot(None),
+            PipelineRun.started_at.isnot(None),
             PipelineRun.completed_at >= since,
         )
     )

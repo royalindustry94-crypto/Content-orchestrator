@@ -31,9 +31,7 @@ async def lock_budget(
     return result.scalar_one_or_none()
 
 
-async def count_inflight(
-    session: AsyncSession, *, workspace_id: uuid.UUID, provider: str
-) -> int:
+async def count_inflight(session: AsyncSession, *, workspace_id: uuid.UUID, provider: str) -> int:
     result = await session.execute(
         select(func.count(StageAssignment.id)).where(
             StageAssignment.workspace_id == workspace_id,

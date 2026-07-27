@@ -112,13 +112,14 @@ async def test_member_can_leave_but_not_remove_others(client, new_user):
 
     from app.db.session import AsyncSessionLocal
     from app.models.workspace_membership import WorkspaceMembership as WM
+
     async with AsyncSessionLocal() as _s:
         _row = await _s.execute(
             _select(WM).where(WM.workspace_id == workspace_id, WM.user_id == editor_id)
         )
-        assert _row.scalar_one_or_none() is None, (
-            "self-leave DELETE was silently suppressed by RLS — membership row still exists"
-        )
+        assert (
+            _row.scalar_one_or_none() is None
+        ), "self-leave DELETE was silently suppressed by RLS — membership row still exists"
 
 
 @pytest.mark.asyncio
@@ -135,9 +136,7 @@ async def test_last_admin_cannot_be_removed(client, new_user):
 
 @pytest.mark.asyncio
 async def test_invalid_token_is_401_not_403_or_500(client):
-    response = await client.get(
-        "/workspaces", headers={"Authorization": "Bearer not-a-real-token"}
-    )
+    response = await client.get("/workspaces", headers={"Authorization": "Bearer not-a-real-token"})
     assert response.status_code == 401
 
 

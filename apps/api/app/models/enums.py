@@ -103,6 +103,7 @@ class ContentLineageRelationship(str, enum.Enum):
 
 # --- Milestone 4: orchestration ---
 
+
 class WorkflowTransitionTrigger(str, enum.Enum):
     ON_SUCCESS = "on_success"
     ON_FAILURE = "on_failure"
@@ -161,6 +162,7 @@ class PipelineRunStatusV2(str, enum.Enum):
     orchestration engine. See migration 0014 for the ALTER TYPE that adds
     these values to the existing pipeline_run_status enum.
     """
+
     CREATED = "created"
     RUNNING = "running"
     PAUSED = "paused"

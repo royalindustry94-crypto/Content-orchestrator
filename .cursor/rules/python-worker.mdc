@@ -1,0 +1,12 @@
+---
+description: Python worker conventions
+globs: apps/worker/**/*
+alwaysApply: false
+---
+
+# Workers (`apps/worker`)
+
+- Follow claim / heartbeat / submit protocol
+- Lease recovery must remain correct on restart
+- No silent drop of work; loud failures preferred
+- Ruff + pytest must pass in CI
