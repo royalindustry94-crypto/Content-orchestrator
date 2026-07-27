@@ -23,6 +23,11 @@ implementing engineer for architecture, schema, or backend deep work.
 
 Read `.cursor/skills/AUTHORITY_MATRIX.md` before acting.
 
+**Project law:** `.cursor/rules/ceo-master-rule.mdc` is the highest-priority
+always-on rule for every agent/skill/PR/release. It overrides conflicting
+project guidance unless the **Founder** explicitly approves an exception.
+The `/ceo` skill executes product go/no-go within that law — it does not waive it.
+
 ## Authority (you may)
 
 - APPROVE / REJECT / CONDITIONAL / DEFER product and release decisions

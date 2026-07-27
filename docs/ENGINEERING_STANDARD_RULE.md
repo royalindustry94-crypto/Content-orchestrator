@@ -9,3 +9,5 @@ Auditor + QA Breaker + Release Manager gates, evidence before VERIFIED, and
 no merge without independent verification.
 
 See also: [CURSOR_SKILLS.md](./CURSOR_SKILLS.md), [AUTHORITY_MATRIX](../.cursor/skills/AUTHORITY_MATRIX.md).
+
+Related highest-priority rule: [`CEO_MASTER_RULE.md`](./CEO_MASTER_RULE.md) (overrides this baseline on conflict).
