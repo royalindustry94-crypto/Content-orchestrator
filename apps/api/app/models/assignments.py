@@ -113,3 +113,7 @@ class StageAssignment(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):
     lease_extension_count: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    # WS4: base priority (age boost applied at claim time) and optional
+    # provider key for concurrency budget accounting.
+    priority: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    provider: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -210,3 +210,11 @@ class RecoveryOutcome(str, enum.Enum):
     REQUEUED = "requeued"
     DEAD_LETTERED = "dead_lettered"
     SKIPPED = "skipped"
+
+
+class BackpressureState(str, enum.Enum):
+    """Per-workspace queue-depth back-pressure observation (WS4)."""
+
+    NORMAL = "normal"
+    PRESSURED = "pressured"
+    THROTTLED = "throttled"

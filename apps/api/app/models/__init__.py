@@ -3,6 +3,10 @@
 # only (columns, FKs, relationships) — no business logic.
 
 from app.models.assignments import StageAssignment  # noqa: F401
+from app.models.backpressure import (  # noqa: F401
+    ProviderConcurrencyBudget,
+    WorkspaceBackpressureState,
+)
 from app.models.claim_audit import StageClaimAudit  # noqa: F401
 
 # Milestone 3 content domain
@@ -41,5 +45,6 @@ __all__ = [
     "WorkerRegistration", "WorkerHeartbeat",
     "StageAssignment", "StageClaimAudit",
     "StageRecoveryAudit", "ProviderEffectKey",
+    "WorkspaceBackpressureState", "ProviderConcurrencyBudget",
     "ReviewGate",
 ]
