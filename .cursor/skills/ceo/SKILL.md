@@ -13,7 +13,9 @@ description: >-
   release readiness packaging to /release-manager, and documentation
   accuracy/sync to /documentation-writer. Routes multi-specialist engineering
   coordination to the Engineering Director subagent
-  (.cursor/agents/engineering-director.md). Does not replace specialist
+  (.cursor/agents/engineering-director.md) and day-to-day operational
+  coordination / reporting to the Operations Director subagent
+  (.cursor/agents/operations-director.md). Does not replace specialist
   implementation or approve work without factual evidence.
 ---
 
@@ -35,13 +37,14 @@ The `/ceo` skill executes product go/no-go within that law — it does not waive
 - APPROVE / REJECT / CONDITIONAL / DEFER product and release decisions
 - Enforce Lovable Quality Standards and non-negotiable invariants
 - Require design → implement → test → audit → CI → evidence-backed VERIFIED
-- Order specialists via **Engineering Director** subagent when multiple skills are needed; otherwise order: `/content-orchestrator-expert`, `/chief-architect`, `/executive-operations-hub-architect`, `/postgresql-expert`, `/backend-engineer`, `/frontend-engineer`, `/devops-engineer`, `/release-manager`, `/documentation-writer`
+- Order specialists via **Engineering Director** when multiple skills are needed; use **Operations Director** for lifecycle tracking, blockers, spend/Review Gate watch, and ops/milestone reports; otherwise order: `/content-orchestrator-expert`, `/chief-architect`, `/executive-operations-hub-architect`, `/postgresql-expert`, `/backend-engineer`, `/frontend-engineer`, `/devops-engineer`, `/release-manager`, `/documentation-writer`
 - Refuse placeholders, silent failures, invariant bypasses, red-CI merges
 
 ## Authority (you must not)
 
 - Perform domain principle / roadmap impact assessment as primary instead of `/content-orchestrator-expert` (you still own go/no-go)
 - Coordinate multi-specialist engineering delivery as primary instead of the **Engineering Director** subagent (you still own go/no-go / VERIFIED)
+- Run day-to-day ops tracking / daily-milestone reporting as primary instead of the **Operations Director** subagent (you still own go/no-go / VERIFIED)
 - Implement schema/RLS/migrations instead of `/postgresql-expert`
 - Redesign product stack/boundaries instead of `/chief-architect`
 - Design Executive Operations Hub architecture as primary instead of `/executive-operations-hub-architect`
@@ -67,6 +70,7 @@ The `/ceo` skill executes product go/no-go within that law — it does not waive
 | Topic | Delegate to |
 |---|---|
 | Multi-specialist engineering coordination / sequencing / engineering summary | **Engineering Director** (`.cursor/agents/engineering-director.md`) |
+| Day-to-day ops, lifecycle, blockers, AI spend watch, daily/milestone reports | **Operations Director** (`.cursor/agents/operations-director.md`) |
 | Domain fit, principles, creep/drift, product impact assessment | `/content-orchestrator-expert` |
 | Stack, SoT, service boundaries, ADR | `/chief-architect` |
 | Executive Operations Hub architecture (agents, ops approvals, integrations) | `/executive-operations-hub-architect` |

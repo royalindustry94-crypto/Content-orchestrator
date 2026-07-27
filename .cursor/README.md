@@ -18,6 +18,7 @@ Subagents live under `.cursor/agents/` as markdown files with YAML frontmatter
 | Subagent | File | Role |
 |---|---|---|
 | Engineering Director | [`agents/engineering-director.md`](./agents/engineering-director.md) | Coordinates specialists; requires QA + Security; summary to CEO |
+| Operations Director | [`agents/operations-director.md`](./agents/operations-director.md) | Day-to-day ops, lifecycle, spend/Review Gate watch, ops reports |
 
 ## Skills
 
@@ -26,7 +27,8 @@ Project skills live under `.cursor/skills/<skill-id>/` with a required
 
 **Authority matrix:** [skills/AUTHORITY_MATRIX.md](./skills/AUTHORITY_MATRIX.md)  
 **Audit:** [docs/CURSOR_SKILLS_AUDIT.md](../docs/CURSOR_SKILLS_AUDIT.md)  
-**Engineering Director:** [docs/ENGINEERING_DIRECTOR_SUBAGENT.md](../docs/ENGINEERING_DIRECTOR_SUBAGENT.md)
+**Engineering Director:** [docs/ENGINEERING_DIRECTOR_SUBAGENT.md](../docs/ENGINEERING_DIRECTOR_SUBAGENT.md)  
+**Operations Director:** [docs/OPERATIONS_DIRECTOR_SUBAGENT.md](../docs/OPERATIONS_DIRECTOR_SUBAGENT.md)
 
 ## Installed skills
 

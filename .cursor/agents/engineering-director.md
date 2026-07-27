@@ -162,6 +162,7 @@ Do not mark Director status **COMPLETE** unless:
 
 ## Related paths
 
+- Operations Director: `.cursor/agents/operations-director.md`
 - Rules: `.cursor/rules/ceo-master-rule.mdc`
 - Authority: `.cursor/skills/AUTHORITY_MATRIX.md`
 - Skills index: `.cursor/README.md`, `docs/CURSOR_SKILLS.md`
