@@ -1,6 +1,5 @@
-"""End-to-end: dispatch a stage, have the reference worker client claim,
-heartbeat, execute (canned success), and submit — proving the whole
-worker-side contract without any real generation logic.
+"""End-to-end: provision a worker, claim via HTTP, ack/renew/submit —
+proving the WS3 worker-side contract without any real generation logic.
 """
 
 import os
@@ -61,8 +60,6 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
     async with AsyncSessionLocal() as session:
         # Park all pre-existing online/busy workers so dispatch_stage sees no
         # eligible worker and creates the assignment as PENDING (not DISPATCHED).
-        # claim_next only polls PENDING; a DISPATCHED assignment would never be
-        # found by the pull-mode client.
         await session.execute(
             text(
                 "UPDATE worker_registry SET status = 'offline'::worker_status "
@@ -91,10 +88,8 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
         )
         await session.commit()
         run_id = run.id
-        assignment_id = dispatched.id  # capture before session closes
+        assignment_id = dispatched.id
 
-    # WS1: lifecycle over HTTP — provision (admin JWT) then register with
-    # the per-worker credential. Claim/submit still ride the DB session.
     http = httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
     admin_headers = {"Authorization": f"Bearer {make_token(user_id=admin_user)}"}
     provision = await http.post(
@@ -110,10 +105,10 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
         credential=provisioned["worker_secret"], worker_id=provisioned["worker_id"],
     )
     await client.register()
+    await client.heartbeat()
 
     # Retire stale PENDING assignments from prior test runs so claim_next
-    # picks up THIS test's assignment rather than an older one whose
-    # pipeline_run may have definition_id=None.
+    # picks up THIS test's assignment.
     async with AsyncSessionLocal() as session:
         await session.execute(
             text(
@@ -124,13 +119,11 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
         )
         await session.commit()
 
-    async with AsyncSessionLocal() as session:
-        claimed = await client.claim_next(session)
-        assert claimed is not None
-        assert claimed.status == StageAssignmentStatus.ACKNOWLEDGED
-        await client.heartbeat()
-        await client.run_one(session, claimed)
-        await session.commit()
+    claimed = await client.claim_next()
+    assert claimed is not None
+    assert claimed["id"] == str(assignment_id)
+    await client.heartbeat()
+    await client.run_one(assignment=claimed)
 
     await http.aclose()
 
@@ -138,3 +131,7 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
         result = await session.execute(select(PipelineRun).where(PipelineRun.id == run_id))
         refreshed = result.scalar_one()
         assert refreshed.status == "succeeded"
+        from app.models.assignments import StageAssignment
+
+        a = await session.get(StageAssignment, assignment_id)
+        assert a.status == StageAssignmentStatus.COMPLETED

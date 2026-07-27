@@ -1,5 +1,8 @@
 """Dispatcher: worker selection, assignment lifecycle, lease management
-(design doc §5).
+(design doc §5). Lease recovery (reap / attempt bump / DLQ) lives in
+``app.orchestration.recovery`` (WS3); this module retains acknowledge,
+renew, dispatch, and submit, and re-exports the reaper for callers that
+imported it from here historically.
 """
 
 from __future__ import annotations
@@ -10,19 +13,80 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.models.assignments import StageAssignment
 from app.models.enums import StageAssignmentStatus, WorkerStatus
 from app.models.pipeline import PipelineStageRun
 from app.models.scheduling import WorkspaceConcurrencyLimit
 from app.models.workers import WorkerRegistration
 from app.orchestration.events.envelope import child_span
-from app.orchestration.events.types import STAGE_ASSIGNED, STAGE_REASSIGNED
+from app.orchestration.events.types import STAGE_ASSIGNED
 from app.orchestration.outbox import emit
+from app.orchestration.recovery import (  # noqa: F401 — re-export for existing callers/tests
+    reap_expired_leases,
+    reap_worker_assignments,
+)
 
-# Default ack timeout: how long a dispatched-but-not-yet-acknowledged
-# assignment waits before being treated as lost-ack (design doc §5.4).
+# Back-compat aliases — prefer Settings.assignment_lease_seconds.
 ACK_TIMEOUT_SECONDS = 60
 DEFAULT_MAX_CONCURRENT_ASSIGNMENTS = 10  # matches WorkspaceConcurrencyLimit's column default
+
+
+class LeaseError(Exception):
+    """Base for lease lifecycle violations (mapped to HTTP by routes)."""
+
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+class LeaseNotOwned(LeaseError):
+    def __init__(self, message: str = "assignment not owned by worker") -> None:
+        super().__init__("not_owned", message)
+
+
+class LeaseConflict(LeaseError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(code, message)
+
+
+def _lease_seconds() -> int:
+    return get_settings().assignment_lease_seconds
+
+
+def _max_lease_seconds() -> int:
+    return get_settings().assignment_max_lease_seconds
+
+
+def assert_lease_extendable(
+    assignment: StageAssignment,
+    *,
+    worker_id: uuid.UUID,
+    now: datetime | None = None,
+    lease_seconds: int | None = None,
+) -> None:
+    """Raise LeaseError if the assignment cannot be ack'd / renewed by worker."""
+    now = now or datetime.now(UTC)
+    seconds = lease_seconds if lease_seconds is not None else _lease_seconds()
+    if assignment.worker_id != worker_id:
+        raise LeaseNotOwned()
+    if assignment.status not in (
+        StageAssignmentStatus.DISPATCHED,
+        StageAssignmentStatus.ACKNOWLEDGED,
+    ):
+        raise LeaseConflict(
+            "invalid_status",
+            f"assignment status is {assignment.status.value}, expected dispatched or acknowledged",
+        )
+    if assignment.lease_expires_at is None or assignment.lease_expires_at < now:
+        raise LeaseConflict("lease_expired", "lease has expired; assignment is eligible for recovery")
+    started = assignment.lease_started_at or assignment.dispatched_at or now
+    if now + timedelta(seconds=seconds) > started + timedelta(seconds=_max_lease_seconds()):
+        raise LeaseConflict(
+            "max_lease_exceeded",
+            "renewal would exceed the maximum total lease duration",
+        )
 
 
 async def select_worker(
@@ -38,6 +102,8 @@ async def select_worker(
         select(WorkerRegistration)
         .where(
             WorkerRegistration.status.in_([WorkerStatus.ONLINE, WorkerStatus.BUSY]),
+            WorkerRegistration.drain.is_(False),
+            WorkerRegistration.deregistered_at.is_(None),
             WorkerRegistration.health_score >= min_health_score,
             WorkerRegistration.supported_stages.contains([stage_key]),
             WorkerRegistration.current_load < WorkerRegistration.max_concurrency,
@@ -67,12 +133,7 @@ async def dispatch_stage(
     the caller to reschedule) if no eligible worker exists right now —
     work is never dropped for lack of a worker (design doc §5.2).
     """
-    # Back-pressure (amendment 2): a workspace may not exceed its configured
-    # max_concurrent_assignments across dispatched/acknowledged assignments.
-    # Checked before worker selection so an over-cap workspace never
-    # consumes a worker slot at all — the assignment simply stays
-    # unscheduled and is retried on a later tick (same as "no eligible
-    # worker," §5.2), never dropped.
+    lease_seconds = _lease_seconds()
     limit_result = await session.execute(
         select(WorkspaceConcurrencyLimit).where(
             WorkspaceConcurrencyLimit.workspace_id == workspace_id
@@ -109,6 +170,7 @@ async def dispatch_stage(
     if already is not None:
         return already  # idempotent re-dispatch of the same attempt
 
+    now = datetime.now(UTC)
     trace_id, span_id = child_span(trace_id)
     assignment = StageAssignment(
         id=uuid.uuid4(),
@@ -119,10 +181,10 @@ async def dispatch_stage(
         worker_id=worker.id if worker else None,
         status=StageAssignmentStatus.DISPATCHED if worker else StageAssignmentStatus.PENDING,
         idempotency_key=idempotency_key,
-        lease_expires_at=(
-            datetime.now(UTC) + timedelta(seconds=ACK_TIMEOUT_SECONDS) if worker else None
-        ),
-        dispatched_at=datetime.now(UTC) if worker else None,
+        lease_expires_at=(now + timedelta(seconds=lease_seconds) if worker else None),
+        lease_started_at=now if worker else None,
+        lease_extension_count=0,
+        dispatched_at=now if worker else None,
         correlation_id=correlation_id,
         trace_id=trace_id,
     )
@@ -152,75 +214,56 @@ async def dispatch_stage(
     return assignment
 
 
-async def acknowledge(session: AsyncSession, assignment: StageAssignment, *,
-    lease_seconds: int) -> None:
-    assignment.status = StageAssignmentStatus.ACKNOWLEDGED
-    assignment.acknowledged_at = datetime.now(UTC)
-    assignment.lease_expires_at = datetime.now(UTC) + timedelta(seconds=lease_seconds)
-
-
-async def renew_lease(session: AsyncSession, assignment: StageAssignment, *,
-    lease_seconds: int) -> None:
-    assignment.lease_expires_at = datetime.now(UTC) + timedelta(seconds=lease_seconds)
-
-
-async def reap_expired_leases(session: AsyncSession, *,
-    batch_size: int = 100) -> list[StageAssignment]:
-    """Find assignments whose lease has expired while still dispatched/
-    acknowledged, and return them to pending with a bumped attempt number
-    — the mechanism every crash scenario reduces to (design doc §4.4, §11).
+async def acknowledge(
+    session: AsyncSession,
+    assignment: StageAssignment,
+    *,
+    lease_seconds: int | None = None,
+    worker_id: uuid.UUID | None = None,
+    now: datetime | None = None,
+) -> None:
+    """DISPATCHED → ACKNOWLEDGED and extend the lease. When ``worker_id``
+    is provided, ownership and bound checks are enforced (HTTP path).
+    The legacy in-process path (reference client / tests) may omit it.
     """
-    result = await session.execute(
-        select(StageAssignment)
-        .where(
-            StageAssignment.status.in_(
-                [StageAssignmentStatus.DISPATCHED, StageAssignmentStatus.ACKNOWLEDGED]
-            ),
-            StageAssignment.lease_expires_at < datetime.now(UTC),
+    now = now or datetime.now(UTC)
+    seconds = lease_seconds if lease_seconds is not None else _lease_seconds()
+    if worker_id is not None:
+        assert_lease_extendable(
+            assignment, worker_id=worker_id, now=now, lease_seconds=seconds
         )
-        .limit(batch_size)
-        .with_for_update(skip_locked=True)
-    )
-    expired = list(result.scalars().all())
-    for assignment in expired:
-        if assignment.worker_id is not None:
-            worker = await session.get(WorkerRegistration, assignment.worker_id)
-            if worker is not None and worker.current_load > 0:
-                worker.current_load -= 1
-                if (
-                    worker.status == WorkerStatus.BUSY
-                    and worker.current_load < worker.max_concurrency
-                ):
-                    worker.status = WorkerStatus.ONLINE
-        assignment.status = StageAssignmentStatus.PENDING
-        assignment.worker_id = None
-        assignment.lease_expires_at = None
-        # Pull-claimed rows carry claim bookkeeping; clear it so the row is
-        # re-claimable and ck_stage_assignments_claimed_by_matches holds
-        # (claimed_by must be NULL when worker_id is NULL). claim_count is
-        # kept — it is a lifetime counter.
-        assignment.claimed_by = None
-        assignment.claimed_at = None
-        assignment.claim_token = None
-        trace_id, span_id = child_span(assignment.trace_id)
-        assignment.trace_id = trace_id
-        await emit(
-            session,
-            event_type=STAGE_REASSIGNED,
-            workspace_id=assignment.workspace_id,
-            aggregate_type="pipeline_run",
-            aggregate_id=assignment.pipeline_run_id,
-            correlation_id=assignment.correlation_id or uuid.uuid4(),
-            trace_id=trace_id,
-            span_id=span_id,
-            payload={
-                "stage": assignment.stage,
-                "assignment_id": str(assignment.id),
-                "reason": "lease_expired",
-            },
-            produced_by="dispatcher.reaper",
+        if assignment.status != StageAssignmentStatus.DISPATCHED:
+            raise LeaseConflict(
+                "invalid_status",
+                f"ack requires dispatched, got {assignment.status.value}",
+            )
+    assignment.status = StageAssignmentStatus.ACKNOWLEDGED
+    assignment.acknowledged_at = now
+    assignment.lease_expires_at = now + timedelta(seconds=seconds)
+    if assignment.lease_started_at is None:
+        assignment.lease_started_at = assignment.dispatched_at or now
+    assignment.lease_extension_count = (assignment.lease_extension_count or 0) + 1
+
+
+async def renew_lease(
+    session: AsyncSession,
+    assignment: StageAssignment,
+    *,
+    lease_seconds: int | None = None,
+    worker_id: uuid.UUID | None = None,
+    now: datetime | None = None,
+) -> None:
+    now = now or datetime.now(UTC)
+    seconds = lease_seconds if lease_seconds is not None else _lease_seconds()
+    if worker_id is not None:
+        assert_lease_extendable(
+            assignment, worker_id=worker_id, now=now, lease_seconds=seconds
         )
-    return expired
+    assignment.lease_expires_at = now + timedelta(seconds=seconds)
+    if assignment.lease_started_at is None:
+        assignment.lease_started_at = assignment.dispatched_at or now
+    assignment.lease_extension_count = (assignment.lease_extension_count or 0) + 1
+
 
 async def submit_result(
     session,
@@ -229,6 +272,7 @@ async def submit_result(
     success: bool,
     result: dict | None = None,
     error_message: str = "",
+    worker_id: uuid.UUID | None = None,
 ):
     """The real entry point for reporting a stage outcome (called by a
     worker's result-submission path — the reference client in this
@@ -248,9 +292,22 @@ async def submit_result(
     from app.models.pipeline import PipelineRun
     from app.orchestration import controller
 
+    if worker_id is not None and assignment.worker_id != worker_id:
+        raise LeaseNotOwned()
+    if assignment.status not in (
+        StageAssignmentStatus.DISPATCHED,
+        StageAssignmentStatus.ACKNOWLEDGED,
+    ):
+        raise LeaseConflict(
+            "invalid_status",
+            f"submit requires in-flight status, got {assignment.status.value}",
+        )
+
     assignment.status = StageAssignmentStatus.COMPLETED if success else StageAssignmentStatus.FAILED
     assignment.completed_at = datetime.now(UTC)
     assignment.result = result
+    assignment.lease_expires_at = None
+    assignment.lease_started_at = None
 
     if assignment.worker_id is not None:
         worker = await session.get(WorkerRegistration, assignment.worker_id)
@@ -300,4 +357,3 @@ async def submit_result(
             session, run=run, stage=assignment.stage,
             attempt_number=assignment.attempt_number, error_message=error_message,
         )
-

@@ -365,7 +365,7 @@ async def test_reap_recovers_pull_claimed_assignment(ctx):
 
     async with AsyncSessionLocal() as s:
         reaped = await reap_expired_leases(s)
-        assert assignment_id in [x.id for x in reaped]
+        assert assignment_id in [x.assignment.id for x in reaped]
         await s.commit()
 
     async with AsyncSessionLocal() as s:
@@ -373,6 +373,8 @@ async def test_reap_recovers_pull_claimed_assignment(ctx):
         assert a.status == StageAssignmentStatus.PENDING
         assert a.worker_id is None and a.claimed_by is None
         assert a.claimed_at is None and a.claim_token is None
+        assert a.attempt_number == 2  # WS3: recovery bumps attempt
+        assert a.idempotency_key.endswith(":2")
         assert a.claim_count == 1  # lifetime counter preserved
         w = await s.get(WorkerRegistration, uuid.UUID(prov["worker_id"]))
         assert w.current_load == 0

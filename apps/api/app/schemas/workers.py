@@ -14,7 +14,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.models.enums import WorkerStatus
+from app.models.enums import StageAssignmentStatus, WorkerStatus
 
 
 class ProviderCapability(BaseModel):
@@ -152,3 +152,27 @@ class ClaimOut(BaseModel):
     assignment: ClaimedAssignmentOut | None
     outcome: str  # granted | no_work | capacity | ineligible
     reason: str
+
+
+class LeaseOut(BaseModel):
+    assignment_id: uuid.UUID
+    status: StageAssignmentStatus
+    lease_expires_at: datetime | None
+    lease_extension_count: int
+    attempt_number: int
+
+
+class SubmitIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    success: bool
+    result: dict | None = None
+    error_message: str = ""
+    provider_effect_key: str | None = Field(default=None, max_length=500)
+
+
+class SubmitOut(BaseModel):
+    assignment_id: uuid.UUID
+    status: StageAssignmentStatus
+    provider_effect_key: str | None = None
+    provider_effect_created: bool | None = None

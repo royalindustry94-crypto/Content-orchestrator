@@ -38,16 +38,35 @@ from app.core.worker_auth import (
     hash_worker_secret,
 )
 from app.db.session import AsyncSessionLocal
-from app.models.enums import WorkerCredentialStatus, WorkerStatus
+from app.models.assignments import StageAssignment
+from app.models.enums import (
+    RecoveryReason,
+    StageAssignmentStatus,
+    WorkerCredentialStatus,
+    WorkerStatus,
+)
 from app.models.workers import WorkerCredential, WorkerHeartbeat, WorkerRegistration
 from app.models.workspace_membership import WorkspaceMembership
 from app.orchestration.claiming import claim_assignment
+from app.orchestration.dispatcher import (
+    LeaseConflict,
+    LeaseError,
+    LeaseNotOwned,
+    acknowledge,
+    renew_lease,
+    submit_result,
+)
+from app.orchestration.provider_effects import ensure_provider_effect_key
+from app.orchestration.recovery import reap_worker_assignments
 from app.schemas.workers import (
     ClaimedAssignmentOut,
     ClaimIn,
     ClaimOut,
     CredentialRotateOut,
     HeartbeatRecordOut,
+    LeaseOut,
+    SubmitIn,
+    SubmitOut,
     WorkerDrainIn,
     WorkerHeartbeatIn,
     WorkerOut,
@@ -120,6 +139,11 @@ async def register_worker(
         if registration is None:  # credential FK guarantees existence; defensive
             raise HTTPException(status_code=404, detail="worker not found")
         now = datetime.now(UTC)
+        # Crash/restart: any holdings still pointing at this worker from a
+        # previous process tenure must be requeued before we announce ONLINE.
+        await reap_worker_assignments(
+            session, worker.worker_id, reason=RecoveryReason.WORKER_RESTART, now=now
+        )
         registration.supported_stages = payload.supported_stages
         registration.capabilities = payload.capabilities.model_dump()
         registration.worker_version = payload.worker_version
@@ -218,6 +242,9 @@ async def deregister_worker(
         if registration is None:
             raise HTTPException(status_code=404, detail="worker not found")
         if registration.deregistered_at is None:
+            await reap_worker_assignments(
+                session, worker.worker_id, reason=RecoveryReason.WORKER_DEREGISTERED
+            )
             registration.status = WorkerStatus.OFFLINE
             registration.current_load = 0
             registration.deregistered_at = datetime.now(UTC)
@@ -268,6 +295,201 @@ async def claim_assignment_endpoint(
         outcome=result.outcome.value,
         reason=result.reason,
     )
+
+
+def _lease_http_error(exc: LeaseError) -> HTTPException:
+    if isinstance(exc, LeaseNotOwned):
+        return HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=exc.message)
+    if exc.code == "lease_expired":
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.code)
+    if exc.code == "max_lease_exceeded":
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.code)
+    if exc.code == "invalid_status":
+        return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.message)
+    return HTTPException(status_code=status.HTTP_409_CONFLICT, detail=exc.message)
+
+
+async def _load_owned_assignment(
+    session, *, assignment_id: uuid.UUID, worker: AuthenticatedWorker
+) -> StageAssignment:
+    assignment = await session.get(StageAssignment, assignment_id, with_for_update=True)
+    if (
+        assignment is None
+        or assignment.workspace_id != worker.workspace_id
+    ):
+        raise HTTPException(status_code=404, detail="assignment not found")
+    return assignment
+
+
+@worker_router.post(
+    "/assignments/{assignment_id}/ack", response_model=LeaseOut
+)
+async def ack_assignment(
+    assignment_id: uuid.UUID,
+    request: Request,
+    worker: AuthenticatedWorker = Depends(get_current_worker),
+) -> LeaseOut:
+    """Acknowledge a claimed assignment and extend its lease (WS3)."""
+    async with AsyncSessionLocal() as session:
+        registration = await session.get(
+            WorkerRegistration, worker.worker_id, with_for_update=True
+        )
+        if registration is None:
+            raise HTTPException(status_code=404, detail="worker not found")
+        if registration.deregistered_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE, detail="worker is deregistered"
+            )
+        assignment = await _load_owned_assignment(
+            session, assignment_id=assignment_id, worker=worker
+        )
+        try:
+            await acknowledge(session, assignment, worker_id=worker.worker_id)
+        except LeaseError as exc:
+            raise _lease_http_error(exc) from exc
+        await session.commit()
+        out = LeaseOut(
+            assignment_id=assignment.id,
+            status=assignment.status,
+            lease_expires_at=assignment.lease_expires_at,
+            lease_extension_count=assignment.lease_extension_count,
+            attempt_number=assignment.attempt_number,
+        )
+    audit(
+        request,
+        "worker_assignment_ack",
+        worker_id=str(worker.worker_id),
+        assignment_id=str(assignment_id),
+    )
+    return out
+
+
+@worker_router.post(
+    "/assignments/{assignment_id}/renew", response_model=LeaseOut
+)
+async def renew_assignment_lease(
+    assignment_id: uuid.UUID,
+    request: Request,
+    worker: AuthenticatedWorker = Depends(get_current_worker),
+) -> LeaseOut:
+    """Extend an in-flight assignment lease (bounded by max total lease)."""
+    async with AsyncSessionLocal() as session:
+        registration = await session.get(
+            WorkerRegistration, worker.worker_id, with_for_update=True
+        )
+        if registration is None:
+            raise HTTPException(status_code=404, detail="worker not found")
+        if registration.deregistered_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE, detail="worker is deregistered"
+            )
+        assignment = await _load_owned_assignment(
+            session, assignment_id=assignment_id, worker=worker
+        )
+        try:
+            await renew_lease(session, assignment, worker_id=worker.worker_id)
+        except LeaseError as exc:
+            raise _lease_http_error(exc) from exc
+        await session.commit()
+        out = LeaseOut(
+            assignment_id=assignment.id,
+            status=assignment.status,
+            lease_expires_at=assignment.lease_expires_at,
+            lease_extension_count=assignment.lease_extension_count,
+            attempt_number=assignment.attempt_number,
+        )
+    audit(
+        request,
+        "worker_assignment_renew",
+        worker_id=str(worker.worker_id),
+        assignment_id=str(assignment_id),
+        lease_extension_count=out.lease_extension_count,
+    )
+    return out
+
+
+@worker_router.post(
+    "/assignments/{assignment_id}/submit", response_model=SubmitOut
+)
+async def submit_assignment_result(
+    assignment_id: uuid.UUID,
+    payload: SubmitIn,
+    request: Request,
+    worker: AuthenticatedWorker = Depends(get_current_worker),
+) -> SubmitOut:
+    """Submit a stage result. Records a provider effect key first so a
+    duplicated submit of the same attempt cannot double-execute side effects.
+    """
+    async with AsyncSessionLocal() as session:
+        registration = await session.get(
+            WorkerRegistration, worker.worker_id, with_for_update=True
+        )
+        if registration is None:
+            raise HTTPException(status_code=404, detail="worker not found")
+        if registration.deregistered_at is not None:
+            raise HTTPException(
+                status_code=status.HTTP_410_GONE, detail="worker is deregistered"
+            )
+        assignment = await _load_owned_assignment(
+            session, assignment_id=assignment_id, worker=worker
+        )
+        effect = await ensure_provider_effect_key(
+            session,
+            workspace_id=assignment.workspace_id,
+            assignment_id=assignment.id,
+            attempt_number=assignment.attempt_number,
+            effect_key=payload.provider_effect_key,
+        )
+        if not effect.created and assignment.status in (
+            StageAssignmentStatus.COMPLETED,
+            StageAssignmentStatus.FAILED,
+        ):
+            # Idempotent replay of an already-terminal submit.
+            out = SubmitOut(
+                assignment_id=assignment.id,
+                status=assignment.status,
+                provider_effect_key=effect.effect_key,
+                provider_effect_created=False,
+            )
+            await session.commit()
+            return out
+        if not effect.created and assignment.status in (
+            StageAssignmentStatus.DISPATCHED,
+            StageAssignmentStatus.ACKNOWLEDGED,
+        ):
+            # Same attempt already recorded a side-effect but never finished —
+            # refuse rather than risk a second provider call; operator recovers.
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="provider_effect_key already recorded for this attempt",
+            )
+        try:
+            await submit_result(
+                session,
+                assignment=assignment,
+                success=payload.success,
+                result=payload.result,
+                error_message=payload.error_message,
+                worker_id=worker.worker_id,
+            )
+        except LeaseError as exc:
+            raise _lease_http_error(exc) from exc
+        await session.commit()
+        out = SubmitOut(
+            assignment_id=assignment.id,
+            status=assignment.status,
+            provider_effect_key=effect.effect_key,
+            provider_effect_created=effect.created,
+        )
+    audit(
+        request,
+        "worker_assignment_submit",
+        worker_id=str(worker.worker_id),
+        assignment_id=str(assignment_id),
+        success=payload.success,
+        status=out.status.value,
+    )
+    return out
 
 
 # --------------------------------------------------------------------------
@@ -498,6 +720,15 @@ async def revoke_worker_credentials(
         for credential in result.scalars().all():
             credential.status = WorkerCredentialStatus.REVOKED
             revoked += 1
+        await reap_worker_assignments(
+            session, worker_id, reason=RecoveryReason.WORKER_REVOKED
+        )
+        registration = await session.get(WorkerRegistration, worker_id)
+        if registration is not None and registration.deregistered_at is None:
+            # Kill switch: force offline so the worker cannot be selected
+            # until re-provisioned / re-authenticated with a new credential.
+            registration.status = WorkerStatus.OFFLINE
+            registration.current_load = 0
         await session.commit()
     audit(
         request,

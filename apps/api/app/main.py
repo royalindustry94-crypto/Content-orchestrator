@@ -24,26 +24,44 @@ configure_logging(service_name=settings.service_name, level=settings.log_level)
 logger = logging.getLogger(__name__)
 
 
-async def _offline_sweep_loop() -> None:
-    """Server-driven offline detection (WS1): periodically flip workers
-    with stale heartbeats to OFFLINE. Runs in-process; multiple API
-    replicas running it concurrently is safe (idempotent single-statement
-    UPDATE, row locks serialize)."""
+async def _orchestration_maintenance_loop() -> None:
+    """WS3 maintenance tick: flip stale workers offline, reap their
+    holdings, then reap any other expired leases. Multi-replica safe
+    (SKIP LOCKED + idempotent UPDATEs). Ordering matters: offline flip
+    and that worker's assignment reap share one transaction so we never
+    leave load=0 with DISPATCHED holdings for a dead worker.
+    """
     from app.db.session import AsyncSessionLocal
+    from app.models.enums import RecoveryReason
+    from app.orchestration.recovery import reap_expired_leases, reap_worker_assignments
     from app.services.workers import mark_stale_workers_offline
 
     while True:
-        await asyncio.sleep(settings.worker_offline_sweep_interval_seconds)
+        await asyncio.sleep(settings.assignment_reaper_interval_seconds)
         try:
             async with AsyncSessionLocal() as session:
                 flipped = await mark_stale_workers_offline(
                     session, offline_after_seconds=settings.worker_offline_after_seconds
                 )
+                reaped_offline = 0
+                for worker_id in flipped:
+                    outcomes = await reap_worker_assignments(
+                        session, worker_id, reason=RecoveryReason.WORKER_OFFLINE
+                    )
+                    reaped_offline += len(outcomes)
+                expired = await reap_expired_leases(session)
                 await session.commit()
-            if flipped:
-                logger.info("offline sweep flipped workers", extra={"count": flipped})
-        except Exception:  # noqa: BLE001 — sweep must survive transient DB errors
-            logger.exception("offline sweep iteration failed")
+            if flipped or expired or reaped_offline:
+                logger.info(
+                    "maintenance tick",
+                    extra={
+                        "workers_flipped": len(flipped),
+                        "assignments_reaped_offline": reaped_offline,
+                        "assignments_reaped_expired": len(expired),
+                    },
+                )
+        except Exception:  # noqa: BLE001 — tick must survive transient DB errors
+            logger.exception("orchestration maintenance tick failed")
 
 
 @asynccontextmanager
@@ -52,14 +70,16 @@ async def lifespan(app: FastAPI):
         "service starting",
         extra={"service": settings.service_name, "environment": settings.environment},
     )
-    # Tests call mark_stale_workers_offline directly with a controlled
-    # clock; the background sweep would only add nondeterminism there.
-    sweep_task = (
-        asyncio.create_task(_offline_sweep_loop()) if settings.environment != "test" else None
+    # Tests drive offline/reaper paths with a controlled clock; the
+    # background tick would only add nondeterminism there.
+    tick_task = (
+        asyncio.create_task(_orchestration_maintenance_loop())
+        if settings.environment != "test"
+        else None
     )
     yield
-    if sweep_task is not None:
-        sweep_task.cancel()
+    if tick_task is not None:
+        tick_task.cancel()
     logger.info("service shutting down", extra={"service": settings.service_name})
 
 

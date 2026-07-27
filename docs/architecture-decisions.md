@@ -69,6 +69,41 @@ capability spec (`protocol_version`, `extra="forbid"`); the server rejects
 unsupported versions (accepted set: `[1]`) and echoes the accepted version
 back — no silent downgrades.
 
+## Lease management & recovery (Milestone 4 · Workstream 3)
+
+**Bounded leases**: each acquisition sets `lease_started_at`; renew/ack
+extends `lease_expires_at` by `assignment_lease_seconds` but is rejected
+when the extension would exceed `assignment_max_lease_seconds` from
+`lease_started_at`. This prevents heartbeat-extend from creating immortal
+assignments while still allowing long provider calls within a hard ceiling.
+
+**Same-row requeue with attempt bump**: lease expiry and dead-worker
+recovery return the *same* `stage_assignments` row to `PENDING`, bump
+`attempt_number`, rewrite `idempotency_key` to `{run}:{stage}:{attempt}`,
+and clear lease/claim fields (`claim_count` is a lifetime counter and is
+preserved). Exhaustion (`attempt+1 > max_attempts`) routes to
+`dead_letter_jobs` and fails the run — never silent drop.
+
+**Provider effect keys**: durable `provider_effect_keys` rows keyed by
+`(workspace_id, effect_key)` with default key `{assignment_id}:{attempt}`
+prevent duplicate provider side-effects across crash → requeue → re-claim.
+A recovered attempt has a new attempt number and therefore a new key.
+
+**Recovery audit ledger**: append-only `stage_recovery_audit` (FORCE RLS,
+member-readable, service-role-written, `prevent_update` trigger) records
+every recovery with reason/outcome — parallel to `stage_claim_audit`.
+
+**Combined maintenance tick**: offline sweep and lease reaper share one
+loop. Ordering is offline flip → reap that worker's holdings → reap
+global expired leases, closing the window where `current_load=0` but
+assignments remain `DISPATCHED`. Reap also runs on register (restart),
+deregister, and credential revoke so identity-state changes do not wait
+for lease timeout.
+
+**HTTP lease lifecycle**: machine-auth `ack` / `renew` / `submit` endpoints
+enforce ownership, status, live lease, and max-total bounds; revoked
+credentials cannot renew (401 at auth). Drain is enforced at claim time.
+
 ## Workspace scoping
 
 Single workspace per account at launch (v2 spec). Every tenant-owned table

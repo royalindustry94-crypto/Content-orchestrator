@@ -59,6 +59,18 @@ class Settings(BaseSettings):
     # controlled clock).
     worker_offline_sweep_interval_seconds: int = Field(default=30)
 
+    # --- Lease management & recovery (Workstream 3) ---
+    # Per-extension lease length granted on claim / ack / renew.
+    assignment_lease_seconds: int = Field(default=60)
+    # Hard ceiling from lease_started_at; renewals past this are rejected.
+    assignment_max_lease_seconds: int = Field(default=900)
+    # How often the maintenance tick reaps expired leases (and runs the
+    # offline sweep). Disabled in test env (tests call reapers directly).
+    assignment_reaper_interval_seconds: int = Field(default=15)
+    assignment_reaper_batch_size: int = Field(default=100)
+    # Used when a workflow stage definition cannot be resolved at recovery.
+    assignment_default_max_attempts: int = Field(default=3)
+
     # --- Spend controls (defaults; per-workspace overrides live in DB) ---
     default_daily_spend_cap_usd: float = Field(default=50.0)
     default_monthly_spend_cap_usd: float = Field(default=1000.0)

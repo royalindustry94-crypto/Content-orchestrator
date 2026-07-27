@@ -105,3 +105,11 @@ class StageAssignment(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):
     # Optional client-supplied token so a retried claim returns the same
     # assignment instead of consuming a second row (WS2 idempotency).
     claim_token: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    # WS3 lease bounds: wall-clock origin of the current lease tenure and
+    # how many times it has been extended. Cleared on recovery / completion.
+    lease_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    lease_extension_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )

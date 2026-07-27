@@ -26,6 +26,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.models.assignments import StageAssignment
 from app.models.claim_audit import StageClaimAudit
 from app.models.enums import ClaimOutcome, StageAssignmentStatus, WorkerStatus
@@ -34,12 +35,17 @@ from app.orchestration.events.envelope import child_span
 from app.orchestration.events.types import STAGE_ASSIGNED
 from app.orchestration.outbox import emit
 
-# How fresh a worker's last heartbeat must be to claim. Matches the WS1
-# offline threshold: a worker the sweep would flip offline cannot claim.
+# Back-compat module aliases; prefer Settings at call sites.
 CLAIM_HEARTBEAT_MAX_AGE_SECONDS = 90
-# Lease granted on claim before the assignment is treated as lost (reaper
-# returns it to pending). Mirrors the push dispatcher's ack timeout.
 CLAIM_LEASE_SECONDS = 60
+
+
+def _heartbeat_max_age() -> int:
+    return get_settings().worker_offline_after_seconds
+
+
+def _claim_lease_seconds() -> int:
+    return get_settings().assignment_lease_seconds
 
 
 @dataclass(frozen=True)
@@ -117,7 +123,15 @@ async def claim_assignment(
             )
             return ClaimResult(existing, ClaimOutcome.GRANTED, "idempotent replay")
 
-    # 2. Worker eligibility (status / heartbeat freshness / capacity).
+    # 2. Worker eligibility (status / heartbeat freshness / capacity / drain).
+    if worker.drain:
+        reason = "worker is draining"
+        await _record(
+            session, worker=worker, outcome=ClaimOutcome.INELIGIBLE,
+            reason=reason, assignment=None, stage=None,
+        )
+        return ClaimResult(None, ClaimOutcome.INELIGIBLE, reason)
+
     if worker.deregistered_at is not None or worker.status != WorkerStatus.ONLINE:
         reason = f"worker status is {worker.status.value}, not online"
         await _record(
@@ -127,7 +141,7 @@ async def claim_assignment(
         return ClaimResult(None, ClaimOutcome.INELIGIBLE, reason)
 
     if worker.last_heartbeat_at is None or (
-        (now - worker.last_heartbeat_at).total_seconds() >= CLAIM_HEARTBEAT_MAX_AGE_SECONDS
+        (now - worker.last_heartbeat_at).total_seconds() >= _heartbeat_max_age()
     ):
         reason = "heartbeat is stale"
         await _record(
@@ -176,13 +190,16 @@ async def claim_assignment(
         return ClaimResult(None, ClaimOutcome.NO_WORK, reason)
 
     # 4. Mutate assignment + worker load in the SAME transaction.
+    lease_seconds = _claim_lease_seconds()
     trace_id, span_id = child_span(assignment.trace_id)
     assignment.status = StageAssignmentStatus.DISPATCHED
     assignment.worker_id = worker.id
     assignment.claimed_by = worker.id
     assignment.claimed_at = now
     assignment.dispatched_at = now
-    assignment.lease_expires_at = now + timedelta(seconds=CLAIM_LEASE_SECONDS)
+    assignment.lease_expires_at = now + timedelta(seconds=lease_seconds)
+    assignment.lease_started_at = now
+    assignment.lease_extension_count = 0
     assignment.claim_count = (assignment.claim_count or 0) + 1
     assignment.claim_token = claim_token
     assignment.trace_id = trace_id

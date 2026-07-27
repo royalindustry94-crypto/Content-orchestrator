@@ -4,6 +4,8 @@
 
 from app.models.assignments import StageAssignment  # noqa: F401
 from app.models.claim_audit import StageClaimAudit  # noqa: F401
+from app.models.provider_effects import ProviderEffectKey  # noqa: F401
+from app.models.recovery_audit import StageRecoveryAudit  # noqa: F401
 
 # Milestone 3 content domain
 from app.models.config import ContentPillar, ProviderCredential, SpendCap  # noqa: F401
@@ -37,6 +39,7 @@ __all__ = [
     "OutboxEvent", "EventConsumer", "ConsumerCheckpoint",
     "JobSchedule", "WorkspaceConcurrencyLimit",
     "WorkerRegistration", "WorkerHeartbeat",
-    "StageAssignment",
+    "StageAssignment", "StageClaimAudit",
+    "StageRecoveryAudit", "ProviderEffectKey",
     "ReviewGate",
 ]
