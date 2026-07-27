@@ -86,6 +86,9 @@ class Settings(BaseSettings):
     default_daily_spend_cap_usd: float = Field(default=50.0)
     default_monthly_spend_cap_usd: float = Field(default=1000.0)
 
+    # --- Outbox relay (Private Beta review decisions + future consumers) ---
+    outbox_relay_interval_seconds: float = Field(default=2.0, ge=0.2)
+
 
 @lru_cache
 def get_settings() -> Settings:

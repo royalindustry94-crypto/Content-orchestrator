@@ -27,7 +27,12 @@ class ContentStatus(str, enum.Enum):
 
 
 class PipelineRunStatus(str, enum.Enum):
+    """Full pipeline_run_status enum (M3 + M4 paused/compensating/created)."""
+
+    CREATED = "created"
     RUNNING = "running"
+    PAUSED = "paused"
+    COMPENSATING = "compensating"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"

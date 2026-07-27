@@ -77,3 +77,11 @@ def require_workspace_role(*allowed_roles: WorkspaceRole):
 
 
 require_workspace_admin = require_workspace_role(WorkspaceRole.ADMIN)
+# Content authors (Private Beta desk submit).
+require_workspace_content_author = require_workspace_role(
+    WorkspaceRole.ADMIN, WorkspaceRole.EDITOR
+)
+# Human Review Gate decision-makers (matches review_decisions RLS insert roles).
+require_workspace_reviewer = require_workspace_role(
+    WorkspaceRole.ADMIN, WorkspaceRole.REVIEWER
+)
