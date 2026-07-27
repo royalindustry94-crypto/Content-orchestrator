@@ -48,14 +48,22 @@ npm install            # generates package-lock.json — commit it
 npm run dev
 ```
 
-Visit `http://localhost:5173` — it calls the API's `/health/ready`
-endpoint on load, so you'll see "connected" once both the API and
-Postgres are up.
+Visit `http://localhost:5173` for the **Private Beta Review Desk** (submit
+draft → Human Review Gate → approve/reject). Paste a Supabase access token
+and workspace id. API routes are proxied under `/api/*`.
+
+Launch path / work packages: `docs/ROADMAP.md`, `docs/work-packages/`.
 
 ## Health endpoints
 
 - `GET /health/live` — process is up, no dependency check
 - `GET /health/ready` — process up AND Postgres reachable (503 if not)
+
+## Private Beta Review Desk APIs
+
+- `POST /workspaces/{id}/content-jobs` — submit draft into Review Gate
+- `GET /workspaces/{id}/review-gates` — review queue (`?status=awaiting|all|...`)
+- `POST /workspaces/{id}/review-gates/{gate_id}/decision` — approve/reject
 
 ## Tests
 
