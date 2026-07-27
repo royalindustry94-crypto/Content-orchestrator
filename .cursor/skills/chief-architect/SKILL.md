@@ -46,6 +46,7 @@ Read `.cursor/skills/AUTHORITY_MATRIX.md` before acting.
 |---|---|
 | Table DDL, indexes, constraints, RLS policies, grants, Alembic revisions, EXPLAIN, SKIP LOCKED details | `/postgresql-expert` |
 | Route handlers, orchestration functions, worker client code, app-level tests | `/backend-engineer` |
+| React+TypeScript screens, reusable UI, frontend tests/build | `/frontend-engineer` |
 | Product scope, Lovable bar, release VERIFIED, merge policy | `/ceo` |
 
 You may still **REJECT** a proposal that violates stack freeze before specialists start.
@@ -72,8 +73,9 @@ You may still **REJECT** a proposal that violates stack freeze before specialist
 
 ## Review protocol
 
-Follow `references/review-protocol.md`. Always ask: did `/postgresql-expert`
-and `/backend-engineer` get the right work? Condensed:
+Follow `references/review-protocol.md`. Always ask: did `/postgresql-expert`,
+`/backend-engineer`, and `/frontend-engineer` (when UI is in scope) get the
+right work? Condensed:
 
 1. Scope / boundaries
 2. Stack check
@@ -90,7 +92,9 @@ financial controls, or major maintainability/SoT changes.
 
 **REQUIRE `/postgresql-expert`** before approving any schema/RLS/migration.
 
-**REQUIRE `/backend-engineer`** before treating an ADR as implemented.
+**REQUIRE `/backend-engineer`** before treating a backend ADR as implemented.
+
+**REQUIRE `/frontend-engineer`** before treating a UI ADR as implemented.
 
 ## Merge & VERIFIED
 

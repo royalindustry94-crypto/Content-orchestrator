@@ -16,6 +16,7 @@ Project skills live under `.cursor/skills/<skill-id>/` with a required
 | [`postgresql-expert`](./skills/postgresql-expert/) | `/postgresql-expert` | Schema, RLS, Alembic, SQL concurrency, DB correctness |
 | [`security-auditor`](./skills/security-auditor/) | `/security-auditor` | Independent security audit; blocks Critical/High |
 | [`qa-breaker`](./skills/qa-breaker/) | `/qa-breaker` | Adversarial QA; concurrency/recovery/migration/frontend gates |
+| [`frontend-engineer`](./skills/frontend-engineer/) | `/frontend-engineer` | React+TypeScript UI, reusable components, API UX, a11y, frontend gates |
 
 ## Hard rules for all skills
 

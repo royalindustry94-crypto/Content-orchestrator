@@ -93,7 +93,8 @@ Detail: `references/audit-checklist.md`, `references/threat-surfaces.md`,
 |---|---|
 | Schema/RLS/migration correctness depth | `/postgresql-expert` (you still verify adversarially) |
 | Stack/SoT drift enabling insecurity | `/chief-architect` |
-| Implementation of remediations | `/backend-engineer` (you re-audit after) |
+| Implementation of backend remediations | `/backend-engineer` (you re-audit after) |
+| Implementation of UI remediations | `/frontend-engineer` (you re-audit after) |
 | Release VERIFIED / scope accept of Medium residuals | `/ceo` |
 
 ## Required output

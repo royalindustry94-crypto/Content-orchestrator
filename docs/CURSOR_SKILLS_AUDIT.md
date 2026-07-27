@@ -201,3 +201,9 @@
 ## Final status
 
 **VERIFIED**
+
+---
+
+## Addendum — Frontend Engineer (2026-07-27)
+
+Skill **`frontend-engineer`** (`/frontend-engineer`) was added after this audit on branch `cursor/frontend-engineer-skill-b52d`. Authority matrix, CEO/Architect/QA/Security cross-links, and `docs/CURSOR_SKILLS.md` were updated to include it. This addendum does **not** re-open the four-skill audit status above; treat the new skill as separately reviewable.

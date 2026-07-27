@@ -86,7 +86,8 @@ Detail: `references/attack-matrix.md`, `references/test-quality.md`,
 |---|---|
 | Security severity / secret/CI exploit framing | `/security-auditor` |
 | Schema/RLS design defects | `/postgresql-expert` |
-| Production code remediations | `/backend-engineer` |
+| Production backend/worker remediations | `/backend-engineer` |
+| Production UI remediations | `/frontend-engineer` |
 | Architecture enabling systemic failure | `/chief-architect` |
 | Release VERIFIED / scope | `/ceo` |
 

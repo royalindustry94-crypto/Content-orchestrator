@@ -47,6 +47,7 @@ Read `.cursor/skills/AUTHORITY_MATRIX.md` before acting.
 | Create/alter tables, enums, RLS, grants, indexes, constraints, triggers | `/postgresql-expert` |
 | Bypass review gate, spend caps, or ship half-built scope | `/ceo` |
 | Claim release VERIFIED | `/ceo` with evidence pack |
+| Build or redesign `apps/web` UI as the primary deliverable | `/frontend-engineer` |
 
 ## Approved stack (do not drift)
 
