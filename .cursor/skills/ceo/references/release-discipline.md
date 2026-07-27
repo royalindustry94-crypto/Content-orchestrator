@@ -13,6 +13,7 @@ DESIGN → specialist APPROVALS → IMPLEMENT → TESTS + MIGRATIONS → AUDIT �
 |---|---|
 | Design doc | Workstream author; CEO accepts scope; `/content-orchestrator-expert` for domain impact |
 | Architecture ADR / boundary | `/chief-architect` |
+| Executive Operations Hub architecture | `/executive-operations-hub-architect` |
 | Schema / RLS / Alembic | `/postgresql-expert` |
 | FastAPI / worker implementation | `/backend-engineer` |
 | React+TypeScript UI | `/frontend-engineer` |

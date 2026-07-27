@@ -73,7 +73,7 @@ When reviewing a change, map impact across:
 - Publishing integrations (planned or present)
 - Analytics / reporting surfaces (do not invent metrics SoT)
 - Approvals / Review Gate
-- Future **Executive Operations Hub** — prefer clean boundaries and events; reject tight premature coupling unless Architect+CEO approved
+- Future **Executive Operations Hub** — prefer clean boundaries and events; reject tight premature coupling unless Architect+CEO approved; Hub design → `/executive-operations-hub-architect`
 
 ## Authority
 
@@ -103,6 +103,7 @@ When reviewing a change, map impact across:
 |-----------|-----------------|
 | Go/no-go, residual risk, product VERIFIED | `/ceo` |
 | Stack/SoT/boundaries/ADR | `/chief-architect` |
+| Executive Operations Hub architecture | `/executive-operations-hub-architect` |
 | API/worker implementation | `/backend-engineer` |
 | UI | `/frontend-engineer` |
 | Schema/RLS/migrations | `/postgresql-expert` |

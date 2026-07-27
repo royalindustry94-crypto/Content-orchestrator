@@ -30,4 +30,5 @@ parallel pipeline (usually **CREEP** / **DRIFT**).
 
 - Treat as a **consumer/coordinator** of orchestration signals, not a second SoT
 - Prefer events/APIs with stable contracts
-- Do not embed hub-specific product UI into core milestones without `/ceo` + `/chief-architect`
+- Hub **architecture** is owned by `/executive-operations-hub-architect`
+- Do not embed hub-specific product UI into core milestones without `/ceo` + `/chief-architect` + Hub Architect

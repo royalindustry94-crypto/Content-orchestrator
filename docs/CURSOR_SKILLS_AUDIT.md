@@ -223,3 +223,7 @@ Skill **`documentation-writer`** (`/documentation-writer`) was added on branch `
 ## Addendum — Content Orchestrator Expert (2026-07-27)
 
 Skill **`content-orchestrator-expert`** (`/content-orchestrator-expert`) was added on branch `cursor/content-orchestrator-expert-skill-b52d`. Domain guardian for principles, roadmap fit, creep/drift, and product impact assessments. Product go/no-go remains `/ceo`; ADR acceptance remains `/chief-architect`. Separately reviewable.
+
+## Addendum — Executive Operations Hub Architect (2026-07-27)
+
+Skill **`executive-operations-hub-architect`** (`/executive-operations-hub-architect`) was added on branch `cursor/exec-ops-hub-architect-skill-b52d`. Owns Ops Hub architecture (agents, ops approvals, dashboards, GitHub/Cursor/CI integrations). Hub is not content-orchestration SoT. Product stack ADRs remain `/chief-architect`. Separately reviewable.

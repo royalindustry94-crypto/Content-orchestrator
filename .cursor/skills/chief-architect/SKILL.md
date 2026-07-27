@@ -50,6 +50,7 @@ Read `.cursor/skills/AUTHORITY_MATRIX.md` before acting.
 | CI/CD workflows, deploy/rollback runbooks, Actions permissions, runtime secrets injection | `/devops-engineer` |
 | ADR drafts, architecture doc sync, milestone prose accuracy | `/documentation-writer` (you still **accept** ADRs) |
 | Domain fit, principles, roadmap creep/drift | `/content-orchestrator-expert` |
+| Executive Operations Hub design (ops agents/approvals/integrations) | `/executive-operations-hub-architect` |
 | Product scope, Lovable bar, release VERIFIED, merge policy | `/ceo` |
 
 You may still **REJECT** a proposal that violates stack freeze before specialists start.
