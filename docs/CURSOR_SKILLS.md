@@ -17,6 +17,7 @@
 
 **Authority matrix:** [`.cursor/skills/AUTHORITY_MATRIX.md`](../.cursor/skills/AUTHORITY_MATRIX.md)  
 **Full audit:** [`CURSOR_SKILLS_AUDIT.md`](./CURSOR_SKILLS_AUDIT.md)  
+**CEO Master Rule (highest):** [`CEO_MASTER_RULE.md`](./CEO_MASTER_RULE.md)  
 **Always-on engineering rule:** [`ENGINEERING_STANDARD_RULE.md`](./ENGINEERING_STANDARD_RULE.md)
 
 Individual pointers: `CEO_SKILL.md`, `CONTENT_ORCHESTRATOR_EXPERT_SKILL.md`,

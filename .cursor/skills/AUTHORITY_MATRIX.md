@@ -38,3 +38,12 @@ No skill may:
 ## Approved stack (all skills)
 
 FastAPI · SQLAlchemy 2.x · Alembic · PostgreSQL · React + TypeScript · Python workers.
+
+## Project rules (always on)
+
+| Priority | Rule |
+|---|---|
+| **Highest** | `.cursor/rules/ceo-master-rule.mdc` — overrides conflicting guidance unless Founder-approved |
+| Baseline | `.cursor/rules/content-orchestrator-engineering-standard.mdc` — subordinate on conflict |
+
+No skill may waive the CEO Master Rule.

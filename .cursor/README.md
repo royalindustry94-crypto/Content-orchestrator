@@ -5,9 +5,10 @@
 Rules live under `.cursor/rules/` as `.mdc` files
 ([Cursor rules docs](https://cursor.com/docs/rules.md)).
 
-| Rule | File | Apply |
-|---|---|---|
-| Content Orchestrator Engineering Standard | [`rules/content-orchestrator-engineering-standard.mdc`](./rules/content-orchestrator-engineering-standard.mdc) | `alwaysApply: true` (every task) |
+| Rule | File | Apply | Priority |
+|---|---|---|---|
+| **CEO Master Rule** | [`rules/ceo-master-rule.mdc`](./rules/ceo-master-rule.mdc) | `alwaysApply: true` | **Highest** — overrides conflicting project guidance unless Founder-approved |
+| Content Orchestrator Engineering Standard | [`rules/content-orchestrator-engineering-standard.mdc`](./rules/content-orchestrator-engineering-standard.mdc) | `alwaysApply: true` | Baseline; subordinate to CEO Master Rule on conflict |
 
 ## Skills
 

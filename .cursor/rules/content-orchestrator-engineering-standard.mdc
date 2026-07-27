@@ -6,7 +6,11 @@ alwaysApply: true
 # Content Orchestrator Engineering Standard
 
 This rule applies to **every task** in this repository. Skills under
-`.cursor/skills/` specialize roles; this rule is the non-negotiable baseline.
+`.cursor/skills/` specialize roles; this rule is a non-negotiable baseline.
+
+**Priority:** Subordinate to the **CEO Master Rule**
+(`.cursor/rules/ceo-master-rule.mdc`). On conflict, CEO Master Rule wins
+unless the Founder explicitly approves an exception.
 
 ## Architecture
 
