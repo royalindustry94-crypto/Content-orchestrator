@@ -120,7 +120,7 @@ When reviewing a change, map impact across:
 3. **Provider abstraction** — keep vendor specifics at the edges (workers/adapters), not in core workflow truth.
 4. **Complete implementations** — no TODO/placeholder/silent failure on in-scope production paths.
 5. **Companion artifacts** — domain changes need docs + tests + migration plan when schema/API changes.
-6. **Hub-ready, not hub-tangled** — design for future Executive Operations Hub via clear boundaries/events; do not merge hub speculation into core without ADR+CEO.
+6. **Hub-ready, not hub-tangled** — design for future Executive Operations Hub via clear boundaries/events; Hub architecture owned by `/executive-operations-hub-architect`; do not merge hub speculation into core without ADR+CEO.
 7. **Evidence before VERIFIED** — cite design docs, modules, and principle checklist results.
 8. **Never merge.**
 
