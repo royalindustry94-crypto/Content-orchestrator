@@ -104,6 +104,31 @@ for lease timeout.
 enforce ownership, status, live lease, and max-total bounds; revoked
 credentials cannot renew (401 at auth). Drain is enforced at claim time.
 
+## Priority, back-pressure & resource protection (Milestone 4 · Workstream 4)
+
+**Effective priority at claim**: `stage_assignments.priority` is a base
+value (seeded from `workspaces.priority_tier * weight`). Claim selection
+orders by `priority + age_boost(created_at)` descending, then
+`created_at` ascending. Age boost is computed in SQL from the server
+clock so it cannot go stale and needs no refresher.
+
+**Provider concurrency budgets**: optional per-`(workspace, provider)`
+ceilings. Claim/dispatch take `FOR UPDATE` on the budget row, count
+DISPATCHED/ACKNOWLEDGED rows with that provider, and skip (claim) or
+leave PENDING (dispatch) when exhausted. Missing budget ⇒ no limit.
+Over-budget claim skips use PostgreSQL `SAVEPOINT` so locks release and
+concurrent claimers are not starved.
+
+**Queue-depth back-pressure**: PENDING depth vs soft/hard limits on
+`workspace_concurrency_limits` drives `workspace_backpressure_state`
+(`normal|pressured|throttled`). Transitions emit at-most-one
+`backpressure.entered` / `backpressure.cleared` outbox event. THROTTLED
+halves scheduler `max_per_scheduler_tick` (min 1). Work is never dropped.
+
+**Spend-cap serialization**: `reserve_spend` locks the matching
+`spend_caps` row `FOR UPDATE` so concurrent reservations cannot both
+pass the remaining-budget check.
+
 ## Workspace scoping
 
 Single workspace per account at launch (v2 spec). Every tenant-owned table

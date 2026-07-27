@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -217,13 +217,14 @@ async def upsert_provider_budget(
 @router.delete(
     "/provider-budgets/{provider}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
 )
 async def delete_provider_budget(
     workspace_id: uuid.UUID,
     provider: str,
     request: Request,
     _membership: WorkspaceMembership = Depends(require_workspace_admin),
-) -> None:
+) -> Response:
     async with AsyncSessionLocal() as session:
         existing = (
             await session.execute(
@@ -246,3 +247,4 @@ async def delete_provider_budget(
         workspace_id=str(workspace_id),
         provider=provider,
     )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)

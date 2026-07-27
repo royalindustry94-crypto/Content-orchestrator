@@ -166,8 +166,10 @@ async def claim_assignment(
         return ClaimResult(None, ClaimOutcome.CAPACITY, reason)
 
     # 3. Select eligible PENDING assignments ordered by effective priority
-    #    (WS4), then created_at. SKIP LOCKED so concurrent claimers never
-    #    contend for the same row. Over-budget providers are skipped.
+    #    (WS4), then created_at. One row at a time under SAVEPOINT so an
+    #    over-budget skip releases its lock and does not starve other
+    #    claimers (a batch FOR UPDATE would hold every candidate until
+    #    commit). SKIP LOCKED so concurrent claimers never contend.
     if not worker.supported_stages:
         reason = "worker supports no stages"
         await _record(
@@ -176,39 +178,48 @@ async def claim_assignment(
         )
         return ClaimResult(None, ClaimOutcome.NO_WORK, reason)
 
+    from sqlalchemy import text as sa_text
+
     batch = get_settings().claim_candidate_batch_size
     effective = effective_priority_expr(
         StageAssignment.priority, StageAssignment.created_at, now=now
     )
-    candidate = await session.execute(
-        select(StageAssignment)
-        .where(
+    skipped_ids: list[uuid.UUID] = []
+    assignment: StageAssignment | None = None
+    saw_provider_budget_block = False
+
+    for _ in range(batch):
+        await session.execute(sa_text("SAVEPOINT claim_candidate"))
+        where = [
             StageAssignment.workspace_id == worker.workspace_id,
             StageAssignment.status == StageAssignmentStatus.PENDING,
             StageAssignment.stage.in_(list(worker.supported_stages)),
+        ]
+        if skipped_ids:
+            where.append(StageAssignment.id.notin_(skipped_ids))
+        candidate = await session.execute(
+            select(StageAssignment)
+            .where(*where)
+            .order_by(effective.desc(), StageAssignment.created_at.asc())
+            .limit(1)
+            .with_for_update(skip_locked=True)
         )
-        .order_by(effective.desc(), StageAssignment.created_at.asc())
-        .limit(batch)
-        .with_for_update(skip_locked=True)
-    )
-    candidates = list(candidate.scalars().all())
-    if not candidates:
-        reason = "no eligible assignment"
-        await _record(
-            session, worker=worker, outcome=ClaimOutcome.NO_WORK,
-            reason=reason, assignment=None, stage=None,
-        )
-        return ClaimResult(None, ClaimOutcome.NO_WORK, reason)
-
-    assignment: StageAssignment | None = None
-    saw_provider_budget_block = False
-    for row in candidates:
+        row = candidate.scalar_one_or_none()
+        if row is None:
+            await session.execute(sa_text("RELEASE SAVEPOINT claim_candidate"))
+            break
         if not await has_provider_capacity(
             session, workspace_id=worker.workspace_id, provider=row.provider
         ):
             saw_provider_budget_block = True
+            skipped_ids.append(row.id)
+            # Release the assignment (+ budget) lock so other claimers can
+            # proceed on sibling pending rows.
+            await session.execute(sa_text("ROLLBACK TO SAVEPOINT claim_candidate"))
+            await session.execute(sa_text("RELEASE SAVEPOINT claim_candidate"))
             continue
         assignment = row
+        await session.execute(sa_text("RELEASE SAVEPOINT claim_candidate"))
         break
 
     if assignment is None:
