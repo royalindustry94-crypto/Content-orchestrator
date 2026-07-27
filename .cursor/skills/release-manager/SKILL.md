@@ -33,8 +33,9 @@ Invoke when the task involves:
 - Explicit `/release-manager`
 
 Do **not** use this skill as a substitute for `/ceo` (product VERIFIED /
-go-no-go), `/devops-engineer` (CI/CD ownership), `/qa-breaker`,
-`/security-auditor`, or implementing engineers.
+go-no-go), `/devops-engineer` (CI/CD ownership), `/documentation-writer`
+(doc prose/ADR drafts), `/qa-breaker`, `/security-auditor`, or implementing
+engineers.
 
 ## Authority boundary vs CEO / DevOps
 
@@ -83,6 +84,7 @@ substitute for CEO product VERIFIED when the CEO skill is in the loop.
 | Missing UI fixes | `/frontend-engineer` |
 | Migration design / irreversible DDL / RLS gaps | `/postgresql-expert` |
 | CI red, deploy/rollback mechanics broken | `/devops-engineer` |
+| Changelog / release notes / ADR prose accuracy | `/documentation-writer` |
 | Security findings / re-audit | `/security-auditor` |
 | Adversarial QA gaps / FAILED QA | `/qa-breaker` |
 

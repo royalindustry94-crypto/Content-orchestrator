@@ -90,6 +90,7 @@ Detail: `references/attack-matrix.md`, `references/test-quality.md`,
 | Production UI remediations | `/frontend-engineer` |
 | CI/CD / deploy / rollback remediations | `/devops-engineer` |
 | Release packaging / readiness report | `/release-manager` |
+| Doc accuracy / invented-feature claims in docs | `/documentation-writer` |
 | Architecture enabling systemic failure | `/chief-architect` |
 | Release VERIFIED / scope | `/ceo` |
 

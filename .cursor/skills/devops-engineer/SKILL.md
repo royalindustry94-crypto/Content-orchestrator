@@ -83,6 +83,7 @@ Do **not** use this skill as a substitute for `/ceo`, `/chief-architect`,
 | Secrets exposure, workflow supply-chain, auth in CI | `/security-auditor` |
 | Adversarial proof of migrate/rollback/concurrency failure | `/qa-breaker` |
 | Release readiness packaging / version/tag/notes | `/release-manager` |
+| Doc accuracy / ADR draft prose / changelog wording | `/documentation-writer` |
 
 ## Hard rules
 

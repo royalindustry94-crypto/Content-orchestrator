@@ -13,7 +13,7 @@
 | Security | `/security-auditor` on SHA; Critical/High = 0 | FAILED |
 | QA | `/qa-breaker` on SHA | FAILED |
 | DevOps | Deploy/rollback/secrets notes when shipping runtime | NOT VERIFIED / FAILED |
-| Docs | Version, tag plan, changelog, release notes | NOT VERIFIED |
+| Docs | Version, tag plan, changelog, release notes (`/documentation-writer` for prose accuracy) | NOT VERIFIED |
 | Invariants | Review Gate, spend, audit, RLS, isolation | FAILED if knowingly broken |
 | Placeholders | No TODO/mock/silent-fail on in-scope paths | FAILED |
 
