@@ -107,9 +107,7 @@ async def remove_member(
 
     is_self_leave = str(user_id) == user.id
     if not is_self_leave and caller_membership.role != WorkspaceRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="requires one of: admin"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="requires one of: admin")
 
     target = await get_membership(workspace_id, AuthenticatedUser(id=str(user_id), email=None), db)
     if target is None:

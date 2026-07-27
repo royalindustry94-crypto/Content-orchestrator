@@ -1,0 +1,13 @@
+---
+description: Core architecture and approved stack — always apply
+alwaysApply: true
+---
+
+# Architecture
+
+- Stack: FastAPI · SQLAlchemy **2.x** · Alembic · **PostgreSQL only** (SoT) · React+TS · Python workers
+- No architecture drift (no alternate SoT, ORM, or queue-as-orchestration-SoT without accepted ADR)
+- Prefer improving existing patterns over new technologies
+- Simple, maintainable, modular, production-ready
+- Backward compatibility unless an approved migration plan exists
+- Document significant architectural and release-impacting decisions in `docs/`

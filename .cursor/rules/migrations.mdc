@@ -1,0 +1,13 @@
+---
+description: Alembic migration standards — reversible, reviewed, fresh-DB verified
+globs: apps/api/alembic/**/*
+alwaysApply: false
+---
+
+# Migrations
+
+- Alembic for all schema changes — no ad-hoc prod DDL as SoT
+- Migrations must be reversible (or expand/contract with explicit forward-fix plan)
+- Verify on fresh PostgreSQL: upgrade → downgrade → upgrade (replay)
+- Invoke **Migration Reviewer** subagent for DDL/RLS/index/constraint changes
+- Cite migration head revision in completion evidence

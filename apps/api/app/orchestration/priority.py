@@ -29,9 +29,7 @@ def compute_age_boost(
         if interval_seconds is not None
         else settings.assignment_age_boost_interval_seconds
     )
-    step = (
-        per_interval if per_interval is not None else settings.assignment_age_boost_per_interval
-    )
+    step = per_interval if per_interval is not None else settings.assignment_age_boost_per_interval
     cap = boost_max if boost_max is not None else settings.assignment_age_boost_max
     age = max(0.0, (now - created_at).total_seconds())
     if interval <= 0:

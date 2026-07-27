@@ -1,0 +1,12 @@
+---
+description: Quality bar — no TODOs, placeholders, silent failures; complete before done
+alwaysApply: true
+---
+
+# Quality bar
+
+- No TODOs / FIXME / placeholders / fake success on in-scope production paths
+- No silent failures — errors must surface; do not swallow exceptions that drop work
+- Production code must be complete before marking work complete
+- Never weaken security, tests, logging, validation, or architecture just to pass CI
+- Prefer existing project patterns

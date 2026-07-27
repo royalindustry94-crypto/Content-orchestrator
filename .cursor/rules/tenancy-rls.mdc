@@ -1,0 +1,13 @@
+---
+description: Tenant isolation and FORCE RLS requirements
+globs: apps/api/**/*.{py,sql}
+alwaysApply: false
+---
+
+# Tenancy & RLS
+
+- Every tenant-owned table has non-null `workspace_id`
+- ENABLE RLS and FORCE RLS on all applicable tenant tables
+- App filters are not enough — RLS is the backstop
+- Cross-workspace reads/writes must fail closed
+- Infrastructure-only tables (e.g. global worker registry) must be explicitly justified and locked down

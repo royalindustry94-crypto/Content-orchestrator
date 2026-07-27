@@ -77,8 +77,12 @@ class ProviderCredential(
     encrypted_secret: Mapped[str] = mapped_column(Text, nullable=False)
     encryption_key_id: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[ProviderCredentialStatus] = mapped_column(
-        SAEnum(ProviderCredentialStatus, name="provider_credential_status", native_enum=True,
-            values_callable=lambda obj: [e.value for e in obj]),
+        SAEnum(
+            ProviderCredentialStatus,
+            name="provider_credential_status",
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
         default=ProviderCredentialStatus.ACTIVE,
     )

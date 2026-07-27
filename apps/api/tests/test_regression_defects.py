@@ -17,8 +17,13 @@ import os
 import uuid
 from decimal import Decimal
 
-os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test")
-os.environ.setdefault("APP_DATABASE_URL", "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test")
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test"
+)
+os.environ.setdefault(
+    "APP_DATABASE_URL",
+    "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test",
+)
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret")
 
 import pytest
@@ -50,19 +55,29 @@ async def _make_workspace_item(session):
 
 async def _one_stage_definition(session, workspace_id):
     definition = WorkflowDefinition(
-        id=uuid.uuid4(), workspace_id=workspace_id, name="regress", version=1,
+        id=uuid.uuid4(),
+        workspace_id=workspace_id,
+        name="regress",
+        version=1,
     )
     session.add(definition)
     await session.flush()
-    session.add(WorkflowStage(
-        id=uuid.uuid4(), workspace_id=workspace_id, definition_id=definition.id,
-        stage_key="scripting", ordinal=1, is_terminal=True,
-    ))
+    session.add(
+        WorkflowStage(
+            id=uuid.uuid4(),
+            workspace_id=workspace_id,
+            definition_id=definition.id,
+            stage_key="scripting",
+            ordinal=1,
+            is_terminal=True,
+        )
+    )
     await session.flush()
     return definition
 
 
 # --- Defect 1: reservation release scoping ---------------------------------
+
 
 @pytest.mark.asyncio
 async def test_regression_release_only_affects_the_failing_runs_own_reservation():
@@ -84,12 +99,18 @@ async def test_regression_release_only_affects_the_failing_runs_own_reservation(
         await controller.start_run(session, run=run_b, definition=definition)
 
         reservation_a = await controller.reserve_spend(
-            session, run=run_a, stage="scripting",
-            provider="openai", estimated_cost_usd=Decimal("1.00"),
+            session,
+            run=run_a,
+            stage="scripting",
+            provider="openai",
+            estimated_cost_usd=Decimal("1.00"),
         )
         reservation_b = await controller.reserve_spend(
-            session, run=run_b, stage="scripting",
-            provider="openai", estimated_cost_usd=Decimal("1.00"),
+            session,
+            run=run_b,
+            stage="scripting",
+            provider="openai",
+            estimated_cost_usd=Decimal("1.00"),
         )
         assert reservation_a is not None and reservation_b is not None
         assert reservation_a.pipeline_run_id == run_a.id
@@ -100,9 +121,9 @@ async def test_regression_release_only_affects_the_failing_runs_own_reservation(
 
         await session.refresh(reservation_a)
         await session.refresh(reservation_b)
-        assert reservation_a.status == ReservationStatus.RELEASED, (
-            "run A's own reservation must be released"
-        )
+        assert (
+            reservation_a.status == ReservationStatus.RELEASED
+        ), "run A's own reservation must be released"
         assert reservation_b.status == ReservationStatus.RESERVED, (
             "run B's reservation must NOT be released by run A's cancellation — "
             "this is the exact regression the pipeline_run_id scoping fix (migration 0020) prevents"
@@ -110,6 +131,7 @@ async def test_regression_release_only_affects_the_failing_runs_own_reservation(
 
 
 # --- Defect 2: controller self-triggering loop ------------------------------
+
 
 @pytest.mark.asyncio
 async def test_regression_stage_completed_is_not_registered_as_a_controller_consumer():
@@ -158,8 +180,13 @@ async def test_regression_stage_completion_advances_run_exactly_once():
         from app.orchestration import dispatcher
 
         assignment = await dispatcher.dispatch_stage(
-            session, workspace_id=ws, pipeline_run_id=run.id, stage="scripting",
-            attempt_number=1, correlation_id=run.correlation_id, trace_id=run.trace_id,
+            session,
+            workspace_id=ws,
+            pipeline_run_id=run.id,
+            stage="scripting",
+            attempt_number=1,
+            correlation_id=run.correlation_id,
+            trace_id=run.trace_id,
         )
         await session.commit()
 
@@ -167,12 +194,16 @@ async def test_regression_stage_completion_advances_run_exactly_once():
         from sqlalchemy import select as _select
 
         from app.models.assignments import StageAssignment
+
         result = await session.execute(
             _select(StageAssignment).where(StageAssignment.id == assignment.id)
         )
         loaded_assignment = result.scalar_one()
         await dispatcher.submit_result(
-            session, assignment=loaded_assignment, success=True, result={},
+            session,
+            assignment=loaded_assignment,
+            success=True,
+            result={},
         )
         await session.commit()
 

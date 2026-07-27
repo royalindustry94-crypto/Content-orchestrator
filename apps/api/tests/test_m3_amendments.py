@@ -23,14 +23,18 @@ from app.db.session import AsyncSessionLocal
 
 async def _make_workspace_and_item(s):
     ws, user, item = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
-    await s.execute(text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
-                    {"id": user, "e": f"{user}@x.com"})
+    await s.execute(
+        text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
+        {"id": user, "e": f"{user}@x.com"},
+    )
     await s.execute(
         text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
-        {"id": ws, "u": user})
+        {"id": ws, "u": user},
+    )
     await s.execute(
         text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't')"),
-        {"id": item, "ws": ws})
+        {"id": item, "ws": ws},
+    )
     return ws, user, item
 
 
@@ -40,15 +44,19 @@ async def test_pipeline_run_idempotency_key_unique_per_workspace():
         ws, _u, item = await _make_workspace_and_item(s)
         await s.commit()
         await s.execute(
-            text("INSERT INTO pipeline_runs (workspace_id, content_item_id, idempotency_key) "
-                 "VALUES (:ws, :item, 'key-1')"),
+            text(
+                "INSERT INTO pipeline_runs (workspace_id, content_item_id, idempotency_key) "
+                "VALUES (:ws, :item, 'key-1')"
+            ),
             {"ws": ws, "item": item},
         )
         await s.commit()
         with pytest.raises(Exception) as exc:
             await s.execute(
-                text("INSERT INTO pipeline_runs (workspace_id, content_item_id, idempotency_key) "
-                     "VALUES (:ws, :item, 'key-1')"),
+                text(
+                    "INSERT INTO pipeline_runs (workspace_id, content_item_id, idempotency_key) "
+                    "VALUES (:ws, :item, 'key-1')"
+                ),
                 {"ws": ws, "item": item},
             )
             await s.commit()
@@ -81,17 +89,21 @@ async def test_content_lineage_is_immutable():
         child = str(uuid.uuid4())
         await s.execute(
             text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't2')"),
-            {"id": child, "ws": ws})
+            {"id": child, "ws": ws},
+        )
         edge = str(uuid.uuid4())
         await s.execute(
-            text("INSERT INTO content_lineage (id, workspace_id, parent_content_item_id, "
-                 "child_content_item_id, relationship_type) VALUES (:id, :ws, :p, :c, 'clipped')"),
+            text(
+                "INSERT INTO content_lineage (id, workspace_id, parent_content_item_id, "
+                "child_content_item_id, relationship_type) VALUES (:id, :ws, :p, :c, 'clipped')"
+            ),
             {"id": edge, "ws": ws, "p": parent, "c": child},
         )
         await s.commit()
         with pytest.raises(Exception) as exc:
             await s.execute(
-                text("UPDATE content_lineage SET notes = 'x' WHERE id = :id"), {"id": edge})
+                text("UPDATE content_lineage SET notes = 'x' WHERE id = :id"), {"id": edge}
+            )
             await s.commit()
         assert "immutable" in str(exc.value).lower()
 
@@ -100,13 +112,19 @@ async def test_content_lineage_is_immutable():
 async def test_asset_storage_and_provider_metadata_columns_exist():
     async with AsyncSessionLocal() as s:
         rows = await s.execute(
-            text("SELECT column_name FROM information_schema.columns "
-                 "WHERE table_name = 'assets'")
+            text(
+                "SELECT column_name FROM information_schema.columns " "WHERE table_name = 'assets'"
+            )
         )
         cols = {r[0] for r in rows}
     for expected in [
-        "storage_provider", "storage_bucket", "storage_object_key",
-        "checksum", "checksum_algorithm", "mime_type", "size_bytes",
+        "storage_provider",
+        "storage_bucket",
+        "storage_object_key",
+        "checksum",
+        "checksum_algorithm",
+        "mime_type",
+        "size_bytes",
         "provider_metadata",
     ]:
         assert expected in cols, f"assets missing column {expected}"
@@ -117,8 +135,10 @@ async def test_provider_metadata_on_immutable_tables():
     async with AsyncSessionLocal() as s:
         for table in ["pipeline_stage_runs", "provider_usage", "spend_logs"]:
             rows = await s.execute(
-                text("SELECT 1 FROM information_schema.columns "
-                     "WHERE table_name = :t AND column_name = 'provider_metadata'"),
+                text(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_name = :t AND column_name = 'provider_metadata'"
+                ),
                 {"t": table},
             )
             assert rows.first() is not None, f"{table} missing provider_metadata"

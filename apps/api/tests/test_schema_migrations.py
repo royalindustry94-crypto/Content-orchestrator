@@ -23,25 +23,38 @@ from sqlalchemy import text
 from app.db.session import AsyncSessionLocal
 
 DOMAIN_TABLES = [
-    "content_pillars", "spend_caps", "provider_credentials",
-    "content_items", "content_versions", "pipeline_runs", "pipeline_stage_runs",
-    "assets", "publish_jobs", "review_decisions", "analytics_snapshots",
-    "spend_logs", "spend_reservations", "provider_usage",
-    "webhook_events", "dead_letter_jobs",
+    "content_pillars",
+    "spend_caps",
+    "provider_credentials",
+    "content_items",
+    "content_versions",
+    "pipeline_runs",
+    "pipeline_stage_runs",
+    "assets",
+    "publish_jobs",
+    "review_decisions",
+    "analytics_snapshots",
+    "spend_logs",
+    "spend_reservations",
+    "provider_usage",
+    "webhook_events",
+    "dead_letter_jobs",
 ]
 
 IMMUTABLE_TABLES = [
-    "content_versions", "pipeline_stage_runs", "review_decisions",
-    "analytics_snapshots", "spend_logs", "provider_usage",
+    "content_versions",
+    "pipeline_stage_runs",
+    "review_decisions",
+    "analytics_snapshots",
+    "spend_logs",
+    "provider_usage",
 ]
 
 
 @pytest.mark.asyncio
 async def test_all_domain_tables_exist():
     async with AsyncSessionLocal() as s:
-        rows = await s.execute(
-            text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'")
-        )
+        rows = await s.execute(text("SELECT tablename FROM pg_tables WHERE schemaname = 'public'"))
         present = {r[0] for r in rows}
     missing = [t for t in DOMAIN_TABLES if t not in present]
     assert not missing, f"missing tables: {missing}"
@@ -72,17 +85,23 @@ async def test_immutable_tables_reject_update():
     item = str(uuid.uuid4())
     ver = str(uuid.uuid4())
     async with AsyncSessionLocal() as s:
-        await s.execute(text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
-                        {"id": user, "e": f"{user}@x.com"})
-        await s.execute(text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
-                        {"id": ws, "u": user})
+        await s.execute(
+            text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
+            {"id": user, "e": f"{user}@x.com"},
+        )
+        await s.execute(
+            text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
+            {"id": ws, "u": user},
+        )
         await s.execute(
             text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't')"),
             {"id": item, "ws": ws},
         )
         await s.execute(
-            text("INSERT INTO content_versions (id, workspace_id, content_item_id, script_body) "
-                 "VALUES (:id, :ws, :item, 'body')"),
+            text(
+                "INSERT INTO content_versions (id, workspace_id, content_item_id, script_body) "
+                "VALUES (:id, :ws, :item, 'body')"
+            ),
             {"id": ver, "ws": ws, "item": item},
         )
         await s.commit()
@@ -104,10 +123,14 @@ async def test_version_trigger_increments_on_mutable_table():
     user = str(uuid.uuid4())
     item = str(uuid.uuid4())
     async with AsyncSessionLocal() as s:
-        await s.execute(text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
-                        {"id": user, "e": f"{user}@x.com"})
-        await s.execute(text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
-                        {"id": ws, "u": user})
+        await s.execute(
+            text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
+            {"id": user, "e": f"{user}@x.com"},
+        )
+        await s.execute(
+            text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
+            {"id": ws, "u": user},
+        )
         await s.execute(
             text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't')"),
             {"id": item, "ws": ws},

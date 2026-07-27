@@ -61,9 +61,7 @@ async def _provision(client, headers, workspace_id, *, stages=None, max_concurre
     return r.json()
 
 
-async def _bring_online(
-    client, provisioned, *, current_load=0, status="online", max_concurrency=2
-):
+async def _bring_online(client, provisioned, *, current_load=0, status="online", max_concurrency=2):
     """Register + heartbeat so the worker is ONLINE with a fresh heartbeat."""
     wh = {"Authorization": f"Bearer {provisioned['worker_secret']}"}
     await client.post(
@@ -95,14 +93,18 @@ async def _seed_assignment(workspace_id, *, stage=STAGE, created_at=None) -> uui
         from app.models.pipeline import PipelineRun
 
         run = PipelineRun(
-            id=uuid.uuid4(), workspace_id=uuid.UUID(workspace_id),
+            id=uuid.uuid4(),
+            workspace_id=uuid.UUID(workspace_id),
             content_item_id=uuid.UUID(item_id),
         )
         session.add(run)
         await session.flush()
         a = StageAssignment(
-            id=uuid.uuid4(), workspace_id=uuid.UUID(workspace_id),
-            pipeline_run_id=run.id, stage=stage, attempt_number=1,
+            id=uuid.uuid4(),
+            workspace_id=uuid.UUID(workspace_id),
+            pipeline_run_id=run.id,
+            stage=stage,
+            attempt_number=1,
             status=StageAssignmentStatus.PENDING,
             idempotency_key=f"{run.id}:{stage}:1",
             correlation_id=uuid.uuid4(),
@@ -122,6 +124,7 @@ async def ctx(client):
 
 
 # ---- happy path ----------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_successful_claim(ctx):
@@ -248,6 +251,7 @@ async def test_worker_at_capacity(ctx):
 
 # ---- concurrency ---------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_two_workers_cannot_claim_one_job(ctx):
     """N workers, 1 pending assignment → exactly one 'granted'."""
@@ -289,6 +293,7 @@ async def test_worker_cannot_exceed_max_concurrency_under_load(ctx):
 
 # ---- idempotency & rollback ---------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_duplicate_claim_token_returns_same_assignment(ctx):
     prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"], max_concurrency=5)
@@ -313,9 +318,7 @@ async def test_rollback_restores_assignment_and_load(ctx):
     assignment_id = await _seed_assignment(ctx["ws"])
 
     async with AsyncSessionLocal() as session:
-        result = await claiming.claim_assignment(
-            session, worker_id=uuid.UUID(prov["worker_id"])
-        )
+        result = await claiming.claim_assignment(session, worker_id=uuid.UUID(prov["worker_id"]))
         assert result.outcome == ClaimOutcome.GRANTED
         await session.rollback()  # simulate failure before commit
 
@@ -342,6 +345,7 @@ async def test_invalid_transition_claim_of_nonpending_skipped(ctx):
 
 
 # ---- audit & RLS ---------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_reap_recovers_pull_claimed_assignment(ctx):
@@ -395,13 +399,17 @@ async def test_idempotent_replay_is_audited(ctx):
     await ctx["client"].post("/workers/claim", headers=wh, json={"claim_token": token})
     async with AsyncSessionLocal() as s:
         rows = (
-            await s.execute(
-                select(StageClaimAudit).where(
-                    StageClaimAudit.worker_id == uuid.UUID(prov["worker_id"]),
-                    StageClaimAudit.outcome == ClaimOutcome.GRANTED,
+            (
+                await s.execute(
+                    select(StageClaimAudit).where(
+                        StageClaimAudit.worker_id == uuid.UUID(prov["worker_id"]),
+                        StageClaimAudit.outcome == ClaimOutcome.GRANTED,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(rows) == 2  # original grant + audited replay
         assert "idempotent replay" in [x.detail for x in rows]
 
@@ -411,6 +419,7 @@ async def test_idempotent_replay_is_audited(ctx):
 # async tracer under-measures code reached through the ASGI transport (a
 # known artifact, see WS1). These call the service directly so each
 # eligibility branch is both proven and measured.
+
 
 @pytest.mark.asyncio
 async def test_service_worker_not_found(ctx):
@@ -498,13 +507,17 @@ async def test_claim_writes_audit_row(ctx):
     await ctx["client"].post("/workers/claim", headers=wh, json={})
     async with AsyncSessionLocal() as s:
         rows = (
-            await s.execute(
-                select(StageClaimAudit).where(
-                    StageClaimAudit.worker_id == uuid.UUID(prov["worker_id"]),
-                    StageClaimAudit.outcome == ClaimOutcome.GRANTED,
+            (
+                await s.execute(
+                    select(StageClaimAudit).where(
+                        StageClaimAudit.worker_id == uuid.UUID(prov["worker_id"]),
+                        StageClaimAudit.outcome == ClaimOutcome.GRANTED,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(rows) == 1
         assert rows[0].stage == "scripting"
 

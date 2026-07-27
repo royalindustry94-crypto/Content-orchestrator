@@ -47,9 +47,9 @@ async def test_rls_blocks_cross_workspace_read_even_without_app_guard():
     # loop at all), tries to read workspace A directly.
     async with rls_scoped_session(user_b) as session:
         result = await session.execute(select(Workspace).where(Workspace.id == workspace_a))
-        assert result.scalar_one_or_none() is None, (
-            "RLS failed to block user B from reading workspace A's row"
-        )
+        assert (
+            result.scalar_one_or_none() is None
+        ), "RLS failed to block user B from reading workspace A's row"
 
         # Sanity check: user B CAN see their own workspace through the
         # same session, so the empty result above is RLS filtering, not a

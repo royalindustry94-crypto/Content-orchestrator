@@ -5,6 +5,10 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+  security-events: write
+
 jobs:
   api:
     runs-on: ubuntu-latest
@@ -37,13 +41,24 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -e ".[dev]"
-      - name: Run migrations
+      - name: Alembic upgrade head
         run: alembic upgrade head
-      - name: Lint
+      - name: Alembic downgrade base
+        run: alembic downgrade base
+      - name: Alembic upgrade head (replay)
+        run: alembic upgrade head
+      - name: Ruff check
         run: ruff check .
-      - name: Test
-        run: pytest
-
+      - name: Ruff format check (app + tests; migrations excluded from format gate)
+        run: ruff format --check app tests
+      - name: MyPy (non-blocking until typed; see CURSOR_SETUP_FINAL_AUDIT.md)
+        continue-on-error: true
+        run: mypy app
+      - name: Pytest with coverage
+        run: pytest -W error --cov=app --cov-report=term-missing --cov-fail-under=70
+      - name: Placeholder scan
+        working-directory: ${{ github.workspace }}
+        run: bash scripts/check_placeholders.sh
   worker:
     runs-on: ubuntu-latest
     env:
@@ -58,11 +73,12 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -e ".[dev]"
-      - name: Lint
+      - name: Ruff check
         run: ruff check .
+      - name: Ruff format check
+        run: ruff format --check .
       - name: Test
-        run: pytest
-
+        run: pytest -W error
   web:
     runs-on: ubuntu-latest
     defaults:
@@ -77,7 +93,35 @@ jobs:
           cache-dependency-path: apps/web/package-lock.json
       - name: Install dependencies
         run: npm ci
-      - name: Lint
+      - name: ESLint
         run: npm run lint
-      - name: Typecheck + build
+      - name: TypeScript typecheck + production build
         run: npm run build
+
+  secret-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  codeql:
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: python, javascript
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3

@@ -1,0 +1,12 @@
+---
+description: React TypeScript web app conventions
+globs: apps/web/**/*
+alwaysApply: false
+---
+
+# Web (`apps/web`)
+
+- React + TypeScript + Vite
+- ESLint + `tsc -b` + production build required
+- Workspace/RBAC in UI is presentation only — server enforces
+- Honest loading / empty / error / retry states; no mock production APIs in shipped paths

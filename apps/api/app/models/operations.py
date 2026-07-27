@@ -44,8 +44,12 @@ class WebhookEvent(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):
     signature_verified: Mapped[bool] = mapped_column(Boolean, nullable=False)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     status: Mapped[WebhookStatus] = mapped_column(
-        SAEnum(WebhookStatus, name="webhook_status", native_enum=True,
-            values_callable=lambda obj: [e.value for e in obj]),
+        SAEnum(
+            WebhookStatus,
+            name="webhook_status",
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
         default=WebhookStatus.RECEIVED,
     )
@@ -77,8 +81,12 @@ class DeadLetterJob(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):
     first_failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     last_failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     status: Mapped[DeadLetterStatus] = mapped_column(
-        SAEnum(DeadLetterStatus, name="dead_letter_status", native_enum=True,
-            values_callable=lambda obj: [e.value for e in obj]),
+        SAEnum(
+            DeadLetterStatus,
+            name="dead_letter_status",
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
         default=DeadLetterStatus.PENDING,
     )

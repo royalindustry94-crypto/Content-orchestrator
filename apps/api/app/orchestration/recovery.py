@@ -61,9 +61,7 @@ def _clear_lease_and_claim_fields(assignment: StageAssignment) -> None:
     assignment.claim_token = None
 
 
-async def _release_worker_slot(
-    session: AsyncSession, worker_id: uuid.UUID | None
-) -> None:
+async def _release_worker_slot(session: AsyncSession, worker_id: uuid.UUID | None) -> None:
     if worker_id is None:
         return
     worker = await session.get(WorkerRegistration, worker_id, with_for_update=True)
@@ -75,9 +73,7 @@ async def _release_worker_slot(
         worker.status = WorkerStatus.ONLINE
 
 
-async def _resolve_max_attempts(
-    session: AsyncSession, assignment: StageAssignment
-) -> int:
+async def _resolve_max_attempts(session: AsyncSession, assignment: StageAssignment) -> int:
     settings = get_settings()
     run = await session.get(PipelineRun, assignment.pipeline_run_id)
     if run is None or run.definition_id is None:
@@ -92,6 +88,7 @@ async def _resolve_max_attempts(
     if stage_def is None:
         return settings.assignment_default_max_attempts
     return stage_def.max_attempts
+
 
 async def _audit(
     session: AsyncSession,
@@ -208,9 +205,7 @@ async def recover_assignment(
             outcome=RecoveryOutcome.DEAD_LETTERED,
             detail=detail or f"max_attempts={max_attempts}",
         )
-        return RecoveryResult(
-            assignment, RecoveryResultKind.DEAD_LETTERED, previous_attempt, None
-        )
+        return RecoveryResult(assignment, RecoveryResultKind.DEAD_LETTERED, previous_attempt, None)
 
     assignment.status = StageAssignmentStatus.PENDING
     assignment.attempt_number = next_attempt
@@ -251,9 +246,7 @@ async def recover_assignment(
         outcome=RecoveryOutcome.REQUEUED,
         detail=detail,
     )
-    return RecoveryResult(
-        assignment, RecoveryResultKind.REQUEUED, previous_attempt, next_attempt
-    )
+    return RecoveryResult(assignment, RecoveryResultKind.REQUEUED, previous_attempt, next_attempt)
 
 
 async def reap_expired_leases(
@@ -325,9 +318,7 @@ async def reap_worker_assignments(
             break
         for assignment in holdings:
             outcomes.append(
-                await recover_assignment(
-                    session, assignment, reason=reason, now=now, detail=detail
-                )
+                await recover_assignment(session, assignment, reason=reason, now=now, detail=detail)
             )
         if len(holdings) < limit:
             break

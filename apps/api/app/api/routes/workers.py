@@ -132,9 +132,7 @@ async def register_worker(
             ),
         )
     async with AsyncSessionLocal() as session:
-        registration = await session.get(
-            WorkerRegistration, worker.worker_id, with_for_update=True
-        )
+        registration = await session.get(WorkerRegistration, worker.worker_id, with_for_update=True)
         if registration is None:  # credential FK guarantees existence; defensive
             raise HTTPException(status_code=404, detail="worker not found")
         now = datetime.now(UTC)
@@ -186,15 +184,11 @@ async def worker_heartbeat(
             detail="a heartbeat may report online, busy, or draining — not offline",
         )
     async with AsyncSessionLocal() as session:
-        registration = await session.get(
-            WorkerRegistration, worker.worker_id, with_for_update=True
-        )
+        registration = await session.get(WorkerRegistration, worker.worker_id, with_for_update=True)
         if registration is None:
             raise HTTPException(status_code=404, detail="worker not found")
         if registration.deregistered_at is not None:
-            raise HTTPException(
-                status_code=status.HTTP_410_GONE, detail="worker is deregistered"
-            )
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="worker is deregistered")
         if payload.current_load > registration.max_concurrency:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -235,9 +229,7 @@ async def deregister_worker(
     re-registration revives it.
     """
     async with AsyncSessionLocal() as session:
-        registration = await session.get(
-            WorkerRegistration, worker.worker_id, with_for_update=True
-        )
+        registration = await session.get(WorkerRegistration, worker.worker_id, with_for_update=True)
         if registration is None:
             raise HTTPException(status_code=404, detail="worker not found")
         if registration.deregistered_at is None:
@@ -313,34 +305,25 @@ async def _load_owned_assignment(
     session, *, assignment_id: uuid.UUID, worker: AuthenticatedWorker
 ) -> StageAssignment:
     assignment = await session.get(StageAssignment, assignment_id, with_for_update=True)
-    if (
-        assignment is None
-        or assignment.workspace_id != worker.workspace_id
-    ):
+    if assignment is None or assignment.workspace_id != worker.workspace_id:
         raise HTTPException(status_code=404, detail="assignment not found")
     return assignment
 
 
-async def _assert_credential_still_active(
-    session, worker: AuthenticatedWorker
-) -> None:
+async def _assert_credential_still_active(session, worker: AuthenticatedWorker) -> None:
     """Re-validate the credential inside the handler transaction.
 
     Closes the TOCTOU where ``get_current_worker`` authenticated in a
     separate session, then an admin revoke committed before this handler
     mutated state. Locks the credential row so revoke serializes with us.
     """
-    credential = await session.get(
-        WorkerCredential, worker.credential_id, with_for_update=True
-    )
+    credential = await session.get(WorkerCredential, worker.credential_id, with_for_update=True)
     now = datetime.now(UTC)
     if (
         credential is None
         or credential.status != WorkerCredentialStatus.ACTIVE
         or credential.worker_id != worker.worker_id
-        or (
-            credential.expires_at is not None and credential.expires_at <= now
-        )
+        or (credential.expires_at is not None and credential.expires_at <= now)
     ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -349,9 +332,7 @@ async def _assert_credential_still_active(
         )
 
 
-@worker_router.post(
-    "/assignments/{assignment_id}/ack", response_model=LeaseOut
-)
+@worker_router.post("/assignments/{assignment_id}/ack", response_model=LeaseOut)
 async def ack_assignment(
     assignment_id: uuid.UUID,
     request: Request,
@@ -365,15 +346,11 @@ async def ack_assignment(
     """
     async with AsyncSessionLocal() as session:
         await _assert_credential_still_active(session, worker)
-        registration = await session.get(
-            WorkerRegistration, worker.worker_id, with_for_update=True
-        )
+        registration = await session.get(WorkerRegistration, worker.worker_id, with_for_update=True)
         if registration is None:
             raise HTTPException(status_code=404, detail="worker not found")
         if registration.deregistered_at is not None:
-            raise HTTPException(
-                status_code=status.HTTP_410_GONE, detail="worker is deregistered"
-            )
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="worker is deregistered")
         assignment = await _load_owned_assignment(
             session, assignment_id=assignment_id, worker=worker
         )
@@ -405,9 +382,7 @@ async def ack_assignment(
     return out
 
 
-@worker_router.post(
-    "/assignments/{assignment_id}/renew", response_model=LeaseOut
-)
+@worker_router.post("/assignments/{assignment_id}/renew", response_model=LeaseOut)
 async def renew_assignment_lease(
     assignment_id: uuid.UUID,
     request: Request,
@@ -416,15 +391,11 @@ async def renew_assignment_lease(
     """Extend an in-flight assignment lease (bounded by max total lease)."""
     async with AsyncSessionLocal() as session:
         await _assert_credential_still_active(session, worker)
-        registration = await session.get(
-            WorkerRegistration, worker.worker_id, with_for_update=True
-        )
+        registration = await session.get(WorkerRegistration, worker.worker_id, with_for_update=True)
         if registration is None:
             raise HTTPException(status_code=404, detail="worker not found")
         if registration.deregistered_at is not None:
-            raise HTTPException(
-                status_code=status.HTTP_410_GONE, detail="worker is deregistered"
-            )
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="worker is deregistered")
         assignment = await _load_owned_assignment(
             session, assignment_id=assignment_id, worker=worker
         )
@@ -450,9 +421,7 @@ async def renew_assignment_lease(
     return out
 
 
-@worker_router.post(
-    "/assignments/{assignment_id}/submit", response_model=SubmitOut
-)
+@worker_router.post("/assignments/{assignment_id}/submit", response_model=SubmitOut)
 async def submit_assignment_result(
     assignment_id: uuid.UUID,
     payload: SubmitIn,
@@ -468,15 +437,11 @@ async def submit_assignment_result(
     """
     async with AsyncSessionLocal() as session:
         await _assert_credential_still_active(session, worker)
-        registration = await session.get(
-            WorkerRegistration, worker.worker_id, with_for_update=True
-        )
+        registration = await session.get(WorkerRegistration, worker.worker_id, with_for_update=True)
         if registration is None:
             raise HTTPException(status_code=404, detail="worker not found")
         if registration.deregistered_at is not None:
-            raise HTTPException(
-                status_code=status.HTTP_410_GONE, detail="worker is deregistered"
-            )
+            raise HTTPException(status_code=status.HTTP_410_GONE, detail="worker is deregistered")
         assignment = await _load_owned_assignment(
             session, assignment_id=assignment_id, worker=worker
         )
@@ -758,9 +723,7 @@ async def revoke_worker_credentials(
         for credential in result.scalars().all():
             credential.status = WorkerCredentialStatus.REVOKED
             revoked += 1
-        await reap_worker_assignments(
-            session, worker_id, reason=RecoveryReason.WORKER_REVOKED
-        )
+        await reap_worker_assignments(session, worker_id, reason=RecoveryReason.WORKER_REVOKED)
         registration = await session.get(WorkerRegistration, worker_id)
         if registration is not None and registration.deregistered_at is None:
             # Kill switch: force offline so the worker cannot be selected

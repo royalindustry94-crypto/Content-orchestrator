@@ -7,8 +7,13 @@ import sys
 import uuid
 from pathlib import Path
 
-os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test")
-os.environ.setdefault("APP_DATABASE_URL", "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test")
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test"
+)
+os.environ.setdefault(
+    "APP_DATABASE_URL",
+    "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test",
+)
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret")
 
 # apps/worker isn't installed as a dependency of apps/api; reach it via a
@@ -69,12 +74,23 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
 
         ws, item, admin_user = await _make_workspace_item(session)
         definition = WorkflowDefinition(
-            id=uuid.uuid4(), workspace_id=ws, name="one-stage", version=1,
+            id=uuid.uuid4(),
+            workspace_id=ws,
+            name="one-stage",
+            version=1,
         )
         session.add(definition)
         await session.flush()
-        session.add(WorkflowStage(id=uuid.uuid4(), workspace_id=ws, definition_id=definition.id,
-                                   stage_key="scripting", ordinal=1, is_terminal=True))
+        session.add(
+            WorkflowStage(
+                id=uuid.uuid4(),
+                workspace_id=ws,
+                definition_id=definition.id,
+                stage_key="scripting",
+                ordinal=1,
+                is_terminal=True,
+            )
+        )
         await session.flush()
 
         run = PipelineRun(id=uuid.uuid4(), workspace_id=ws, content_item_id=item)
@@ -83,8 +99,13 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
         await controller.start_run(session, run=run, definition=definition)
 
         dispatched = await dispatcher.dispatch_stage(
-            session, workspace_id=ws, pipeline_run_id=run.id, stage="scripting",
-            attempt_number=1, correlation_id=run.correlation_id, trace_id=run.trace_id,
+            session,
+            workspace_id=ws,
+            pipeline_run_id=run.id,
+            stage="scripting",
+            attempt_number=1,
+            correlation_id=run.correlation_id,
+            trace_id=run.trace_id,
         )
         await session.commit()
         run_id = run.id
@@ -101,8 +122,11 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
     provisioned = provision.json()
 
     client = ReferenceWorkerClient(
-        name="ref-1", supported_stages=["scripting"], http=http,
-        credential=provisioned["worker_secret"], worker_id=provisioned["worker_id"],
+        name="ref-1",
+        supported_stages=["scripting"],
+        http=http,
+        credential=provisioned["worker_secret"],
+        worker_id=provisioned["worker_id"],
     )
     await client.register()
     await client.heartbeat()

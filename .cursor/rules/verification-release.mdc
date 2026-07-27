@@ -1,0 +1,12 @@
+---
+description: Verification, evidence, and merge policy
+alwaysApply: true
+---
+
+# Verification & release
+
+- Every change needs appropriate tests
+- Never claim VERIFIED without objective evidence (CI URL, SHA, tests, migration head)
+- Never merge without independent Security Reviewer + Test/QA evidence
+- Use reviewer agents: Planner → implementers → Migration Reviewer (if DDL) → Test Writer → Security Reviewer
+- Escalate security, isolation, financial, compliance, integrity, or maintainability risks immediately

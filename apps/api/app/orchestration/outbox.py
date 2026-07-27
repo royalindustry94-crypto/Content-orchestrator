@@ -19,8 +19,9 @@ from app.models.events import OutboxEvent
 from app.orchestration.events.envelope import EventEnvelope
 
 
-async def _next_sequence(session: AsyncSession, aggregate_type: str,
-    aggregate_id: uuid.UUID) -> int:
+async def _next_sequence(
+    session: AsyncSession, aggregate_type: str, aggregate_id: uuid.UUID
+) -> int:
     """Per-aggregate monotonic sequence (design doc §3.4). An advisory
     transaction lock scoped to (aggregate_type, aggregate_id) serializes
     concurrent emitters for the same aggregate without locking unrelated

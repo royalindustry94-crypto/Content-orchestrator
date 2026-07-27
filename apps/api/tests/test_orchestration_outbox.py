@@ -5,8 +5,13 @@ poison routing (design doc §3).
 import os
 import uuid
 
-os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test")
-os.environ.setdefault("APP_DATABASE_URL", "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test")
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test"
+)
+os.environ.setdefault(
+    "APP_DATABASE_URL",
+    "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test",
+)
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret")
 
 import pytest
@@ -22,10 +27,12 @@ async def _make_workspace(session) -> tuple[uuid.UUID, uuid.UUID]:
     ws, user = str(uuid.uuid4()), str(uuid.uuid4())
     await session.execute(
         text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
-        {"id": user, "e": f"{user}@x.com"})
+        {"id": user, "e": f"{user}@x.com"},
+    )
     await session.execute(
         text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
-        {"id": ws, "u": user})
+        {"id": ws, "u": user},
+    )
     return uuid.UUID(ws), uuid.UUID(user)
 
 
@@ -35,12 +42,24 @@ async def test_emit_assigns_monotonic_per_aggregate_sequence():
         ws, _ = await _make_workspace(session)
         agg_id = uuid.uuid4()
         e1 = await outbox.emit(
-            session, event_type="content.created", workspace_id=ws, aggregate_type="content_item",
-            aggregate_id=agg_id, correlation_id=uuid.uuid4(), payload={}, produced_by="test",
+            session,
+            event_type="content.created",
+            workspace_id=ws,
+            aggregate_type="content_item",
+            aggregate_id=agg_id,
+            correlation_id=uuid.uuid4(),
+            payload={},
+            produced_by="test",
         )
         e2 = await outbox.emit(
-            session, event_type="content.created", workspace_id=ws, aggregate_type="content_item",
-            aggregate_id=agg_id, correlation_id=uuid.uuid4(), payload={}, produced_by="test",
+            session,
+            event_type="content.created",
+            workspace_id=ws,
+            aggregate_type="content_item",
+            aggregate_id=agg_id,
+            correlation_id=uuid.uuid4(),
+            payload={},
+            produced_by="test",
         )
         await session.commit()
         assert e2.sequence == e1.sequence + 1
@@ -57,8 +76,14 @@ async def test_emit_does_not_commit_caller_controls_atomicity():
 
     async with AsyncSessionLocal() as session:
         event = await outbox.emit(
-            session, event_type="content.created", workspace_id=ws, aggregate_type="content_item",
-            aggregate_id=uuid.uuid4(), correlation_id=uuid.uuid4(), payload={}, produced_by="test",
+            session,
+            event_type="content.created",
+            workspace_id=ws,
+            aggregate_type="content_item",
+            aggregate_id=uuid.uuid4(),
+            correlation_id=uuid.uuid4(),
+            payload={},
+            produced_by="test",
         )
         event_id = event.event_id
         await session.rollback()
@@ -93,8 +118,13 @@ async def test_relay_dispatches_to_registered_consumer_exactly_once():
         )
         ws, _ = await _make_workspace(session)
         await outbox.emit(
-            session, event_type="content.created", workspace_id=ws, aggregate_type="content_item",
-            aggregate_id=target_aggregate_id, correlation_id=uuid.uuid4(), payload={},
+            session,
+            event_type="content.created",
+            workspace_id=ws,
+            aggregate_type="content_item",
+            aggregate_id=target_aggregate_id,
+            correlation_id=uuid.uuid4(),
+            payload={},
             produced_by="test",
         )
         await session.commit()

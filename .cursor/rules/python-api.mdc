@@ -1,0 +1,13 @@
+---
+description: FastAPI / SQLAlchemy API service conventions
+globs: apps/api/**/*
+alwaysApply: false
+---
+
+# API service (`apps/api`)
+
+- FastAPI + SQLAlchemy 2.x async patterns already in-repo
+- Thin routes; orchestration in services; real Postgres in tests
+- `pytest` with warnings treated seriously; use `ruff` + `mypy` gates
+- Do not invent endpoints that break OpenAPI contracts silently
+- Idempotent mutations where retries are expected

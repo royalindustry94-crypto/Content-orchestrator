@@ -287,8 +287,10 @@ async def test_expired_credential_rejected(client, workspace_admin):
     provisioned = await _provision(client, headers, workspace_id)
     async with AsyncSessionLocal() as session:
         await session.execute(
-            text("UPDATE worker_credentials SET expires_at = now() - interval '1 second' "
-                 "WHERE id = :id"),
+            text(
+                "UPDATE worker_credentials SET expires_at = now() - interval '1 second' "
+                "WHERE id = :id"
+            ),
             {"id": provisioned["credential_id"]},
         )
         await session.commit()
@@ -327,8 +329,10 @@ async def test_secret_rotation_zero_downtime(client, workspace_admin):
     # …and the old one dies once its grace expiry passes.
     async with AsyncSessionLocal() as session:
         await session.execute(
-            text("UPDATE worker_credentials SET expires_at = now() - interval '1 second' "
-                 "WHERE id = :id"),
+            text(
+                "UPDATE worker_credentials SET expires_at = now() - interval '1 second' "
+                "WHERE id = :id"
+            ),
             {"id": provisioned["credential_id"]},
         )
         await session.commit()
@@ -390,8 +394,10 @@ async def test_stale_heartbeat_offline_detection(client, workspace_admin):
     async with AsyncSessionLocal() as session:
         # 89s silent: below threshold — sweep must NOT flip it.
         await session.execute(
-            text("UPDATE worker_registry SET last_heartbeat_at = now() - interval '89 seconds' "
-                 "WHERE id = :id"),
+            text(
+                "UPDATE worker_registry SET last_heartbeat_at = now() - interval '89 seconds' "
+                "WHERE id = :id"
+            ),
             {"id": worker_id},
         )
         flipped = await mark_stale_workers_offline(session, offline_after_seconds=90)
@@ -402,8 +408,10 @@ async def test_stale_heartbeat_offline_detection(client, workspace_admin):
     async with AsyncSessionLocal() as session:
         # 91s silent: over threshold — sweep flips it and zeroes load.
         await session.execute(
-            text("UPDATE worker_registry SET last_heartbeat_at = now() - interval '91 seconds' "
-                 "WHERE id = :id"),
+            text(
+                "UPDATE worker_registry SET last_heartbeat_at = now() - interval '91 seconds' "
+                "WHERE id = :id"
+            ),
             {"id": worker_id},
         )
         await mark_stale_workers_offline(session, offline_after_seconds=90)
@@ -470,13 +478,17 @@ async def test_rotate_revoke_serialized_kill_switch(client, workspace_admin):
 
     async with AsyncSessionLocal() as session:
         active = (
-            await session.execute(
-                select(WorkerCredential).where(
-                    WorkerCredential.worker_id == worker_id,
-                    WorkerCredential.status == WorkerCredentialStatus.ACTIVE,
+            (
+                await session.execute(
+                    select(WorkerCredential).where(
+                        WorkerCredential.worker_id == worker_id,
+                        WorkerCredential.status == WorkerCredentialStatus.ACTIVE,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
     assert active == []  # kill switch left nothing alive
 
 
@@ -504,7 +516,8 @@ async def test_drain_admin_only_and_preserved_across_register(client, workspace_
 
     drain = await client.post(
         f"/workspaces/{workspace_id}/workers/{worker_id}/drain",
-        headers=headers, json={"drain": True},
+        headers=headers,
+        json={"drain": True},
     )
     assert drain.status_code == 200 and drain.json()["drain"] is True
 
@@ -517,7 +530,8 @@ async def test_drain_admin_only_and_preserved_across_register(client, workspace_
     _, outsider_headers = await _make_user()
     forbidden = await client.post(
         f"/workspaces/{workspace_id}/workers/{worker_id}/drain",
-        headers=outsider_headers, json={"drain": False},
+        headers=outsider_headers,
+        json={"drain": False},
     )
     assert forbidden.status_code == 403
 
@@ -573,8 +587,10 @@ async def test_rls_heartbeats_admin_only_and_registry_readonly(client, workspace
     member_id, _member_headers = await _make_user()
     async with AsyncSessionLocal() as session:
         await session.execute(
-            text("INSERT INTO workspace_memberships (workspace_id, user_id, role) "
-                 "VALUES (:ws, :u, 'reviewer')"),
+            text(
+                "INSERT INTO workspace_memberships (workspace_id, user_id, role) "
+                "VALUES (:ws, :u, 'reviewer')"
+            ),
             {"ws": workspace_id, "u": member_id},
         )
         await session.commit()
@@ -588,20 +604,25 @@ async def test_rls_heartbeats_admin_only_and_registry_readonly(client, workspace
 
     # Admin sees heartbeat telemetry (amendment 2)…
     admin_count = (
-        await _as(admin_id, "SELECT count(*) FROM worker_heartbeats WHERE worker_id = :w",
-                  {"w": worker_id})
+        await _as(
+            admin_id,
+            "SELECT count(*) FROM worker_heartbeats WHERE worker_id = :w",
+            {"w": worker_id},
+        )
     ).scalar()
     assert admin_count >= 1
     # …a normal member does not…
     member_count = (
-        await _as(member_id, "SELECT count(*) FROM worker_heartbeats WHERE worker_id = :w",
-                  {"w": worker_id})
+        await _as(
+            member_id,
+            "SELECT count(*) FROM worker_heartbeats WHERE worker_id = :w",
+            {"w": worker_id},
+        )
     ).scalar()
     assert member_count == 0
     # …but the member DOES see the registry row itself (workers_select).
     registry_count = (
-        await _as(member_id, "SELECT count(*) FROM worker_registry WHERE id = :w",
-                  {"w": worker_id})
+        await _as(member_id, "SELECT count(*) FROM worker_registry WHERE id = :w", {"w": worker_id})
     ).scalar()
     assert registry_count == 1
 
