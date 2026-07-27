@@ -17,7 +17,16 @@ The Cursor engineering environment was rebuilt on `main` as a **lean foundation*
 4. **CI** gained migration replay, coverage gate, format check, placeholder scan, secret scan, CodeQL; MyPy is present but **non-blocking** until typing debt is cleared without logic rewrites.  
 5. **Executable invariants** added (DB + static).  
 
-**Final status: NOT VERIFIED** — pending green `api` job after FK-index invariant allowlist fix. Other jobs (web, worker, secret-scan, codeql) passed on run `30290979626`. Alembic upgrade/downgrade/replay and coverage ≥70% (80.58%) succeeded on that run; one new invariant assertion was too strict vs historical schema and is being corrected.
+**Final status: VERIFIED**
+
+Evidence:
+- PR: https://github.com/royalindustry94-crypto/Content-orchestrator/pull/20
+- SHA: `27cf051` (foundation + FK allowlist + audit note)
+- CI run: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/30291295093 — **success** (api, worker, web, secret-scan, codeql)
+- Alembic upgrade → downgrade base → upgrade replay: passed on CI
+- Coverage: **≥70%** (prior run measured **80.58%**)
+- Static engineering tests + placeholder scan: passed
+- No production feature work; no merge performed by this agent
 
 ---
 
@@ -113,7 +122,7 @@ Planner · Migration Reviewer · Security Reviewer · Test Writer
 | Gate | Result |
 |------|--------|
 | Reports written | This file + AGENTS.md |
-| CI green on SHA | **Not proven in-agent** (no Docker Postgres; Actions not yet run) |
+| CI green on SHA | **Yes** — Actions run `30291295093` success on `27cf051` |
 | Reviewer agents present | Yes |
 | Rules modular/scoped | Yes |
 | AGENTS.md reflects architecture | Yes |
@@ -158,6 +167,4 @@ Planner · Migration Reviewer · Security Reviewer · Test Writer
 
 ## Final status
 
-**NOT VERIFIED**
-
-Reason: engineering foundation artifacts are landed, but objective CI-green evidence on the pushed SHA and live Postgres migration/invariant execution were not available in this agent environment.
+**VERIFIED**
