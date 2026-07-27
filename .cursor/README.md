@@ -14,6 +14,7 @@ Project skills live under `.cursor/skills/<skill-id>/` with a required
 | [`chief-architect`](./skills/chief-architect/) | `/chief-architect` | Stack freeze, SoT, boundaries, ADRs |
 | [`backend-engineer`](./skills/backend-engineer/) | `/backend-engineer` | FastAPI / Python worker implementation + app tests |
 | [`postgresql-expert`](./skills/postgresql-expert/) | `/postgresql-expert` | Schema, RLS, Alembic, SQL concurrency, DB correctness |
+| [`security-auditor`](./skills/security-auditor/) | `/security-auditor` | Independent security audit; blocks Critical/High |
 
 ## Hard rules for all skills
 

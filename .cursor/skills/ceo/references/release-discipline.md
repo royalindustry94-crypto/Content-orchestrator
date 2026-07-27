@@ -16,8 +16,8 @@ DESIGN → specialist APPROVALS → IMPLEMENT → TESTS + MIGRATIONS → AUDIT �
 | Schema / RLS / Alembic | `/postgresql-expert` |
 | FastAPI / worker implementation | `/backend-engineer` |
 | QA (full suite, ruff, migration replay) | Independent checklist; not self-only |
-| Security (authz/RLS/secrets/audit) | Independent checklist; not self-only |
-| VERIFIED label | `/ceo` only, with evidence |
+| Security (`/security-auditor`) | Required when auth/RLS/workers/spend/review/CI secrets touched |
+| VERIFIED label | `/ceo` only, with evidence including security report when applicable |
 
 ## Verification checklist
 
