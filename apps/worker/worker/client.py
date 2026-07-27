@@ -176,6 +176,12 @@ class ReferenceWorkerClient:
         """Execute (via the pluggable executor) and submit the result —
         the full worker-side half of the contract. ``assignment`` is the
         dict returned by ``claim_next`` (HTTP). ``session`` is unused.
+
+        Protocol: ack (reserves provider effect key) → renew (keep lease
+        alive across execution) → execute → submit. Real workers with
+        long provider calls should renew on an interval; the reference
+        client renews once immediately before submit as a minimal
+        heartbeat-extend.
         """
         del session
         if assignment is None:
@@ -189,6 +195,8 @@ class ReferenceWorkerClient:
         stage = assignment["stage"] if isinstance(assignment, dict) else assignment.stage
         await self.ack(assignment_id)
         effect_key = f"{assignment_id}:{attempt}"
+        # Renew before side effects so a slow executor does not race the reaper.
+        await self.renew(assignment_id)
         success, result, error = await self.executor(
             {
                 "stage": stage,

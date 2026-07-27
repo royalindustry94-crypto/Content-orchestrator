@@ -271,6 +271,7 @@ async def claim_assignment_endpoint(
     errors. A revoked/expired credential never reaches here (401 from auth).
     """
     async with AsyncSessionLocal() as session:
+        await _assert_credential_still_active(session, worker)
         result = await claim_assignment(
             session,
             worker_id=worker.worker_id,
@@ -320,6 +321,34 @@ async def _load_owned_assignment(
     return assignment
 
 
+async def _assert_credential_still_active(
+    session, worker: AuthenticatedWorker
+) -> None:
+    """Re-validate the credential inside the handler transaction.
+
+    Closes the TOCTOU where ``get_current_worker`` authenticated in a
+    separate session, then an admin revoke committed before this handler
+    mutated state. Locks the credential row so revoke serializes with us.
+    """
+    credential = await session.get(
+        WorkerCredential, worker.credential_id, with_for_update=True
+    )
+    now = datetime.now(UTC)
+    if (
+        credential is None
+        or credential.status != WorkerCredentialStatus.ACTIVE
+        or credential.worker_id != worker.worker_id
+        or (
+            credential.expires_at is not None and credential.expires_at <= now
+        )
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid worker credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
 @worker_router.post(
     "/assignments/{assignment_id}/ack", response_model=LeaseOut
 )
@@ -328,8 +357,14 @@ async def ack_assignment(
     request: Request,
     worker: AuthenticatedWorker = Depends(get_current_worker),
 ) -> LeaseOut:
-    """Acknowledge a claimed assignment and extend its lease (WS3)."""
+    """Acknowledge a claimed assignment and extend its lease (WS3).
+
+    Also reserves the provider effect key for this attempt so the worker
+    can execute side effects knowing the attempt is durable-deduped before
+    submit.
+    """
     async with AsyncSessionLocal() as session:
+        await _assert_credential_still_active(session, worker)
         registration = await session.get(
             WorkerRegistration, worker.worker_id, with_for_update=True
         )
@@ -346,6 +381,13 @@ async def ack_assignment(
             await acknowledge(session, assignment, worker_id=worker.worker_id)
         except LeaseError as exc:
             raise _lease_http_error(exc) from exc
+        # Reserve effect key before the worker performs provider work.
+        await ensure_provider_effect_key(
+            session,
+            workspace_id=assignment.workspace_id,
+            assignment_id=assignment.id,
+            attempt_number=assignment.attempt_number,
+        )
         await session.commit()
         out = LeaseOut(
             assignment_id=assignment.id,
@@ -373,6 +415,7 @@ async def renew_assignment_lease(
 ) -> LeaseOut:
     """Extend an in-flight assignment lease (bounded by max total lease)."""
     async with AsyncSessionLocal() as session:
+        await _assert_credential_still_active(session, worker)
         registration = await session.get(
             WorkerRegistration, worker.worker_id, with_for_update=True
         )
@@ -416,10 +459,15 @@ async def submit_assignment_result(
     request: Request,
     worker: AuthenticatedWorker = Depends(get_current_worker),
 ) -> SubmitOut:
-    """Submit a stage result. Records a provider effect key first so a
-    duplicated submit of the same attempt cannot double-execute side effects.
+    """Submit a stage result.
+
+    The provider effect key is normally reserved at ack. Submit creates it
+    if missing (back-compat) and treats an already-reserved key for an
+    in-flight assignment as the happy path — not a conflict — so the
+    worker can execute between ack and submit without getting stuck.
     """
     async with AsyncSessionLocal() as session:
+        await _assert_credential_still_active(session, worker)
         registration = await session.get(
             WorkerRegistration, worker.worker_id, with_for_update=True
         )
@@ -452,16 +500,7 @@ async def submit_assignment_result(
             )
             await session.commit()
             return out
-        if not effect.created and assignment.status in (
-            StageAssignmentStatus.DISPATCHED,
-            StageAssignmentStatus.ACKNOWLEDGED,
-        ):
-            # Same attempt already recorded a side-effect but never finished —
-            # refuse rather than risk a second provider call; operator recovers.
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="provider_effect_key already recorded for this attempt",
-            )
+        # In-flight + existing key ⇒ reserved at ack (or prior begin); proceed.
         try:
             await submit_result(
                 session,

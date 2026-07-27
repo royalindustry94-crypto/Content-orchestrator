@@ -276,6 +276,7 @@ async def submit_result(
     result: dict | None = None,
     error_message: str = "",
     worker_id: uuid.UUID | None = None,
+    now: datetime | None = None,
 ):
     """The real entry point for reporting a stage outcome (called by a
     worker's result-submission path — the reference client in this
@@ -290,11 +291,11 @@ async def submit_result(
     decisions, made by a separate actor).
     """
     import uuid as _uuid
-    from datetime import datetime
 
     from app.models.pipeline import PipelineRun
     from app.orchestration import controller
 
+    now = now or datetime.now(UTC)
     if worker_id is not None and assignment.worker_id != worker_id:
         raise LeaseNotOwned()
     if assignment.status not in (
@@ -305,9 +306,19 @@ async def submit_result(
             "invalid_status",
             f"submit requires in-flight status, got {assignment.status.value}",
         )
+    # Lease is the uniform recovery signal: an expired lease means the
+    # reaper owns the row. Submit must not race past expiry the way renew
+    # already refuses to.
+    if worker_id is not None and (
+        assignment.lease_expires_at is None or assignment.lease_expires_at < now
+    ):
+        raise LeaseConflict(
+            "lease_expired",
+            "lease has expired; assignment is eligible for recovery",
+        )
 
     assignment.status = StageAssignmentStatus.COMPLETED if success else StageAssignmentStatus.FAILED
-    assignment.completed_at = datetime.now(UTC)
+    assignment.completed_at = now
     assignment.result = result
     assignment.lease_expires_at = None
     assignment.lease_started_at = None

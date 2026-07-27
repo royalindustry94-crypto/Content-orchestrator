@@ -697,7 +697,8 @@ async def test_submit_success_path(ctx):
     )
     assert r.status_code == 200, r.text
     assert r.json()["status"] == "completed"
-    assert r.json()["provider_effect_created"] is True
+    # Key was reserved at ack; submit reports created=False (already reserved).
+    assert r.json()["provider_effect_created"] is False
 
     async with AsyncSessionLocal() as s:
         a = await s.get(StageAssignment, uuid.UUID(aid))
@@ -883,3 +884,122 @@ async def test_migration_0027_columns_present():
             )
         ).fetchall()
         assert {t[0] for t in tables} == {"stage_recovery_audit", "provider_effect_keys"}
+
+
+@pytest.mark.asyncio
+async def test_submit_rejects_expired_lease_before_reaper(ctx):
+    """Submit must refuse an expired lease even if the reaper has not run."""
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
+    wh = await _bring_online(ctx["client"], prov)
+    await _seed_assignment(ctx["ws"])
+    assignment = await _claim(ctx["client"], wh)
+    aid = assignment["id"]
+    await ctx["client"].post(f"/workers/assignments/{aid}/ack", headers=wh)
+
+    async with AsyncSessionLocal() as s:
+        a = await s.get(StageAssignment, uuid.UUID(aid))
+        a.lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        await s.commit()
+
+    r = await ctx["client"].post(
+        f"/workers/assignments/{aid}/submit",
+        headers=wh,
+        json={"success": True, "result": {}},
+    )
+    assert r.status_code == 409
+    assert r.json()["detail"] == "lease_expired"
+
+    async with AsyncSessionLocal() as s:
+        a = await s.get(StageAssignment, uuid.UUID(aid))
+        assert a.status == StageAssignmentStatus.ACKNOWLEDGED
+
+
+@pytest.mark.asyncio
+async def test_ack_reserves_provider_effect_key(ctx):
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
+    wh = await _bring_online(ctx["client"], prov)
+    await _seed_assignment(ctx["ws"])
+    assignment = await _claim(ctx["client"], wh)
+    aid = uuid.UUID(assignment["id"])
+    r = await ctx["client"].post(f"/workers/assignments/{aid}/ack", headers=wh)
+    assert r.status_code == 200
+
+    async with AsyncSessionLocal() as s:
+        keys = (
+            await s.execute(
+                select(ProviderEffectKey).where(ProviderEffectKey.assignment_id == aid)
+            )
+        ).scalars().all()
+        assert len(keys) == 1
+        assert keys[0].effect_key == f"{aid}:1"
+        # Duplicate reserve is a no-op (created=False), not an error.
+        again = await ensure_provider_effect_key(
+            s,
+            workspace_id=keys[0].workspace_id,
+            assignment_id=aid,
+            attempt_number=1,
+        )
+        await s.commit()
+    assert again.created is False
+
+
+@pytest.mark.asyncio
+async def test_renew_rechecks_revoked_credential_in_handler(ctx):
+    """Credential re-check inside renew txn must see a committed revoke."""
+    from app.models.enums import WorkerCredentialStatus
+    from app.models.workers import WorkerCredential
+
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
+    wh = await _bring_online(ctx["client"], prov)
+    await _seed_assignment(ctx["ws"])
+    assignment = await _claim(ctx["client"], wh)
+    aid = assignment["id"]
+    await ctx["client"].post(f"/workers/assignments/{aid}/ack", headers=wh)
+
+    # Simulate revoke committed while a request is "about to" renew: direct DB
+    # revoke (same end state as admin revoke) then renew must 401.
+    async with AsyncSessionLocal() as s:
+        creds = (
+            await s.execute(
+                select(WorkerCredential).where(
+                    WorkerCredential.worker_id == uuid.UUID(prov["worker_id"]),
+                    WorkerCredential.status == WorkerCredentialStatus.ACTIVE,
+                )
+            )
+        ).scalars().all()
+        for c in creds:
+            c.status = WorkerCredentialStatus.REVOKED
+        await s.commit()
+
+    r = await ctx["client"].post(f"/workers/assignments/{aid}/renew", headers=wh)
+    assert r.status_code == 401
+
+
+@pytest.mark.asyncio
+async def test_recovery_audit_rejects_delete(ctx):
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
+    wh = await _bring_online(ctx["client"], prov)
+    await _seed_assignment(ctx["ws"])
+    assignment = await _claim(ctx["client"], wh)
+    aid = uuid.UUID(assignment["id"])
+    async with AsyncSessionLocal() as s:
+        a = await s.get(StageAssignment, aid)
+        a.lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        await s.commit()
+    async with AsyncSessionLocal() as s:
+        await reap_expired_leases(s)
+        await s.commit()
+
+    async with AsyncSessionLocal() as s:
+        row = (
+            await s.execute(
+                select(StageRecoveryAudit).where(StageRecoveryAudit.assignment_id == aid)
+            )
+        ).scalar_one()
+        with pytest.raises(Exception) as exc:
+            await s.execute(
+                text("DELETE FROM stage_recovery_audit WHERE id = :id"),
+                {"id": str(row.id)},
+            )
+            await s.commit()
+        assert "immutable" in str(exc.value).lower()

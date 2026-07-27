@@ -299,27 +299,36 @@ async def reap_worker_assignments(
     now: datetime | None = None,
     detail: str | None = None,
 ) -> list[RecoveryResult]:
-    """Reap every in-flight assignment still held by ``worker_id``."""
+    """Reap every in-flight assignment still held by ``worker_id``.
+
+    Loops in batches until none remain so a high-concurrency worker cannot
+    leave orphan DISPATCHED rows after an offline/revoke/restart path.
+    """
     settings = get_settings()
     now = now or datetime.now(UTC)
     limit = batch_size if batch_size is not None else settings.assignment_reaper_batch_size
-    result = await session.execute(
-        select(StageAssignment)
-        .where(
-            StageAssignment.worker_id == worker_id,
-            StageAssignment.status.in_(
-                [StageAssignmentStatus.DISPATCHED, StageAssignmentStatus.ACKNOWLEDGED]
-            ),
-        )
-        .limit(limit)
-        .with_for_update(skip_locked=True)
-    )
-    holdings = list(result.scalars().all())
     outcomes: list[RecoveryResult] = []
-    for assignment in holdings:
-        outcomes.append(
-            await recover_assignment(
-                session, assignment, reason=reason, now=now, detail=detail
+    while True:
+        result = await session.execute(
+            select(StageAssignment)
+            .where(
+                StageAssignment.worker_id == worker_id,
+                StageAssignment.status.in_(
+                    [StageAssignmentStatus.DISPATCHED, StageAssignmentStatus.ACKNOWLEDGED]
+                ),
             )
+            .limit(limit)
+            .with_for_update(skip_locked=True)
         )
+        holdings = list(result.scalars().all())
+        if not holdings:
+            break
+        for assignment in holdings:
+            outcomes.append(
+                await recover_assignment(
+                    session, assignment, reason=reason, now=now, detail=detail
+                )
+            )
+        if len(holdings) < limit:
+            break
     return outcomes
