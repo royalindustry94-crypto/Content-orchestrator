@@ -2,7 +2,7 @@
 
 **Branch:** `feature/milestone-4`  
 **Scope:** Priority Queue, Back-pressure & Resource Protection  
-**Status:** VERIFIED (local gates) · CI pending on PR after final push
+**Status:** VERIFIED · CI green on `bfb7f49`
 
 ## Invariants preserved
 
