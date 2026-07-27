@@ -65,6 +65,7 @@ Do **not** use this skill as a substitute for `/ceo`, `/chief-architect`
 |-----------|-----------------|
 | Product scope / go-no-go / VERIFIED | `/ceo` |
 | ADR acceptance, stack/SoT/boundaries | `/chief-architect` |
+| Domain principles / roadmap terminology | `/content-orchestrator-expert` |
 | API/behavior unclear or missing | `/backend-engineer` |
 | UI behavior unclear | `/frontend-engineer` |
 | Schema/RLS/migration facts | `/postgresql-expert` |

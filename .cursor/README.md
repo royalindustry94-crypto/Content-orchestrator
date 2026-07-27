@@ -11,6 +11,7 @@ Project skills live under `.cursor/skills/<skill-id>/` with a required
 | Skill | Invoke | Primary authority |
 |---|---|---|
 | [`ceo`](./skills/ceo/) | `/ceo` | Product direction, quality bar, go/no-go, evidence-backed VERIFIED |
+| [`content-orchestrator-expert`](./skills/content-orchestrator-expert/) | `/content-orchestrator-expert` | Domain principles, roadmap fit, creep/drift, product impact |
 | [`chief-architect`](./skills/chief-architect/) | `/chief-architect` | Stack freeze, SoT, boundaries, ADRs |
 | [`backend-engineer`](./skills/backend-engineer/) | `/backend-engineer` | FastAPI / Python worker implementation + app tests |
 | [`postgresql-expert`](./skills/postgresql-expert/) | `/postgresql-expert` | Schema, RLS, Alembic, SQL concurrency, DB correctness |

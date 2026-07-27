@@ -219,3 +219,7 @@ Skill **`release-manager`** (`/release-manager`) was added on branch `cursor/rel
 ## Addendum — Documentation Writer (2026-07-27)
 
 Skill **`documentation-writer`** (`/documentation-writer`) was added on branch `cursor/documentation-writer-skill-b52d`. Owns accurate docs/ADR drafts/reports with no invented features and no doc↔code drift. ADR acceptance remains `/chief-architect`. Separately reviewable.
+
+## Addendum — Content Orchestrator Expert (2026-07-27)
+
+Skill **`content-orchestrator-expert`** (`/content-orchestrator-expert`) was added on branch `cursor/content-orchestrator-expert-skill-b52d`. Domain guardian for principles, roadmap fit, creep/drift, and product impact assessments. Product go/no-go remains `/ceo`; ADR acceptance remains `/chief-architect`. Separately reviewable.

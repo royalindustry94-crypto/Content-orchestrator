@@ -3,6 +3,7 @@
 | Skill | Invoke | Package |
 |---|---|---|
 | CEO | `/ceo` | [`.cursor/skills/ceo/`](../.cursor/skills/ceo/) |
+| Content Orchestrator Expert | `/content-orchestrator-expert` | [`.cursor/skills/content-orchestrator-expert/`](../.cursor/skills/content-orchestrator-expert/) |
 | Chief Architect | `/chief-architect` | [`.cursor/skills/chief-architect/`](../.cursor/skills/chief-architect/) |
 | Backend Engineer | `/backend-engineer` | [`.cursor/skills/backend-engineer/`](../.cursor/skills/backend-engineer/) |
 | PostgreSQL Expert | `/postgresql-expert` | [`.cursor/skills/postgresql-expert/`](../.cursor/skills/postgresql-expert/) |
@@ -16,7 +17,8 @@
 **Authority matrix:** [`.cursor/skills/AUTHORITY_MATRIX.md`](../.cursor/skills/AUTHORITY_MATRIX.md)  
 **Full audit:** [`CURSOR_SKILLS_AUDIT.md`](./CURSOR_SKILLS_AUDIT.md)
 
-Individual pointers: `CEO_SKILL.md`, `CHIEF_ARCHITECT_SKILL.md`,
+Individual pointers: `CEO_SKILL.md`, `CONTENT_ORCHESTRATOR_EXPERT_SKILL.md`,
+`CHIEF_ARCHITECT_SKILL.md`,
 `BACKEND_ENGINEER_SKILL.md`, `POSTGRESQL_EXPERT_SKILL.md`,
 `SECURITY_AUDITOR_SKILL.md`, `QA_BREAKER_SKILL.md`,
 `FRONTEND_ENGINEER_SKILL.md`, `DEVOPS_ENGINEER_SKILL.md`,

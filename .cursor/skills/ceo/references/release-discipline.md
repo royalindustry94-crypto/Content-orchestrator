@@ -11,7 +11,7 @@ DESIGN → specialist APPROVALS → IMPLEMENT → TESTS + MIGRATIONS → AUDIT �
 
 | Step | Owner |
 |---|---|
-| Design doc | Workstream author; CEO accepts scope |
+| Design doc | Workstream author; CEO accepts scope; `/content-orchestrator-expert` for domain impact |
 | Architecture ADR / boundary | `/chief-architect` |
 | Schema / RLS / Alembic | `/postgresql-expert` |
 | FastAPI / worker implementation | `/backend-engineer` |
@@ -26,6 +26,7 @@ DESIGN → specialist APPROVALS → IMPLEMENT → TESTS + MIGRATIONS → AUDIT �
 ## Verification checklist
 
 - [ ] Design landed before production behavior/schema
+- [ ] `/content-orchestrator-expert` impact assessment if product/domain surface touched
 - [ ] `/chief-architect` sign-off if stack/boundaries/ADR touched
 - [ ] `/postgresql-expert` sign-off if schema/RLS/migration touched
 - [ ] `/frontend-engineer` sign-off if `apps/web` UI touched

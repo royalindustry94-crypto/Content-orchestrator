@@ -49,6 +49,7 @@ Read `.cursor/skills/AUTHORITY_MATRIX.md` before acting.
 | React+TypeScript screens, reusable UI, frontend tests/build | `/frontend-engineer` |
 | CI/CD workflows, deploy/rollback runbooks, Actions permissions, runtime secrets injection | `/devops-engineer` |
 | ADR drafts, architecture doc sync, milestone prose accuracy | `/documentation-writer` (you still **accept** ADRs) |
+| Domain fit, principles, roadmap creep/drift | `/content-orchestrator-expert` |
 | Product scope, Lovable bar, release VERIFIED, merge policy | `/ceo` |
 
 You may still **REJECT** a proposal that violates stack freeze before specialists start.

@@ -85,6 +85,7 @@ substitute for CEO product VERIFIED when the CEO skill is in the loop.
 | Migration design / irreversible DDL / RLS gaps | `/postgresql-expert` |
 | CI red, deploy/rollback mechanics broken | `/devops-engineer` |
 | Changelog / release notes / ADR prose accuracy | `/documentation-writer` |
+| Domain fit / principle weakening / feature creep | `/content-orchestrator-expert` |
 | Security findings / re-audit | `/security-auditor` |
 | Adversarial QA gaps / FAILED QA | `/qa-breaker` |
 
