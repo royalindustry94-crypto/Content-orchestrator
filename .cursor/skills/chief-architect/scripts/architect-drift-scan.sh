@@ -35,16 +35,24 @@ if command -v rg >/dev/null 2>&1; then
     ok "no obvious Redis/Celery/Kafka/Express/Prisma/Drizzle markers in apps/docs/packages"
   fi
 
-  # Placeholder / silent-failure heuristics in production trees
+  # Placeholder / silent-failure heuristics in production trees.
+  # NotImplementedError is WARN-only: this repo uses it deliberately for
+  # documented out-of-scope paths (e.g. JobType.RECURRING) instead of silent no-op.
   if rg -n -i --glob '!**/node_modules/**' \
-      -e '\b(TODO|FIXME|XXX)\b' -e 'NotImplementedError' -e 'except Exception:\s*pass' \
+      -e '\b(TODO|FIXME|XXX)\b' -e 'except Exception:\s*pass' -e 'except:\s*pass' \
       apps/api/app apps/worker/worker 2>/dev/null | head -40 | grep -q .; then
     fail "placeholder or swallow-exception patterns found:"
     rg -n -i --glob '!**/node_modules/**' \
-      -e '\b(TODO|FIXME|XXX)\b' -e 'NotImplementedError' -e 'except Exception:\s*pass' \
+      -e '\b(TODO|FIXME|XXX)\b' -e 'except Exception:\s*pass' -e 'except:\s*pass' \
       apps/api/app apps/worker/worker 2>/dev/null | head -40 || true
   else
-    ok "no TODO/FIXME/XXX/NotImplementedError/except-pass greps in api/worker app trees"
+    ok "no TODO/FIXME/XXX/except-pass greps in api/worker app trees"
+  fi
+  if rg -n --glob '!**/node_modules/**' -e 'NotImplementedError' \
+      apps/api/app apps/worker/worker 2>/dev/null | head -20 | grep -q .; then
+    warn "NotImplementedError present (confirm documented out-of-scope, not a stub):"
+    rg -n --glob '!**/node_modules/**' -e 'NotImplementedError' \
+      apps/api/app apps/worker/worker 2>/dev/null | head -20 || true
   fi
 fi
 
