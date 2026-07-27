@@ -24,6 +24,14 @@ def attach_immutable_trigger(table: str) -> None:
     )
 
 
+def attach_immutable_delete_trigger(table: str) -> None:
+    """Block DELETE as well as UPDATE — full append-only (WS3 audit tables)."""
+    op.execute(
+        f"CREATE TRIGGER trg_{table}_immutable_delete BEFORE DELETE ON {table} "
+        f"FOR EACH ROW EXECUTE FUNCTION prevent_delete();"
+    )
+
+
 def enable_rls(table: str) -> None:
     op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY;")
     op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY;")

@@ -174,3 +174,47 @@ class PauseReason(str, enum.Enum):
     REVIEW_GATE = "review_gate"
     MANUAL = "manual"
     SPEND_HOLD = "spend_hold"
+
+
+class WorkerCredentialStatus(str, enum.Enum):
+    ACTIVE = "active"
+    REVOKED = "revoked"
+
+
+class ClaimOutcome(str, enum.Enum):
+    """Outcome of a worker's atomic claim attempt (WS2). Recorded on every
+    attempt in stage_claim_audit. Only `granted` hands out work; the rest
+    are normal, audited non-grants (never silent failures).
+    """
+
+    GRANTED = "granted"
+    NO_WORK = "no_work"
+    CAPACITY = "capacity"
+    INELIGIBLE = "ineligible"
+
+
+class RecoveryReason(str, enum.Enum):
+    """Why an in-flight assignment was recovered (WS3)."""
+
+    LEASE_EXPIRED = "lease_expired"
+    WORKER_OFFLINE = "worker_offline"
+    WORKER_DEREGISTERED = "worker_deregistered"
+    WORKER_REVOKED = "worker_revoked"
+    WORKER_RESTART = "worker_restart"
+    MAX_LEASE_EXCEEDED = "max_lease_exceeded"
+
+
+class RecoveryOutcome(str, enum.Enum):
+    """Result of a recovery attempt (WS3)."""
+
+    REQUEUED = "requeued"
+    DEAD_LETTERED = "dead_lettered"
+    SKIPPED = "skipped"
+
+
+class BackpressureState(str, enum.Enum):
+    """Per-workspace queue-depth back-pressure observation (WS4)."""
+
+    NORMAL = "normal"
+    PRESSURED = "pressured"
+    THROTTLED = "throttled"

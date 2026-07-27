@@ -88,3 +88,6 @@ class WorkspaceConcurrencyLimit(Base, WorkspaceScopedMixin, TimestampMixin, Vers
     # in a single tick — bounds how much of one poll batch one tenant can
     # consume, which is the scheduler-fairness half of back-pressure.
     max_per_scheduler_tick: Mapped[int] = mapped_column(Integer, nullable=False, default=5)
+    # WS4: queue-depth thresholds for back-pressure observability / throttle.
+    queue_soft_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=50)
+    queue_hard_limit: Mapped[int] = mapped_column(Integer, nullable=False, default=200)

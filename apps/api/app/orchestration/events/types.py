@@ -33,6 +33,10 @@ SPEND_COMMITTED = "spend.committed"
 SPEND_RELEASED = "spend.released"
 SPEND_BUDGET_EXCEEDED = "spend.budget_exceeded"
 
+# Milestone 4 Workstream 4 — queue-depth back-pressure observability
+BACKPRESSURE_ENTERED = "backpressure.entered"
+BACKPRESSURE_CLEARED = "backpressure.cleared"
+
 ALL_EVENT_TYPES = {
     v for k, v in list(vars().items())
     if k.isupper() and isinstance(v, str)

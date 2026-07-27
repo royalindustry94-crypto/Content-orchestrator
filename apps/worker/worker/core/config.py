@@ -25,11 +25,24 @@ class WorkerSettings(BaseSettings):
     log_level: str = Field(default="INFO")
     service_name: str = Field(default="content-orchestrator-worker")
 
+    # Retained for local tooling / legacy direct-DB helpers; the WS3 run
+    # loop uses the HTTP API and does not require DATABASE_URL at runtime
+    # when only credential auth is configured. Still required so existing
+    # test_config and .env.example stay valid.
     database_url: PostgresDsn
 
     # How often the health-check loop runs, per the "API Health Monitor"
     # background agent in the spec. Configurable, not hardcoded to 9 minutes.
     health_check_interval_seconds: int = Field(default=300)
+
+    # --- HTTP worker protocol (WS1–WS3) ---
+    api_base_url: str = Field(default="http://127.0.0.1:8000")
+    worker_credential: str | None = Field(default=None)
+    worker_id: str | None = Field(default=None)
+    worker_name: str = Field(default="reference-worker")
+    supported_stages: list[str] = Field(default_factory=lambda: ["scripting"])
+    max_concurrency: int = Field(default=1, ge=1, le=1000)
+    heartbeat_interval_seconds: int = Field(default=10, ge=1)
 
 
 @lru_cache
