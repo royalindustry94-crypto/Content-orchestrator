@@ -80,8 +80,12 @@ def evaluate_condition(condition: dict | None, context: dict) -> bool:
 
 
 async def _find_transition(
-    session: AsyncSession, *, definition_id: uuid.UUID, from_stage: str,
-    trigger: WorkflowTransitionTrigger, context: dict,
+    session: AsyncSession,
+    *,
+    definition_id: uuid.UUID,
+    from_stage: str,
+    trigger: WorkflowTransitionTrigger,
+    context: dict,
 ) -> WorkflowTransition | None:
     result = await session.execute(
         select(WorkflowTransition)
@@ -98,8 +102,9 @@ async def _find_transition(
     return None
 
 
-async def _get_stage_def(session: AsyncSession, *, definition_id: uuid.UUID,
-    stage_key: str) -> WorkflowStage:
+async def _get_stage_def(
+    session: AsyncSession, *, definition_id: uuid.UUID, stage_key: str
+) -> WorkflowStage:
     result = await session.execute(
         select(WorkflowStage).where(
             WorkflowStage.definition_id == definition_id, WorkflowStage.stage_key == stage_key
@@ -114,13 +119,15 @@ async def _get_stage_def(session: AsyncSession, *, definition_id: uuid.UUID,
 
 
 async def enqueue_stage(
-    session: AsyncSession, *, run: PipelineRun, stage_key: str, attempt: int = 0,
+    session: AsyncSession,
+    *,
+    run: PipelineRun,
+    stage_key: str,
+    attempt: int = 0,
     run_after: datetime | None = None,
 ) -> JobSchedule:
     workspace = await session.get(Workspace, run.workspace_id)
-    priority = base_priority_for_tier(
-        workspace.priority_tier if workspace is not None else 0
-    )
+    priority = base_priority_for_tier(workspace.priority_tier if workspace is not None else 0)
     job = JobSchedule(
         id=uuid.uuid4(),
         workspace_id=run.workspace_id,
@@ -141,8 +148,12 @@ async def enqueue_stage(
 
 # --- run lifecycle -------------------------------------------------------
 
+
 async def start_run(
-    session: AsyncSession, *, run: PipelineRun, definition: WorkflowDefinition,
+    session: AsyncSession,
+    *,
+    run: PipelineRun,
+    definition: WorkflowDefinition,
 ) -> None:
     """Kick off a pipeline run: pin the definition, enqueue the first
     stage. Definition is pinned by FK at run creation — later edits to
@@ -166,8 +177,12 @@ async def start_run(
 
 
 async def _advance_or_finish(
-    session: AsyncSession, *, run: PipelineRun, from_stage: str,
-    trigger: WorkflowTransitionTrigger, context: dict,
+    session: AsyncSession,
+    *,
+    run: PipelineRun,
+    from_stage: str,
+    trigger: WorkflowTransitionTrigger,
+    context: dict,
 ) -> None:
     transition = await _find_transition(
         session,
@@ -191,10 +206,16 @@ async def _advance_or_finish(
             run.completed_at = datetime.now(UTC)
             run.current_stage = from_stage
             await emit(
-                session, event_type=PIPELINE_SUCCEEDED, workspace_id=run.workspace_id,
-                aggregate_type="pipeline_run", aggregate_id=run.id,
-                correlation_id=run.correlation_id, trace_id=trace_id, span_id=span_id,
-                payload={"final_stage": from_stage}, produced_by="controller",
+                session,
+                event_type=PIPELINE_SUCCEEDED,
+                workspace_id=run.workspace_id,
+                aggregate_type="pipeline_run",
+                aggregate_id=run.id,
+                correlation_id=run.correlation_id,
+                trace_id=trace_id,
+                span_id=span_id,
+                payload={"final_stage": from_stage},
+                produced_by="controller",
             )
             return
         raise ValueError(
@@ -212,9 +233,15 @@ async def _advance_or_finish(
         run.status = "succeeded"
         run.completed_at = datetime.now(UTC)
         await emit(
-            session, event_type=PIPELINE_SUCCEEDED, workspace_id=run.workspace_id,
-            aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
-            trace_id=trace_id, span_id=span_id, payload={"final_stage": transition.to_stage},
+            session,
+            event_type=PIPELINE_SUCCEEDED,
+            workspace_id=run.workspace_id,
+            aggregate_type="pipeline_run",
+            aggregate_id=run.id,
+            correlation_id=run.correlation_id,
+            trace_id=trace_id,
+            span_id=span_id,
+            payload={"final_stage": transition.to_stage},
             produced_by="controller",
         )
     elif to_stage_def.is_review_gate:
@@ -229,23 +256,40 @@ async def _advance_or_finish(
 
 
 async def handle_stage_success(
-    session: AsyncSession, *, run: PipelineRun, stage: str, result_context: dict | None = None,
+    session: AsyncSession,
+    *,
+    run: PipelineRun,
+    stage: str,
+    result_context: dict | None = None,
 ) -> None:
     await _advance_or_finish(
-        session, run=run, from_stage=stage,
-        trigger=WorkflowTransitionTrigger.ON_SUCCESS, context=result_context or {},
+        session,
+        run=run,
+        from_stage=stage,
+        trigger=WorkflowTransitionTrigger.ON_SUCCESS,
+        context=result_context or {},
     )
 
 
 async def handle_stage_failure(
-    session: AsyncSession, *, run: PipelineRun, stage: str, attempt_number: int, error_message: str,
+    session: AsyncSession,
+    *,
+    run: PipelineRun,
+    stage: str,
+    attempt_number: int,
+    error_message: str,
 ) -> None:
     trace_id, span_id = child_span(run.trace_id)
     run.trace_id = trace_id
     await emit(
-        session, event_type=STAGE_FAILED, workspace_id=run.workspace_id,
-        aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
-        trace_id=trace_id, span_id=span_id,
+        session,
+        event_type=STAGE_FAILED,
+        workspace_id=run.workspace_id,
+        aggregate_type="pipeline_run",
+        aggregate_id=run.id,
+        correlation_id=run.correlation_id,
+        trace_id=trace_id,
+        span_id=span_id,
         payload={"stage": stage, "attempt_number": attempt_number, "error": error_message},
         produced_by="controller",
     )
@@ -254,20 +298,30 @@ async def handle_stage_failure(
     retryable = is_retryable(error_message)
     if retryable and attempt_number < stage_def.max_attempts:
         delay = compute_backoff_seconds(
-            attempt_number + 1, base_seconds=stage_def.backoff_base_seconds,
-            multiplier=stage_def.backoff_multiplier, max_seconds=stage_def.backoff_max_seconds,
+            attempt_number + 1,
+            base_seconds=stage_def.backoff_base_seconds,
+            multiplier=stage_def.backoff_multiplier,
+            max_seconds=stage_def.backoff_max_seconds,
         )
         await enqueue_stage(
-            session, run=run, stage_key=stage, attempt=attempt_number,
+            session,
+            run=run,
+            stage_key=stage,
+            attempt=attempt_number,
             run_after=datetime.now(UTC) + timedelta(seconds=delay),
         )
         return
 
     # Exhausted retries or permanent — dead-letter and fail the run.
     await route_to_dead_letter(
-        session, workspace_id=run.workspace_id, related_table="pipeline_runs", related_id=run.id,
-        job_type=f"stage:{stage}", payload={"stage": stage, "attempt_number": attempt_number},
-        failure_reason=error_message, attempt_count=attempt_number,
+        session,
+        workspace_id=run.workspace_id,
+        related_table="pipeline_runs",
+        related_id=run.id,
+        job_type=f"stage:{stage}",
+        payload={"stage": stage, "attempt_number": attempt_number},
+        failure_reason=error_message,
+        attempt_count=attempt_number,
         first_failed_at=run.started_at or datetime.now(UTC),
     )
     await _fail_run(session, run=run, reason=error_message)
@@ -275,8 +329,9 @@ async def handle_stage_failure(
         await _trigger_compensation(session, run=run)
 
 
-async def handle_stage_timeout(session: AsyncSession, *, pipeline_run_id: uuid.UUID,
-    stage: str) -> None:
+async def handle_stage_timeout(
+    session: AsyncSession, *, pipeline_run_id: uuid.UUID, stage: str
+) -> None:
     run = await session.get(PipelineRun, pipeline_run_id)
     if run is None or run.current_stage != stage or run.status not in ("running",):
         return  # already advanced past this stage — stale timeout, no-op
@@ -297,15 +352,22 @@ async def _fail_run(session: AsyncSession, *, run: PipelineRun, reason: str) -> 
     trace_id, span_id = child_span(run.trace_id)
     run.trace_id = trace_id
     await emit(
-        session, event_type=PIPELINE_FAILED, workspace_id=run.workspace_id,
-        aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
-        trace_id=trace_id, span_id=span_id, payload={"reason": reason},
+        session,
+        event_type=PIPELINE_FAILED,
+        workspace_id=run.workspace_id,
+        aggregate_type="pipeline_run",
+        aggregate_id=run.id,
+        correlation_id=run.correlation_id,
+        trace_id=trace_id,
+        span_id=span_id,
+        payload={"reason": reason},
         produced_by="controller",
     )
     await release_all_reservations(session, run=run)
 
 
 # --- cancellation ---------------------------------------------------------
+
 
 async def cancel_run(session: AsyncSession, *, run: PipelineRun) -> None:
     if run.status in ("succeeded", "failed", "cancelled"):
@@ -317,7 +379,8 @@ async def cancel_run(session: AsyncSession, *, run: PipelineRun) -> None:
             StageAssignment.pipeline_run_id == run.id,
             StageAssignment.status.in_(
                 [
-                    StageAssignmentStatus.PENDING, StageAssignmentStatus.DISPATCHED,
+                    StageAssignmentStatus.PENDING,
+                    StageAssignmentStatus.DISPATCHED,
                     StageAssignmentStatus.ACKNOWLEDGED,
                 ]
             ),
@@ -332,13 +395,21 @@ async def cancel_run(session: AsyncSession, *, run: PipelineRun) -> None:
     run.trace_id = trace_id
     await release_all_reservations(session, run=run)
     await emit(
-        session, event_type=PIPELINE_CANCELLED, workspace_id=run.workspace_id,
-        aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
-        trace_id=trace_id, span_id=span_id, payload={}, produced_by="controller",
+        session,
+        event_type=PIPELINE_CANCELLED,
+        workspace_id=run.workspace_id,
+        aggregate_type="pipeline_run",
+        aggregate_id=run.id,
+        correlation_id=run.correlation_id,
+        trace_id=trace_id,
+        span_id=span_id,
+        payload={},
+        produced_by="controller",
     )
 
 
 # --- compensation (design doc §2.10) ---------------------------------------
+
 
 async def _trigger_compensation(session: AsyncSession, *, run: PipelineRun) -> None:
     """Walk completed stages backwards and enqueue compensation stages for
@@ -354,22 +425,28 @@ async def _trigger_compensation(session: AsyncSession, *, run: PipelineRun) -> N
         .order_by(PipelineStageRun.completed_at.desc())
     )
     for stage_run in completed.scalars().all():
-        stage_def = await _get_stage_def(session, definition_id=run.definition_id,
-            stage_key=stage_run.stage)
+        stage_def = await _get_stage_def(
+            session, definition_id=run.definition_id, stage_key=stage_run.stage
+        )
         if stage_def.compensation_stage_key is not None:
             job = JobSchedule(
-                id=uuid.uuid4(), workspace_id=run.workspace_id, job_type=JobType.COMPENSATION,
-                ref_table=stage_def.compensation_stage_key, ref_id=run.id,
+                id=uuid.uuid4(),
+                workspace_id=run.workspace_id,
+                job_type=JobType.COMPENSATION,
+                ref_table=stage_def.compensation_stage_key,
+                ref_id=run.id,
                 run_after=datetime.now(UTC),
-                correlation_id=run.correlation_id, trace_id=run.trace_id,
+                correlation_id=run.correlation_id,
+                trace_id=run.trace_id,
             )
             session.add(job)
     run.status = "failed"  # compensation enqueued; run remains terminally failed once done
     await session.flush()
 
 
-async def run_compensation_stage(session: AsyncSession, *, pipeline_run_id: uuid.UUID,
-    stage: str) -> None:
+async def run_compensation_stage(
+    session: AsyncSession, *, pipeline_run_id: uuid.UUID, stage: str
+) -> None:
     """Placeholder-free by design: with no external-effect stages defined
     yet (publishing etc. is out of scope), the only real compensation
     action available is spend release, already performed in _fail_run.
@@ -387,30 +464,51 @@ async def run_compensation_stage(session: AsyncSession, *, pipeline_run_id: uuid
 
 # --- human review gate (design doc §8) -------------------------------------
 
+
 async def pause_for_review(
-    session: AsyncSession, *, run: PipelineRun, stage_key: str, timeout_seconds: int,
+    session: AsyncSession,
+    *,
+    run: PipelineRun,
+    stage_key: str,
+    timeout_seconds: int,
 ) -> ReviewGate:
     run.status = "paused"
     run.pause_reason = PauseReason.REVIEW_GATE.value
     timeout_at = datetime.now(UTC) + timedelta(seconds=timeout_seconds)
     gate = ReviewGate(
-        id=uuid.uuid4(), workspace_id=run.workspace_id, pipeline_run_id=run.id, stage=stage_key,
-        requested_at=datetime.now(UTC), timeout_at=timeout_at,
+        id=uuid.uuid4(),
+        workspace_id=run.workspace_id,
+        pipeline_run_id=run.id,
+        stage=stage_key,
+        requested_at=datetime.now(UTC),
+        timeout_at=timeout_at,
     )
     session.add(gate)
     await session.flush()
-    session.add(JobSchedule(
-        id=uuid.uuid4(), workspace_id=run.workspace_id, job_type=JobType.REVIEW_TIMEOUT,
-        ref_table="review_gates", ref_id=gate.id, run_after=timeout_at,
-        correlation_id=run.correlation_id, trace_id=run.trace_id,
-    ))
+    session.add(
+        JobSchedule(
+            id=uuid.uuid4(),
+            workspace_id=run.workspace_id,
+            job_type=JobType.REVIEW_TIMEOUT,
+            ref_table="review_gates",
+            ref_id=gate.id,
+            run_after=timeout_at,
+            correlation_id=run.correlation_id,
+            trace_id=run.trace_id,
+        )
+    )
     trace_id, span_id = child_span(run.trace_id)
     run.trace_id = trace_id
     await emit(
-        session, event_type=REVIEW_REQUESTED, workspace_id=run.workspace_id,
-        aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
-        trace_id=trace_id, span_id=span_id, payload={"stage": stage_key,
-            "review_gate_id": str(gate.id)},
+        session,
+        event_type=REVIEW_REQUESTED,
+        workspace_id=run.workspace_id,
+        aggregate_type="pipeline_run",
+        aggregate_id=run.id,
+        correlation_id=run.correlation_id,
+        trace_id=trace_id,
+        span_id=span_id,
+        payload={"stage": stage_key, "review_gate_id": str(gate.id)},
         produced_by="controller",
     )
     return gate
@@ -420,12 +518,30 @@ async def resume_from_review(session: AsyncSession, *, gate: ReviewGate, approve
     if gate.status != ReviewGateStatus.AWAITING:
         return  # idempotent — already decided
     run = await session.get(PipelineRun, gate.pipeline_run_id)
+    if run is None:
+        raise ValueError(f"review_gate {gate.id} has no pipeline_run")
     gate.status = ReviewGateStatus.APPROVED if approved else ReviewGateStatus.REJECTED
     gate.decided_at = datetime.now(UTC)
+    if not approved:
+        # Private Beta / product rule: rejection without an explicit
+        # on_review_rejected edge fails the run loudly (no silent publish,
+        # no fake "succeeded" terminal).
+        reject_transition = await _find_transition(
+            session,
+            definition_id=run.definition_id,
+            from_stage=gate.stage,
+            trigger=WorkflowTransitionTrigger.ON_REVIEW_REJECTED,
+            context={},
+        )
+        if reject_transition is None:
+            run.pause_reason = None
+            await _fail_run(session, run=run, reason="review_rejected")
+            return
     run.status = "running"
     run.pause_reason = None
     trigger = (
-        WorkflowTransitionTrigger.ON_REVIEW_APPROVED if approved
+        WorkflowTransitionTrigger.ON_REVIEW_APPROVED
+        if approved
         else WorkflowTransitionTrigger.ON_REVIEW_REJECTED
     )
     await _advance_or_finish(session, run=run, from_stage=gate.stage, trigger=trigger, context={})
@@ -444,32 +560,48 @@ async def handle_review_timeout(session: AsyncSession, *, review_gate_id: uuid.U
         # terminal decision (design doc §8.6).
         new_timeout = datetime.now(UTC) + timedelta(hours=DEFAULT_REVIEW_TIMEOUT_HOURS)
         gate.timeout_at = new_timeout
-        session.add(JobSchedule(
-            id=uuid.uuid4(), workspace_id=gate.workspace_id, job_type=JobType.REVIEW_TIMEOUT,
-            ref_table="review_gates", ref_id=gate.id, run_after=new_timeout,
-        ))
+        session.add(
+            JobSchedule(
+                id=uuid.uuid4(),
+                workspace_id=gate.workspace_id,
+                job_type=JobType.REVIEW_TIMEOUT,
+                ref_table="review_gates",
+                ref_id=gate.id,
+                run_after=new_timeout,
+            )
+        )
         await emit(
-            session, event_type=REVIEW_ESCALATED, workspace_id=gate.workspace_id,
-            aggregate_type="pipeline_run", aggregate_id=gate.pipeline_run_id,
+            session,
+            event_type=REVIEW_ESCALATED,
+            workspace_id=gate.workspace_id,
+            aggregate_type="pipeline_run",
+            aggregate_id=gate.pipeline_run_id,
             correlation_id=run.correlation_id if run else uuid.uuid4(),
-            trace_id=trace_id, span_id=span_id,
+            trace_id=trace_id,
+            span_id=span_id,
             payload={"review_gate_id": str(gate.id), "escalation_level": gate.escalation_level},
             produced_by="controller",
         )
     else:
         gate.status = ReviewGateStatus.TIMED_OUT
         await emit(
-            session, event_type=REVIEW_TIMED_OUT, workspace_id=gate.workspace_id,
-            aggregate_type="pipeline_run", aggregate_id=gate.pipeline_run_id,
+            session,
+            event_type=REVIEW_TIMED_OUT,
+            workspace_id=gate.workspace_id,
+            aggregate_type="pipeline_run",
+            aggregate_id=gate.pipeline_run_id,
             correlation_id=run.correlation_id if run else uuid.uuid4(),
-            trace_id=trace_id, span_id=span_id,
-            payload={"review_gate_id": str(gate.id)}, produced_by="controller",
+            trace_id=trace_id,
+            span_id=span_id,
+            payload={"review_gate_id": str(gate.id)},
+            produced_by="controller",
         )
         if run is not None:
             await _fail_run(session, run=run, reason="review_gate_timed_out")
 
 
 # --- spend protection (design doc §9) ---------------------------------------
+
 
 async def _spend_committed_plus_reserved(
     session: AsyncSession, *, workspace_id: uuid.UUID, provider: str | None
@@ -537,20 +669,31 @@ async def reserve_spend(
             trace_id, span_id = child_span(run.trace_id)
             run.trace_id = trace_id
             await emit(
-                session, event_type=SPEND_BUDGET_EXCEEDED, workspace_id=run.workspace_id,
-                aggregate_type="pipeline_run", aggregate_id=run.id,
+                session,
+                event_type=SPEND_BUDGET_EXCEEDED,
+                workspace_id=run.workspace_id,
+                aggregate_type="pipeline_run",
+                aggregate_id=run.id,
                 correlation_id=run.correlation_id,
-                trace_id=trace_id, span_id=span_id,
-                payload={"provider": provider, "stage": stage,
-                    "attempted_usd": str(estimated_cost_usd)},
+                trace_id=trace_id,
+                span_id=span_id,
+                payload={
+                    "provider": provider,
+                    "stage": stage,
+                    "attempted_usd": str(estimated_cost_usd),
+                },
                 produced_by="controller",
             )
             return None
 
     reservation = SpendReservation(
-        id=uuid.uuid4(), workspace_id=run.workspace_id, content_item_id=None,
+        id=uuid.uuid4(),
+        workspace_id=run.workspace_id,
+        content_item_id=None,
         pipeline_run_id=run.id,
-        provider=provider, stage=stage, estimated_cost_usd=estimated_cost_usd,
+        provider=provider,
+        stage=stage,
+        estimated_cost_usd=estimated_cost_usd,
         status=ReservationStatus.RESERVED,
     )
     session.add(reservation)
@@ -558,9 +701,14 @@ async def reserve_spend(
     trace_id, span_id = child_span(run.trace_id)
     run.trace_id = trace_id
     await emit(
-        session, event_type=SPEND_RESERVED, workspace_id=run.workspace_id,
-        aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
-        trace_id=trace_id, span_id=span_id,
+        session,
+        event_type=SPEND_RESERVED,
+        workspace_id=run.workspace_id,
+        aggregate_type="pipeline_run",
+        aggregate_id=run.id,
+        correlation_id=run.correlation_id,
+        trace_id=trace_id,
+        span_id=span_id,
         payload={"reservation_id": str(reservation.id), "estimated_usd": str(estimated_cost_usd)},
         produced_by="controller",
     )
@@ -575,33 +723,51 @@ async def commit_spend(
     actual_cost_usd: Decimal,
 ) -> None:
     reservation.status = ReservationStatus.COMMITTED
-    session.add(SpendLog(
-        id=uuid.uuid4(), workspace_id=run.workspace_id, content_item_id=None,
-        provider=reservation.provider, stage=reservation.stage, cost_usd=actual_cost_usd,
-        occurred_at=datetime.now(UTC),
-    ))
+    session.add(
+        SpendLog(
+            id=uuid.uuid4(),
+            workspace_id=run.workspace_id,
+            content_item_id=None,
+            provider=reservation.provider,
+            stage=reservation.stage,
+            cost_usd=actual_cost_usd,
+            occurred_at=datetime.now(UTC),
+        )
+    )
     trace_id, span_id = child_span(run.trace_id)
     run.trace_id = trace_id
     await emit(
-        session, event_type=SPEND_COMMITTED, workspace_id=run.workspace_id,
-        aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
-        trace_id=trace_id, span_id=span_id,
+        session,
+        event_type=SPEND_COMMITTED,
+        workspace_id=run.workspace_id,
+        aggregate_type="pipeline_run",
+        aggregate_id=run.id,
+        correlation_id=run.correlation_id,
+        trace_id=trace_id,
+        span_id=span_id,
         payload={"reservation_id": str(reservation.id), "actual_usd": str(actual_cost_usd)},
         produced_by="controller",
     )
 
 
-async def release_spend(session: AsyncSession, *, run: PipelineRun,
-    reservation: SpendReservation) -> None:
+async def release_spend(
+    session: AsyncSession, *, run: PipelineRun, reservation: SpendReservation
+) -> None:
     if reservation.status != ReservationStatus.RESERVED:
         return
     reservation.status = ReservationStatus.RELEASED
     trace_id, span_id = child_span(run.trace_id)
     run.trace_id = trace_id
     await emit(
-        session, event_type=SPEND_RELEASED, workspace_id=run.workspace_id,
-        aggregate_type="pipeline_run", aggregate_id=run.id, correlation_id=run.correlation_id,
-        trace_id=trace_id, span_id=span_id, payload={"reservation_id": str(reservation.id)},
+        session,
+        event_type=SPEND_RELEASED,
+        workspace_id=run.workspace_id,
+        aggregate_type="pipeline_run",
+        aggregate_id=run.id,
+        correlation_id=run.correlation_id,
+        trace_id=trace_id,
+        span_id=span_id,
+        payload={"reservation_id": str(reservation.id)},
         produced_by="controller",
     )
 
@@ -620,9 +786,14 @@ async def release_all_reservations(session: AsyncSession, *, run: PipelineRun) -
     for reservation in result.scalars().all():
         await release_spend(session, run=run, reservation=reservation)
 
+
 async def submit_review_decision(
-    session: AsyncSession, *, gate: ReviewGate, reviewer_id: uuid.UUID,
-    approved: bool, notes: str | None = None,
+    session: AsyncSession,
+    *,
+    gate: ReviewGate,
+    reviewer_id: uuid.UUID,
+    approved: bool,
+    notes: str | None = None,
 ) -> None:
     """The orchestration hook a future review API calls: records the M3
     review_decisions row and emits review.approved/review.rejected in the
@@ -639,9 +810,13 @@ async def submit_review_decision(
         return  # idempotent — already decided
 
     run = await session.get(PipelineRun, gate.pipeline_run_id)
+    if run is None or run.content_item_id is None:
+        raise ValueError(f"review_gate {gate.id} missing pipeline run / content item")
+    gate.decided_by = reviewer_id
     decision = ReviewDecision(
-        id=uuid.uuid4(), workspace_id=gate.workspace_id,
-        content_item_id=run.content_item_id if run else None,
+        id=uuid.uuid4(),
+        workspace_id=gate.workspace_id,
+        content_item_id=run.content_item_id,
         reviewer_id=reviewer_id,
         decision=ReviewDecisionValue.APPROVED if approved else ReviewDecisionValue.REJECTED,
         notes=notes,
@@ -653,11 +828,12 @@ async def submit_review_decision(
     await emit(
         session,
         event_type=REVIEW_APPROVED if approved else REVIEW_REJECTED,
-        workspace_id=gate.workspace_id, aggregate_type="pipeline_run",
+        workspace_id=gate.workspace_id,
+        aggregate_type="pipeline_run",
         aggregate_id=gate.pipeline_run_id,
-        correlation_id=(run.correlation_id if run and run.correlation_id else uuid.uuid4()),
-        trace_id=trace_id, span_id=span_id,
+        correlation_id=(run.correlation_id if run.correlation_id else uuid.uuid4()),
+        trace_id=trace_id,
+        span_id=span_id,
         payload={"review_gate_id": str(gate.id), "decision_id": str(decision.id)},
         produced_by="review_hook",
     )
-
