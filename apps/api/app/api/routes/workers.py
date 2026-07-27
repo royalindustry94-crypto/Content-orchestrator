@@ -277,12 +277,25 @@ async def claim_assignment_endpoint(
             worker_id=worker.worker_id,
             claim_token=payload.claim_token,
         )
+        assignment_out = None
+        if result.assignment is not None:
+            from app.models.content import ContentItem
+            from app.models.pipeline import PipelineRun
+
+            run = await session.get(PipelineRun, result.assignment.pipeline_run_id)
+            item = (
+                await session.get(ContentItem, run.content_item_id)
+                if run is not None and run.content_item_id is not None
+                else None
+            )
+            assignment_out = ClaimedAssignmentOut.model_validate(result.assignment)
+            assignment_out.workspace_id = result.assignment.workspace_id
+            assignment_out.provider = result.assignment.provider
+            if item is not None:
+                assignment_out.content_item_id = item.id
+                assignment_out.topic = item.topic
+                assignment_out.target_length_seconds = item.target_length_seconds
         await session.commit()
-        assignment_out = (
-            ClaimedAssignmentOut.model_validate(result.assignment)
-            if result.assignment is not None
-            else None
-        )
     audit(
         request,
         "worker_claim",

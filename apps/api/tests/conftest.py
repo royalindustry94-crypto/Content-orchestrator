@@ -19,6 +19,7 @@ os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@127.0.0.1:5432/cont
 os.environ["APP_DATABASE_URL"] = "postgresql://app_runtime:app_runtime@127.0.0.1:5432/content_orchestrator_test"
 os.environ["SUPABASE_JWT_SECRET"] = "test-supabase-jwt-secret"
 os.environ["ENVIRONMENT"] = "test"
+os.environ["AUTH_MODE"] = "local"
 
 import httpx
 import pytest

@@ -26,13 +26,28 @@ export type ReviewGate = {
   run_status: string;
 };
 
+export type AuthToken = {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  user_id: string;
+  email: string;
+};
+
+export type Workspace = {
+  id: string;
+  name: string;
+};
+
 async function apiFetch<T>(
   path: string,
-  token: string,
+  token: string | null,
   init: RequestInit = {},
 ): Promise<T> {
   const headers = new Headers(init.headers);
-  headers.set("Authorization", `Bearer ${token}`);
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  }
   if (init.body && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
@@ -47,12 +62,49 @@ async function apiFetch<T>(
   return (await response.json()) as T;
 }
 
+export function getAuthMode(): Promise<{ auth_mode: string }> {
+  return apiFetch<{ auth_mode: string }>("/auth/mode", null);
+}
+
+export function signup(
+  email: string,
+  password: string,
+  fullName?: string,
+): Promise<AuthToken> {
+  return apiFetch<AuthToken>("/auth/signup", null, {
+    method: "POST",
+    body: JSON.stringify({
+      email,
+      password,
+      full_name: fullName,
+    }),
+  });
+}
+
+export function login(email: string, password: string): Promise<AuthToken> {
+  return apiFetch<AuthToken>("/auth/login", null, {
+    method: "POST",
+    body: JSON.stringify({ email, password }),
+  });
+}
+
+export function createWorkspace(token: string, name: string): Promise<Workspace> {
+  return apiFetch<Workspace>("/workspaces", token, {
+    method: "POST",
+    body: JSON.stringify({ name }),
+  });
+}
+
+export function listWorkspaces(token: string): Promise<Workspace[]> {
+  return apiFetch<Workspace[]>("/workspaces", token);
+}
+
 export function createContentJob(
   token: string,
   workspaceId: string,
   payload: {
     topic: string;
-    script_body: string;
+    script_body?: string;
     script_hook?: string;
     script_cta?: string;
   },

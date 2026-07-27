@@ -26,12 +26,10 @@ StageExecutor = Callable[[dict], Awaitable[tuple[bool, dict | None, str]]]
 
 
 async def _default_executor(assignment_context: dict) -> tuple[bool, dict | None, str]:
-    """Reference default: always succeeds with an empty result. Exists so
-    the reference client is runnable end-to-end in tests without a real
-    generation backend — it is explicitly NOT a stand-in for generation
-    logic, which this milestone excludes.
-    """
-    return True, {}, ""
+    """Default executor is Draft Desk (real structured output, never {})."""
+    from worker.executors.draft_desk import draft_desk_executor
+
+    return await draft_desk_executor(assignment_context)
 
 
 class ReferenceWorkerClient:
@@ -197,14 +195,24 @@ class ReferenceWorkerClient:
         effect_key = f"{assignment_id}:{attempt}"
         # Renew before side effects so a slow executor does not race the reaper.
         await self.renew(assignment_id)
-        success, result, error = await self.executor(
-            {
-                "stage": stage,
-                "assignment_id": str(assignment_id),
-                "attempt_number": attempt,
-                "provider_effect_key": effect_key,
-            }
-        )
+        context = {
+            "stage": stage,
+            "assignment_id": str(assignment_id),
+            "attempt_number": attempt,
+            "provider_effect_key": effect_key,
+        }
+        if isinstance(assignment, dict):
+            for key in (
+                "topic",
+                "content_item_id",
+                "workspace_id",
+                "target_length_seconds",
+                "provider",
+                "pipeline_run_id",
+            ):
+                if key in assignment and assignment[key] is not None:
+                    context[key] = assignment[key]
+        success, result, error = await self.executor(context)
         await self.submit(
             assignment_id,
             success=success,

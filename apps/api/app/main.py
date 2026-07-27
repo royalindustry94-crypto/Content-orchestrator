@@ -5,16 +5,20 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.routes.auth import router as auth_router
 from app.api.routes.concurrency import router as concurrency_router
 from app.api.routes.content_jobs import router as content_jobs_router
 from app.api.routes.health import router as health_router
 from app.api.routes.memberships import router as memberships_router
 from app.api.routes.profiles import router as profiles_router
 from app.api.routes.review_gates import router as review_gates_router
+from app.api.routes.spend import router as spend_router
 from app.api.routes.workers import admin_router as workers_admin_router
 from app.api.routes.workers import worker_router as workers_machine_router
 from app.api.routes.workspaces import router as workspaces_router
@@ -31,6 +35,27 @@ logger = logging.getLogger(__name__)
 consumers.register_all()
 
 
+@dataclass
+class AutomationRuntimeState:
+    """Process-local liveness for background automation loops."""
+
+    started_at: datetime | None = None
+    maintenance_ticks: int = 0
+    maintenance_last_ok_at: datetime | None = None
+    maintenance_last_error: str | None = None
+    outbox_ticks: int = 0
+    outbox_last_ok_at: datetime | None = None
+    outbox_last_error: str | None = None
+    scheduler_ticks: int = 0
+    scheduler_last_ok_at: datetime | None = None
+    scheduler_last_error: str | None = None
+    scheduler_jobs_leased: int = 0
+    tasks_running: list[str] = field(default_factory=list)
+
+
+automation_state = AutomationRuntimeState()
+
+
 async def _outbox_relay_loop() -> None:
     """Dispatch pending outbox events (including review decisions)."""
     from app.db.session import AsyncSessionLocal
@@ -42,16 +67,47 @@ async def _outbox_relay_loop() -> None:
             async with AsyncSessionLocal() as session:
                 await relay.poll_and_dispatch(session)
                 await session.commit()
-        except Exception:  # noqa: BLE001 — tick must survive transient DB errors
+            automation_state.outbox_ticks += 1
+            automation_state.outbox_last_ok_at = datetime.now(UTC)
+            automation_state.outbox_last_error = None
+        except Exception as exc:  # noqa: BLE001 — tick must survive transient DB errors
+            automation_state.outbox_last_error = str(exc)
             logger.exception("outbox relay tick failed")
+
+
+async def _scheduler_loop() -> None:
+    """Lease due job_schedule rows and dispatch stage work."""
+    from app.db.session import AsyncSessionLocal
+    from app.orchestration import scheduler
+
+    while True:
+        await asyncio.sleep(settings.scheduler_interval_seconds)
+        try:
+            async with AsyncSessionLocal() as session:
+                leased = await scheduler.poll_and_lease(
+                    session, batch_size=settings.scheduler_batch_size
+                )
+                for job in leased:
+                    await scheduler.process_leased_job(session, job)
+                reaped = await scheduler.reap_expired_leases(session)
+                await session.commit()
+            automation_state.scheduler_ticks += 1
+            automation_state.scheduler_jobs_leased += len(leased)
+            automation_state.scheduler_last_ok_at = datetime.now(UTC)
+            automation_state.scheduler_last_error = None
+            if leased or reaped:
+                logger.info(
+                    "scheduler tick",
+                    extra={"leased": len(leased), "reaped": reaped},
+                )
+        except Exception as exc:  # noqa: BLE001
+            automation_state.scheduler_last_error = str(exc)
+            logger.exception("scheduler tick failed")
 
 
 async def _orchestration_maintenance_loop() -> None:
     """Maintenance tick: offline sweep + lease reaping (WS3) and
-    queue-depth back-pressure evaluation (WS4). Multi-replica safe
-    (SKIP LOCKED + idempotent UPDATEs). Ordering matters: offline flip
-    and that worker's assignment reap share one transaction so we never
-    leave load=0 with DISPATCHED holdings for a dead worker.
+    queue-depth back-pressure evaluation (WS4).
     """
     from app.db.session import AsyncSessionLocal
     from app.models.enums import RecoveryReason
@@ -75,6 +131,9 @@ async def _orchestration_maintenance_loop() -> None:
                 expired = await reap_expired_leases(session)
                 bp_snapshots = await evaluate_all_active_workspaces(session)
                 await session.commit()
+            automation_state.maintenance_ticks += 1
+            automation_state.maintenance_last_ok_at = datetime.now(UTC)
+            automation_state.maintenance_last_error = None
             bp_changed = sum(1 for s in bp_snapshots if s.changed)
             if flipped or expired or reaped_offline or bp_changed:
                 logger.info(
@@ -86,7 +145,8 @@ async def _orchestration_maintenance_loop() -> None:
                         "backpressure_transitions": bp_changed,
                     },
                 )
-        except Exception:  # noqa: BLE001 — tick must survive transient DB errors
+        except Exception as exc:  # noqa: BLE001 — tick must survive transient DB errors
+            automation_state.maintenance_last_error = str(exc)
             logger.exception("orchestration maintenance tick failed")
 
 
@@ -96,15 +156,19 @@ async def lifespan(app: FastAPI):
         "service starting",
         extra={"service": settings.service_name, "environment": settings.environment},
     )
-    # Tests drive offline/reaper paths with a controlled clock; the
-    # background tick would only add nondeterminism there.
     background_tasks: list[asyncio.Task] = []
+    automation_state.started_at = datetime.now(UTC)
+    automation_state.tasks_running = []
     if settings.environment != "test":
         background_tasks.append(asyncio.create_task(_orchestration_maintenance_loop()))
         background_tasks.append(asyncio.create_task(_outbox_relay_loop()))
+        background_tasks.append(asyncio.create_task(_scheduler_loop()))
+        automation_state.tasks_running = ["maintenance", "outbox_relay", "scheduler"]
+    app.state.automation = automation_state
     yield
     for task in background_tasks:
         task.cancel()
+    automation_state.tasks_running = []
     logger.info("service shutting down", extra={"service": settings.service_name})
 
 
@@ -125,11 +189,13 @@ app.add_middleware(
 app.add_middleware(RequestIDMiddleware)
 
 app.include_router(health_router)
+app.include_router(auth_router)
 app.include_router(profiles_router)
 app.include_router(workspaces_router)
 app.include_router(memberships_router)
 app.include_router(content_jobs_router)
 app.include_router(review_gates_router)
+app.include_router(spend_router)
 app.include_router(concurrency_router)
 app.include_router(workers_machine_router)
 app.include_router(workers_admin_router)

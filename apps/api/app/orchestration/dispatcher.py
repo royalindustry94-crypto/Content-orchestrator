@@ -9,17 +9,20 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.assignments import StageAssignment
-from app.models.enums import StageAssignmentStatus, WorkerStatus
-from app.models.pipeline import PipelineStageRun
+from app.models.enums import ReservationStatus, StageAssignmentStatus, WorkerStatus
+from app.models.pipeline import PipelineRun, PipelineStageRun
 from app.models.scheduling import WorkspaceConcurrencyLimit
+from app.models.spend import SpendReservation
 from app.models.workers import WorkerRegistration
 from app.models.workspace import Workspace
+from app.orchestration import controller
 from app.orchestration.events.envelope import child_span
 from app.orchestration.events.types import STAGE_ASSIGNED
 from app.orchestration.outbox import emit
@@ -193,6 +196,22 @@ async def dispatch_stage(
     if already is not None:
         return already  # idempotent re-dispatch of the same attempt
 
+    # Spend reservation before creating work — Draft Desk uses a small
+    # default estimate so monthly/daily caps are enforced on the hot path.
+    effective_provider = provider or "draft_desk"
+    run_for_spend = await session.get(PipelineRun, pipeline_run_id)
+    if run_for_spend is not None:
+        estimate = Decimal(str(get_settings().default_stage_estimate_usd))
+        reservation = await controller.reserve_spend(
+            session,
+            run=run_for_spend,
+            stage=stage,
+            provider=effective_provider,
+            estimated_cost_usd=estimate,
+        )
+        if reservation is None:
+            return None  # run paused on spend hold; caller may reschedule
+
     now = datetime.now(UTC)
     trace_id, span_id = child_span(trace_id)
     assignment = StageAssignment(
@@ -211,7 +230,7 @@ async def dispatch_stage(
         correlation_id=correlation_id,
         trace_id=trace_id,
         priority=priority,
-        provider=provider,
+        provider=effective_provider,
     )
     session.add(assignment)
     if worker is not None:
@@ -234,7 +253,7 @@ async def dispatch_stage(
             "worker_id": str(worker.id) if worker else None,
             "assignment_id": str(assignment.id),
             "priority": priority,
-            "provider": provider,
+            "provider": effective_provider,
         },
         produced_by="dispatcher",
     )
@@ -316,9 +335,6 @@ async def submit_result(
     """
     import uuid as _uuid
 
-    from app.models.pipeline import PipelineRun
-    from app.orchestration import controller
-
     now = now or datetime.now(UTC)
     if worker_id is not None and assignment.worker_id != worker_id:
         raise LeaseNotOwned()
@@ -386,11 +402,35 @@ async def submit_result(
             },
             produced_by="dispatcher",
         )
+    open_reservation = (
+        await session.execute(
+            select(SpendReservation).where(
+                SpendReservation.pipeline_run_id == run.id,
+                SpendReservation.stage == assignment.stage,
+                SpendReservation.status == ReservationStatus.RESERVED,
+            )
+        )
+    ).scalar_one_or_none()
+
     if success:
+        if open_reservation is not None:
+            actual = Decimal(str(get_settings().default_stage_estimate_usd))
+            if isinstance(result, dict) and result.get("estimated_cost_usd") is not None:
+                actual = Decimal(str(result["estimated_cost_usd"]))
+            await controller.commit_spend(
+                session,
+                run=run,
+                reservation=open_reservation,
+                actual_cost_usd=actual,
+            )
         await controller.handle_stage_success(
             session, run=run, stage=assignment.stage, result_context=result or {}
         )
     else:
+        if open_reservation is not None:
+            await controller.release_spend(
+                session, run=run, reservation=open_reservation
+            )
         await controller.handle_stage_failure(
             session, run=run, stage=assignment.stage,
             attempt_number=assignment.attempt_number, error_message=error_message,

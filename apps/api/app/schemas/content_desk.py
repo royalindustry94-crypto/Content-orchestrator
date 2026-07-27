@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class ContentJobCreate(BaseModel):
     topic: str = Field(min_length=1, max_length=500)
     script_hook: str | None = Field(default=None, max_length=2000)
-    script_body: str = Field(min_length=1, max_length=50000)
+    script_body: str | None = Field(default=None, max_length=50000)
     script_cta: str | None = Field(default=None, max_length=2000)
     target_length_seconds: int | None = Field(default=None, ge=1, le=3600)
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=200)

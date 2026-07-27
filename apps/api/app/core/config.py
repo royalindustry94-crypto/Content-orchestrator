@@ -39,9 +39,19 @@ class Settings(BaseSettings):
     # --- Supabase Auth ---
     # Supabase-issued JWTs are verified here, not issued here — see
     # docs/milestone-2-identity-and-access.md §1 for why.
+    # AUTH_MODE=local enables /auth/signup|/auth/login which mint the same
+    # JWT shape with this secret (Private Beta / staging without Supabase).
     supabase_jwt_secret: str
     supabase_jwt_algorithm: str = Field(default="HS256")
     supabase_jwt_audience: str = Field(default="authenticated")
+    auth_mode: str = Field(default="local")  # local | supabase
+
+    # --- Scheduler (background tick in API lifespan) ---
+    scheduler_interval_seconds: float = Field(default=2.0, ge=0.2)
+    scheduler_batch_size: int = Field(default=50, ge=1)
+
+    # Default estimated stage cost used when dispatching with Draft Desk.
+    default_stage_estimate_usd: float = Field(default=0.01, ge=0)
 
     # --- CORS ---
     cors_allow_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])

@@ -25,6 +25,7 @@ from app.models.pipeline import PipelineRun
 from app.models.review_gate import ReviewGate
 from app.models.workflow import WorkflowDefinition, WorkflowStage, WorkflowTransition
 from app.orchestration import consumers, controller, relay
+from app.services.draft_desk import generate_script_draft
 
 DESK_WORKFLOW_NAME = "agency_content_desk"
 DESK_WORKFLOW_VERSION = 1
@@ -144,9 +145,9 @@ async def create_content_job(
 ) -> ContentJobResult:
     """Create draft content and advance it into the mandatory Review Gate.
 
-    Private Beta generation is intentionally a stub: the caller-supplied
-    script is treated as the scripting-stage output so the Gate is reachable
-    without a live AI provider. The Gate itself is never skipped.
+    When ``script_body`` is provided it is treated as a human-authored draft.
+    When omitted/blank, Draft Desk generates a real script from ``topic``.
+    The Human Review Gate is never skipped.
     """
     if idempotency_key is not None:
         existing_run = (
@@ -188,6 +189,22 @@ async def create_content_job(
 
     definition = await ensure_desk_workflow(session, workspace_id=workspace_id, created_by=actor_id)
 
+    body = (script_body or "").strip()
+    if body:
+        hook = script_hook
+        cta = script_cta
+        generated_by = "human_draft"
+        prompt_used = "review_desk_manual_draft"
+    else:
+        generated = generate_script_draft(
+            topic=topic, target_length_seconds=target_length_seconds
+        )
+        body = generated.script_body
+        hook = script_hook or generated.script_hook
+        cta = script_cta or generated.script_cta
+        generated_by = generated.provider
+        prompt_used = "draft_desk_v1"
+
     item = ContentItem(
         id=uuid.uuid4(),
         workspace_id=workspace_id,
@@ -205,11 +222,11 @@ async def create_content_job(
         id=uuid.uuid4(),
         workspace_id=workspace_id,
         content_item_id=item.id,
-        script_hook=script_hook,
-        script_body=script_body,
-        script_cta=script_cta,
-        prompt_used="private_beta_manual_draft",
-        generated_by="private_beta_draft",
+        script_hook=hook,
+        script_body=body,
+        script_cta=cta,
+        prompt_used=prompt_used,
+        generated_by=generated_by,
         created_by=actor_id,
     )
     session.add(version)

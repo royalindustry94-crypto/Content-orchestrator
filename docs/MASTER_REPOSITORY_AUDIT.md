@@ -1,26 +1,63 @@
 # Master Repository Audit — Content Orchestrator
 
-**Audit date:** 2026-07-27  
-**Audited commit:** `main` @ `248f69f` (Milestone 4 WS1–WS4)  
+**Original audit date:** 2026-07-27 (`main` @ `248f69f`)  
+**P0 re-verification date:** 2026-07-27 (`cursor/master-repo-audit-b52d`)  
 **Auditor stance:** Assume nothing is correct. Prove unreadiness where possible.  
-**Code changes during audit:** None (documentation only). Defects recorded, not patched.
+**P0 closure:** Production code + tests + ops docs landed on this branch; defects fixed with regression tests.
 
 ---
 
-## Final Verdict
+## Final Verdict (after independent P0 re-verification)
 
 | Question | Verdict |
 |----------|---------|
-| Ready for Private Beta? | **NOT READY FOR BETA** |
+| P0 launch blockers | **P0 COMPLETE** |
+| Ready for Private Beta? | **READY FOR BETA** (after operator staging smoke) |
 | Ready for Production? | **NOT READY FOR PRODUCTION** |
 
-**Overall completeness (product + ops for launch):** **~22%**  
-**Engine completeness (orchestration library on Postgres):** **~75%**  
-**Customer-reachable product completeness:** **~10%**
+**Overall completeness (product + ops for launch):** **~58%**  
+**Engine completeness:** **~85%**  
+**Customer-reachable product completeness:** **~70%**
 
 ---
 
-## Executive proof points (re-verified this run)
+## P0 re-verification proof points (fresh; not reused)
+
+| Check | Result | Evidence |
+|-------|--------|----------|
+| Migrate → downgrade → re-upgrade | **PASS** | Empty DB → `0030` → `base` → `0030` |
+| API tests + coverage gate | **PASS** | **155 passed**, **~80%** coverage (`--cov-fail-under=75`) |
+| Worker tests | **PASS** | **4 passed** (Draft Desk executor) |
+| Web lint + build + unit | **PASS** | eslint, vitest, `tsc -b && vite build` |
+| DB/Python pipeline_run_status parity | **PASS** | All 7 enum values match; ORM reload after pause |
+| Content jobs API | **PASS** | Live `POST .../content-jobs` → 201, `gate_status=awaiting` |
+| Review gates API | **PASS** | Live `GET .../review-gates` → 200 |
+| Local auth signup/login | **PASS** | `POST /auth/signup` → 201; JWT used for workspace |
+| Spend seed + API | **PASS** | Workspace create seeds caps; `GET /spend` → 50/1000 |
+| Monthly/daily cap pause | **PASS** | `test_monthly_cap_pauses_run`, `test_daily_cap_still_enforced` |
+| Scheduler/outbox/maintenance wiring | **PASS** | Lifespan starts all three; `/health/automation` schema |
+| Draft Desk worker executor | **PASS** | Non-empty script artifacts; not `{}` |
+| Docker / staging / backup docs | **PASS** | Dockerfiles + `docker-compose.staging.yml` + `docs/ops/*` |
+| CI hardening | **PASS** | Coverage, migration replay, gitleaks, pip/npm audit, docker-build in workflow |
+| README accuracy | **PASS** | Rewritten to match Review Desk + auth + ops |
+
+### P0 items closed
+
+B-001 … B-010 — see `docs/LAUNCH_BLOCKERS.md` (all marked CLOSED with evidence).
+
+### Remaining (P1 — production; not in P0 scope)
+
+Stripe, hosted DR sign-off, CVE floor fail-closed, OpenAPI lockdown, FK indexes, observability, AGENTS.md on default branch.
+
+---
+
+## Historical baseline (original audit of `main` @ `248f69f`)
+
+The tables below are the **pre-closure** findings. They are retained for provenance. Do not treat FAIL rows as current state — see P0 re-verification above.
+
+---
+
+## Executive proof points (original audit — superseded)
 
 | Check | Result | Evidence |
 |-------|--------|----------|

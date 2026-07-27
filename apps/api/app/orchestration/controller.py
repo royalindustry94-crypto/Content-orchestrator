@@ -19,6 +19,7 @@ from app.models.config import SpendCap
 from app.models.enums import (
     JobType,
     PauseReason,
+    PipelineRunStatus,
     ReservationStatus,
     ReviewGateStatus,
     StageAssignmentStatus,
@@ -202,7 +203,7 @@ async def _advance_or_finish(
         if current_stage_def.is_terminal:
             trace_id, span_id = child_span(run.trace_id)
             run.trace_id = trace_id
-            run.status = "succeeded"
+            run.status = PipelineRunStatus.SUCCEEDED
             run.completed_at = datetime.now(UTC)
             run.current_stage = from_stage
             await emit(
@@ -230,7 +231,7 @@ async def _advance_or_finish(
     run.current_stage = transition.to_stage
 
     if to_stage_def.is_terminal:
-        run.status = "succeeded"
+        run.status = PipelineRunStatus.SUCCEEDED
         run.completed_at = datetime.now(UTC)
         await emit(
             session,
@@ -347,7 +348,7 @@ async def handle_stage_timeout(
 
 
 async def _fail_run(session: AsyncSession, *, run: PipelineRun, reason: str) -> None:
-    run.status = "failed"
+    run.status = PipelineRunStatus.FAILED
     run.completed_at = datetime.now(UTC)
     trace_id, span_id = child_span(run.trace_id)
     run.trace_id = trace_id
@@ -389,7 +390,7 @@ async def cancel_run(session: AsyncSession, *, run: PipelineRun) -> None:
     for assignment in open_assignments.scalars().all():
         assignment.status = StageAssignmentStatus.CANCELLED
 
-    run.status = "cancelled"
+    run.status = PipelineRunStatus.CANCELLED
     run.completed_at = datetime.now(UTC)
     trace_id, span_id = child_span(run.trace_id)
     run.trace_id = trace_id
@@ -418,7 +419,7 @@ async def _trigger_compensation(session: AsyncSession, *, run: PipelineRun) -> N
     mechanism is otherwise designed-for and exercised by tests, ready for
     external-effect compensations once publishing exists.
     """
-    run.status = "compensating"
+    run.status = PipelineRunStatus.COMPENSATING
     completed = await session.execute(
         select(PipelineStageRun)
         .where(PipelineStageRun.pipeline_run_id == run.id, PipelineStageRun.status == "succeeded")
@@ -440,7 +441,8 @@ async def _trigger_compensation(session: AsyncSession, *, run: PipelineRun) -> N
                 trace_id=run.trace_id,
             )
             session.add(job)
-    run.status = "failed"  # compensation enqueued; run remains terminally failed once done
+    # Compensation enqueued; run remains terminally failed once done.
+    run.status = PipelineRunStatus.FAILED
     await session.flush()
 
 
@@ -472,7 +474,7 @@ async def pause_for_review(
     stage_key: str,
     timeout_seconds: int,
 ) -> ReviewGate:
-    run.status = "paused"
+    run.status = PipelineRunStatus.PAUSED
     run.pause_reason = PauseReason.REVIEW_GATE.value
     timeout_at = datetime.now(UTC) + timedelta(seconds=timeout_seconds)
     gate = ReviewGate(
@@ -537,7 +539,7 @@ async def resume_from_review(session: AsyncSession, *, gate: ReviewGate, approve
             run.pause_reason = None
             await _fail_run(session, run=run, reason="review_rejected")
             return
-    run.status = "running"
+    run.status = PipelineRunStatus.RUNNING
     run.pause_reason = None
     trigger = (
         WorkflowTransitionTrigger.ON_REVIEW_APPROVED
@@ -603,12 +605,34 @@ async def handle_review_timeout(session: AsyncSession, *, review_gate_id: uuid.U
 # --- spend protection (design doc §9) ---------------------------------------
 
 
+def _utc_day_start(now: datetime | None = None) -> datetime:
+    now = now or datetime.now(UTC)
+    return now.astimezone(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
+
+
+def _utc_month_start(now: datetime | None = None) -> datetime:
+    now = now or datetime.now(UTC)
+    now = now.astimezone(UTC)
+    return now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
 async def _spend_committed_plus_reserved(
-    session: AsyncSession, *, workspace_id: uuid.UUID, provider: str | None
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    provider: str | None,
+    since: datetime | None = None,
 ) -> Decimal:
+    """Sum committed spend logs + open reservations.
+
+    When ``since`` is set, only logs with ``occurred_at >= since`` count.
+    Open reservations always count (they are in-flight against the budget).
+    """
     log_q = select(func.coalesce(func.sum(SpendLog.cost_usd), 0)).where(
         SpendLog.workspace_id == workspace_id
     )
+    if since is not None:
+        log_q = log_q.where(SpendLog.occurred_at >= since)
     res_q = select(func.coalesce(func.sum(SpendReservation.estimated_cost_usd), 0)).where(
         SpendReservation.workspace_id == workspace_id,
         SpendReservation.status == ReservationStatus.RESERVED,
@@ -621,6 +645,31 @@ async def _spend_committed_plus_reserved(
     return Decimal(committed) + Decimal(reserved)
 
 
+async def _load_spend_cap_for_update(
+    session: AsyncSession, *, workspace_id: uuid.UUID, provider: str
+) -> SpendCap | None:
+    cap_result = await session.execute(
+        select(SpendCap)
+        .where(
+            SpendCap.workspace_id == workspace_id,
+            SpendCap.provider == provider,
+        )
+        .with_for_update()
+    )
+    cap = cap_result.scalar_one_or_none()
+    if cap is not None:
+        return cap
+    cap_result = await session.execute(
+        select(SpendCap)
+        .where(
+            SpendCap.workspace_id == workspace_id,
+            SpendCap.provider.is_(None),
+        )
+        .with_for_update()
+    )
+    return cap_result.scalar_one_or_none()
+
+
 async def reserve_spend(
     session: AsyncSession,
     *,
@@ -630,42 +679,41 @@ async def reserve_spend(
     estimated_cost_usd: Decimal,
 ) -> SpendReservation | None:
     """Reserve estimated cost before dispatch. Returns None (and pauses
-    the run) if the reservation would exceed the workspace's cap — this
-    is the check that closes the check-then-spend race, because the
-    reservation itself (not a separate later check) is what's compared
-    against the cap (design doc §9.1, §9.4).
+    the run) if the reservation would exceed the workspace daily OR monthly
+    cap — closes the check-then-spend race (design doc §9).
 
     WS4: the spend_caps row is locked ``FOR UPDATE`` so concurrent
-    reservations serialize and cannot both slip under the remaining
-    budget (§14 / missing test #1).
+    reservations serialize and cannot both slip under the remaining budget.
     """
-    cap_result = await session.execute(
-        select(SpendCap)
-        .where(
-            SpendCap.workspace_id == run.workspace_id,
-            SpendCap.provider == provider,
-        )
-        .with_for_update()
+    cap = await _load_spend_cap_for_update(
+        session, workspace_id=run.workspace_id, provider=provider
     )
-    cap = cap_result.scalar_one_or_none()
-    if cap is None:
-        cap_result = await session.execute(
-            select(SpendCap)
-            .where(
-                SpendCap.workspace_id == run.workspace_id,
-                SpendCap.provider.is_(None),
-            )
-            .with_for_update()
-        )
-        cap = cap_result.scalar_one_or_none()
 
     if cap is not None:
-        current = await _spend_committed_plus_reserved(
-            session, workspace_id=run.workspace_id, provider=provider
+        daily = await _spend_committed_plus_reserved(
+            session,
+            workspace_id=run.workspace_id,
+            provider=provider,
+            since=_utc_day_start(),
         )
-        if current + estimated_cost_usd > cap.daily_cap_usd:
-            run.status = "paused"
+        monthly = await _spend_committed_plus_reserved(
+            session,
+            workspace_id=run.workspace_id,
+            provider=provider,
+            since=_utc_month_start(),
+        )
+        daily_cap = Decimal(str(cap.daily_cap_usd))
+        monthly_cap = Decimal(str(cap.monthly_cap_usd))
+        exceeded = None
+        if daily + estimated_cost_usd > daily_cap:
+            exceeded = "daily"
+        elif monthly + estimated_cost_usd > monthly_cap:
+            exceeded = "monthly"
+        if exceeded is not None:
+            run.status = PipelineRunStatus.PAUSED
             run.pause_reason = PauseReason.SPEND_HOLD.value
+            if run.correlation_id is None:
+                run.correlation_id = uuid.uuid4()
             trace_id, span_id = child_span(run.trace_id)
             run.trace_id = trace_id
             await emit(
@@ -681,6 +729,11 @@ async def reserve_spend(
                     "provider": provider,
                     "stage": stage,
                     "attempted_usd": str(estimated_cost_usd),
+                    "cap_kind": exceeded,
+                    "daily_used_usd": str(daily),
+                    "monthly_used_usd": str(monthly),
+                    "daily_cap_usd": str(daily_cap),
+                    "monthly_cap_usd": str(monthly_cap),
                 },
                 produced_by="controller",
             )
@@ -698,6 +751,8 @@ async def reserve_spend(
     )
     session.add(reservation)
     await session.flush()
+    if run.correlation_id is None:
+        run.correlation_id = uuid.uuid4()
     trace_id, span_id = child_span(run.trace_id)
     run.trace_id = trace_id
     await emit(

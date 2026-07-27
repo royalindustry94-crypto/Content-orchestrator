@@ -28,9 +28,8 @@ async def create_content_job(
 ) -> ContentJobOut:
     """Create a content draft and place it in the mandatory Human Review Gate.
 
-    Generation for Private Beta is the supplied script (stub). The Gate is
-    never skipped. Orchestration writes use the service-role session after
-    the role guard — pipeline/gate tables are not freely writable under RLS.
+    Optional script_body: when omitted, Draft Desk generates a script from
+    topic. The Human Review Gate is never skipped.
     """
     try:
         async with AsyncSessionLocal() as session:
@@ -39,7 +38,7 @@ async def create_content_job(
                 workspace_id=workspace_id,
                 actor_id=uuid.UUID(user.id),
                 topic=payload.topic.strip(),
-                script_body=payload.script_body,
+                script_body=payload.script_body or "",
                 script_hook=payload.script_hook,
                 script_cta=payload.script_cta,
                 target_length_seconds=payload.target_length_seconds,
