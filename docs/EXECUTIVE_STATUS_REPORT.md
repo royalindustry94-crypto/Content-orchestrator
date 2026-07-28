@@ -24,7 +24,7 @@ Independent adversarial re-audit found **3 P0 defects** in the prior “complete
 | Beta readiness | **READY FOR BETA** after hosted staging smoke |
 | Production readiness | **NOT READY FOR PRODUCTION** |
 
-**Launch completeness:** **~60%**  
+**Launch completeness:** **~70%** (P-001 Stripe on PR #27; P-005 OpenAPI closed here)  
 **Engine completeness:** **~85%**  
 **Customer-reachable Review Desk:** **~75%**
 
@@ -58,9 +58,17 @@ Independent adversarial re-audit found **3 P0 defects** in the prior “complete
 
 ---
 
-## Remaining blockers (P1 — not started)
+## P1 progress
 
-Stripe/billing, hosted DR sign-off, CVE fail-closed, OpenAPI lockdown, FK indexes, observability, AGENTS.md on default branch, Numeric(10,2) spend precision limits.
+| ID | Item | Status |
+|----|------|--------|
+| P-001 | Stripe / billing | PR #27 |
+| P-005 | OpenAPI lockdown | **CLOSED** |
+| P-002–P-004, P-006–P-009 | See `docs/LAUNCH_BLOCKERS.md` | Remaining |
+
+## Remaining blockers (P1)
+
+Hosted DR sign-off (human), CVE fail-closed, dependency CVE remediation, FK indexes, observability, AGENTS.md on default branch, Numeric(10,2) spend precision limits.
 
 ---
 

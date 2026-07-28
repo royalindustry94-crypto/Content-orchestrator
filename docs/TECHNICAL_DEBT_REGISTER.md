@@ -63,14 +63,14 @@ Severity: CRITICAL · HIGH · MEDIUM · LOW · INFO
 | Effort | M |
 | Also | P-003/P-004 |
 
-### TD-020 — OpenAPI unauthenticated
+### TD-020 — OpenAPI unauthenticated — **CLOSED (P-005)**
 
 | Field | Value |
 |-------|-------|
 | Severity | HIGH |
-| Evidence | `/openapi.json` public |
-| Risk | Surface disclosure |
-| Recommendation | Disable outside dev |
+| Evidence | Was: `/openapi.json` public. Now: docs/OpenAPI only when `ENVIRONMENT` is `development`/`dev` |
+| Risk | Was: surface disclosure in staging/prod |
+| Resolution | `openapi_route_kwargs` + FastAPI docs URLs None outside dev; `test_openapi_lockdown_p1.py` |
 | Effort | S |
 | Also | P-005 |
 

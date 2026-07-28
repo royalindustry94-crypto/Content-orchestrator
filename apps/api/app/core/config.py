@@ -99,6 +99,23 @@ class Settings(BaseSettings):
     # --- Outbox relay (Private Beta review decisions + future consumers) ---
     outbox_relay_interval_seconds: float = Field(default=2.0, ge=0.2)
 
+    @property
+    def openapi_docs_enabled(self) -> bool:
+        """Swagger/ReDoc/OpenAPI JSON are development-only (P-005)."""
+        return self.environment.strip().lower() in {"development", "dev"}
+
+
+def openapi_route_kwargs(environment: str) -> dict[str, str | None]:
+    """FastAPI docs URL kwargs — disabled outside development (P-005)."""
+    enabled = environment.strip().lower() in {"development", "dev"}
+    if enabled:
+        return {
+            "docs_url": "/docs",
+            "redoc_url": "/redoc",
+            "openapi_url": "/openapi.json",
+        }
+    return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+
 
 @lru_cache
 def get_settings() -> Settings:
