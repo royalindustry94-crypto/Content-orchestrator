@@ -11,7 +11,8 @@ from dataclasses import dataclass
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jwt import InvalidTokenError
+from jwt import decode as jwt_decode
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -35,13 +36,13 @@ class AuthenticatedUser:
 
 def _decode_supabase_jwt(token: str) -> dict:
     try:
-        return jwt.decode(
+        return jwt_decode(
             token,
             settings.supabase_jwt_secret,
             algorithms=[settings.supabase_jwt_algorithm],
             audience=settings.supabase_jwt_audience,
         )
-    except JWTError as exc:
+    except InvalidTokenError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="invalid or expired token",

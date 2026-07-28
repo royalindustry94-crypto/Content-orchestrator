@@ -15,7 +15,7 @@
 | Ready for Private Beta? | **READY FOR BETA** (after hosted staging smoke) |
 | Ready for Production? | **NOT READY FOR PRODUCTION** |
 
-**Launch completeness:** **~60%**  
+**Launch completeness:** **~78%** (P-001/#27; P-003/P-004 closed; P-005/#28)  
 **Engine completeness:** **~85%**  
 **Customer-reachable product:** **~75%**
 
@@ -75,9 +75,14 @@ After fixes: cross-provider attack **BLOCKED**; zero-cap content-job → **402**
 
 ---
 
-## Remaining (P1 — out of scope)
+## Remaining (P1)
 
-Stripe, hosted DR sign-off, CVE fail-closed, OpenAPI lockdown, FK indexes, observability, AGENTS.md, spend Numeric(10,2) precision.
+| ID | Item | Status |
+|----|------|--------|
+| P-001 | Stripe / billing | PR #27 |
+| P-003 / P-004 | CVE remediation + CI fail-closed | **CLOSED** |
+| P-005 | OpenAPI lockdown | PR #28 |
+| P-002, P-006–P-009 | Hosted DR, FK indexes, AGENTS.md, observability, spend precision | OPEN |
 
 ---
 
