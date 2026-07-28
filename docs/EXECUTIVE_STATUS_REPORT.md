@@ -24,9 +24,10 @@ Independent adversarial re-audit found **3 P0 defects** in the prior “complete
 | Beta readiness | **READY FOR BETA** after hosted staging smoke |
 | Production readiness | **NOT READY FOR PRODUCTION** |
 
-**Launch completeness:** **~60%**  
-**Engine completeness:** **~85%**  
-**Customer-reachable Review Desk:** **~75%**
+**Launch completeness:** **~92%**  
+**Engine completeness:** **~90%**  
+**Customer-reachable Review Desk:** **~75%**  
+**Beta readiness:** **READY FOR BETA** after hosted staging smoke + P-002 DR sign-off
 
 ---
 
@@ -58,9 +59,18 @@ Independent adversarial re-audit found **3 P0 defects** in the prior “complete
 
 ---
 
-## Remaining blockers (P1 — not started)
+## P1 progress
 
-Stripe/billing, hosted DR sign-off, CVE fail-closed, OpenAPI lockdown, FK indexes, observability, AGENTS.md on default branch, Numeric(10,2) spend precision limits.
+| ID | Item | Status |
+|----|------|--------|
+| P-001–P-007, P-009 | Sibling PRs #27–#32 | In progress / closed on branches |
+| P-008 | Observability / on-call | **CLOSED** (in-repo baseline) |
+| P-002 | Hosted DR sign-off | **BLOCKED** (human / hosted) |
+
+## Remaining blockers (P1)
+
+**P-002 Hosted backup restore drill sign-off** — requires human operator + hosted Postgres credentials. All other P1 items have in-repo implementations on draft PRs.
+
 
 ---
 

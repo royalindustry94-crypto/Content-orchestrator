@@ -16,6 +16,7 @@ from app.api.routes.concurrency import router as concurrency_router
 from app.api.routes.content_jobs import router as content_jobs_router
 from app.api.routes.health import router as health_router
 from app.api.routes.memberships import router as memberships_router
+from app.api.routes.metrics import router as metrics_router
 from app.api.routes.profiles import router as profiles_router
 from app.api.routes.review_gates import router as review_gates_router
 from app.api.routes.spend import router as spend_router
@@ -191,6 +192,7 @@ app.add_middleware(
 app.add_middleware(RequestIDMiddleware)
 
 app.include_router(health_router)
+app.include_router(metrics_router)
 app.include_router(auth_router)
 app.include_router(profiles_router)
 app.include_router(workspaces_router)

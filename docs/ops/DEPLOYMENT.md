@@ -80,15 +80,20 @@ required for the nginx image; see commented `VITE_*` placeholders in
 |----------|---------|
 | `GET /health/live` | Process up (liveness) |
 | `GET /health/ready` | DB reachable via owner session (readiness) |
+| `GET /health/automation` | Scheduler / outbox / maintenance loop ticks |
+| `GET /metrics` | Prometheus-format aggregate gauges (P-008) |
 
 Examples:
 
 ```bash
 curl -sf http://localhost:8000/health/live
 curl -sf http://localhost:8000/health/ready
+curl -sf http://localhost:8000/metrics | head
 # via web proxy
 curl -sf http://localhost:8080/api/health/live
 ```
+
+On-call: [`ON_CALL.md`](./ON_CALL.md).
 
 Compose marks `api` healthy only after `/health/live` succeeds; `worker`
 and `web` wait on that condition.
