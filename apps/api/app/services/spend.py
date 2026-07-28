@@ -76,8 +76,8 @@ async def update_workspace_spend_cap(
     *,
     workspace_id: uuid.UUID,
     actor_id: uuid.UUID,
-    daily_cap_usd: float | None = None,
-    monthly_cap_usd: float | None = None,
+    daily_cap_usd: float | Decimal | None = None,
+    monthly_cap_usd: float | Decimal | None = None,
 ) -> SpendCap:
     cap = await ensure_default_spend_cap(
         session, workspace_id=workspace_id, actor_id=actor_id

@@ -89,14 +89,14 @@ Severity: CRITICAL · HIGH · MEDIUM · LOW · INFO
 
 ### MEDIUM
 
-### TD-022 — Spend caps Numeric(10, 2)
+### TD-022 — Spend caps Numeric(10, 2) — **CLOSED (P-009)**
 
 | Field | Value |
 |-------|-------|
 | Severity | MEDIUM |
-| Evidence | PATCH `0.005` rounds to `0.01`; estimate also `0.01` so near-zero caps are coarse |
-| Risk | Cannot express sub-cent policy precisely |
-| Recommendation | Widen scale or document 2-decimal policy |
+| Evidence | Was: PATCH `0.005` rounded to `0.01`. Now: `spend_caps` are `numeric(12,4)`; API accepts 4 decimal places |
+| Risk | Was: cannot express sub-cent policy |
+| Resolution | Migration `0031_spend_precision` + schema Decimal validation; `test_spend_precision_p1.py` |
 | Effort | S |
 | Also | P-009 |
 

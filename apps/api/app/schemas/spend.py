@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import uuid
+from decimal import Decimal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class SpendOut(BaseModel):
@@ -19,5 +20,14 @@ class SpendOut(BaseModel):
 class SpendUpdateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    daily_cap_usd: float | None = Field(default=None, ge=0)
-    monthly_cap_usd: float | None = Field(default=None, ge=0)
+    daily_cap_usd: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=4)
+    monthly_cap_usd: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=4)
+
+    @field_validator("daily_cap_usd", "monthly_cap_usd", mode="before")
+    @classmethod
+    def _coerce_decimal(cls, value: object) -> object:
+        if value is None or isinstance(value, Decimal):
+            return value
+        if isinstance(value, int | float | str):
+            return Decimal(str(value))
+        return value
