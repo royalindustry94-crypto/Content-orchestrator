@@ -47,19 +47,21 @@
 
 ---
 
-## P1 — Production blockers (NOT started)
+## P1 — Production blockers
 
-| ID | Item |
-|----|------|
-| P-001 | Stripe / billing |
-| P-002 | Hosted backup restore drill sign-off |
-| P-003 | CI CVE fail-closed (audits currently log-only for known highs) |
-| P-004 | Dependency CVE remediation |
-| P-005 | OpenAPI lockdown outside dev |
-| P-006 | Unindexed FK columns |
-| P-007 | AGENTS.md / Cursor rules on default branch |
-| P-008 | Observability / on-call |
-| P-009 | Spend Numeric(10,2) precision vs sub-cent estimates |
+| ID | Item | Status | Evidence |
+|----|------|--------|----------|
+| P-001 | Stripe / billing | In progress on PR #27 | Separate branch (Alembic `0031`) |
+| P-002 | Hosted backup restore drill sign-off | OPEN | Needs human / hosted credentials |
+| P-003 | CI CVE fail-closed | In progress on PR #29 | Separate branch |
+| P-004 | Dependency CVE remediation | In progress on PR #29 | Separate branch |
+| P-005 | OpenAPI lockdown outside dev | In progress on PR #28 | Separate branch |
+| P-006 | Unindexed FK columns | **CLOSED** | Migration `0031_fk` (35 indexes); `test_fk_indexes_p1.py` |
+| P-007 | AGENTS.md / Cursor rules on default branch | OPEN | |
+| P-008 | Observability / on-call | OPEN | |
+| P-009 | Spend Numeric(10,2) precision vs sub-cent estimates | OPEN | |
+
+**Alembic note:** P-001 (`0031`) and P-006 (`0031_fk`) both revise `0030`. Linearize heads before merging both (rebase one onto the other).
 
 ---
 
