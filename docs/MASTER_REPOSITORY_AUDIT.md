@@ -15,7 +15,7 @@
 | Ready for Private Beta? | **READY FOR BETA** (after hosted staging smoke) |
 | Ready for Production? | **NOT READY FOR PRODUCTION** |
 
-**Launch completeness:** **~60%**  
+**Launch completeness:** **~68%** (P-001 Stripe closed 2026-07-28)  
 **Engine completeness:** **~85%**  
 **Customer-reachable product:** **~75%**
 
@@ -75,9 +75,13 @@ After fixes: cross-provider attack **BLOCKED**; zero-cap content-job → **402**
 
 ---
 
-## Remaining (P1 — out of scope)
+## Remaining (P1)
 
-Stripe, hosted DR sign-off, CVE fail-closed, OpenAPI lockdown, FK indexes, observability, AGENTS.md, spend Numeric(10,2) precision.
+| ID | Item | Status |
+|----|------|--------|
+| P-001 | Stripe / billing | **CLOSED** (migration `0031`, entitlement gate, `test_billing_p1.py`) |
+| P-002 | Hosted DR sign-off | OPEN (human) |
+| P-003–P-009 | CVE fail-closed, deps, OpenAPI, FK indexes, AGENTS.md, observability, spend precision | OPEN |
 
 ---
 

@@ -2,15 +2,15 @@
 
 **Product:** Content Orchestrator  
 **Audience:** CEO / leadership  
-**Date:** 2026-07-27  
-**Branch:** `cursor/master-repo-audit-b52d` (PR #26)  
-**Audit type:** Fresh independent adversarial re-audit after P0 closure
+**Date:** 2026-07-28  
+**Branch:** `cursor/p1-stripe-billing-b52d` (P1 execution; P0 frozen at `dec4a71`)  
+**Audit type:** P0 COMPLETE baseline frozen; P1 highest-value item closed
 
 ---
 
 ## P0 gate verdict
 
-**P0 COMPLETE**
+**P0 COMPLETE** (frozen — do not modify unless Critical defect)
 
 Independent adversarial re-audit found **3 P0 defects** in the prior “complete” claim; all were fixed with regression tests and re-verified before this verdict.
 
@@ -24,10 +24,10 @@ Independent adversarial re-audit found **3 P0 defects** in the prior “complete
 | Beta readiness | **READY FOR BETA** after hosted staging smoke |
 | Production readiness | **NOT READY FOR PRODUCTION** |
 
-**Launch completeness:** **~60%**  
+**Launch completeness:** **~68%**  
 **Engine completeness:** **~85%**  
-**Customer-reachable Review Desk:** **~75%**
-
+**Customer-reachable Review Desk:** **~75%**  
+**Revenue path (Stripe):** **IMPLEMENTED** (opt-in via `BILLING_ENABLED`)
 ---
 
 ## Defects found in this re-audit (and fixed)
@@ -58,9 +58,16 @@ Independent adversarial re-audit found **3 P0 defects** in the prior “complete
 
 ---
 
-## Remaining blockers (P1 — not started)
+## P1 progress
 
-Stripe/billing, hosted DR sign-off, CVE fail-closed, OpenAPI lockdown, FK indexes, observability, AGENTS.md on default branch, Numeric(10,2) spend precision limits.
+| ID | Item | Status |
+|----|------|--------|
+| P-001 | Stripe / billing | **CLOSED** |
+| P-002–P-009 | See `docs/LAUNCH_BLOCKERS.md` | Remaining |
+
+## Remaining blockers (P1)
+
+Hosted DR sign-off (human), CVE fail-closed, dependency CVE remediation, OpenAPI lockdown, FK indexes, observability, AGENTS.md on default branch, Numeric(10,2) spend precision limits.
 
 ---
 

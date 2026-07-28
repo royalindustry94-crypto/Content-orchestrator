@@ -9,10 +9,12 @@ from sqlalchemy.exc import IntegrityError
 
 from app.core.audit import audit
 from app.core.authorization import require_workspace_content_author
+from app.core.config import get_settings
 from app.core.security import AuthenticatedUser, get_current_user
 from app.db.session import AsyncSessionLocal
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.content_desk import ContentJobCreate, ContentJobOut
+from app.services import billing as billing_service
 from app.services import content_desk
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/content-jobs", tags=["content-jobs"])
@@ -29,10 +31,15 @@ async def create_content_job(
     """Create a content draft and place it in the mandatory Human Review Gate.
 
     Optional script_body: when omitted, Draft Desk generates a script from
-    topic. The Human Review Gate is never skipped.
+    topic. The Human Review Gate is never skipped. When BILLING_ENABLED,
+    an active/trialing Pro entitlement is required.
     """
     try:
         async with AsyncSessionLocal() as session:
+            if get_settings().billing_enabled:
+                await billing_service.require_entitlement_for_workspace(
+                    session, workspace_id=workspace_id
+                )
             result = await content_desk.create_content_job(
                 session,
                 workspace_id=workspace_id,
@@ -45,6 +52,11 @@ async def create_content_job(
                 idempotency_key=payload.idempotency_key,
             )
             await session.commit()
+    except billing_service.BillingError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_402_PAYMENT_REQUIRED,
+            detail=exc.message,
+        ) from exc
     except IntegrityError as exc:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,

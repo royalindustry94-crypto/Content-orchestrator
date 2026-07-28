@@ -69,10 +69,25 @@ See `.env.example` for the full annotated list. Staging-relevant knobs:
 | `HEALTH_CHECK_INTERVAL_SECONDS` | Worker health-monitor interval |
 | `API_BASE_URL` | Worker → API (`http://api:8000` in compose) |
 | `WORKER_CREDENTIAL` / `WORKER_ID` | Required for the worker to register and claim |
+| `BILLING_ENABLED` | Default `false` (Private Beta). When `true`, content-jobs require an active/trialing Pro entitlement |
+| `STRIPE_SECRET_KEY` | Required when billing enabled |
+| `STRIPE_WEBHOOK_SECRET` | Required when billing enabled; used by `POST /webhooks/stripe` |
+| `STRIPE_PRICE_ID_PRO` | Stripe Price ID for founding Pro |
+| `STRIPE_CHECKOUT_SUCCESS_URL` / `STRIPE_CHECKOUT_CANCEL_URL` | Checkout redirect URLs |
 
 Web: the SPA calls relative `/api/...` paths. No `VITE_*` build args are
 required for the nginx image; see commented `VITE_*` placeholders in
 `.env.example` for a future absolute-API build mode.
+
+## Billing (Stripe)
+
+- **Off by default** (`BILLING_ENABLED=false`) — P0 Private Beta path unchanged.
+- **On:** workspace admins call `POST /workspaces/{id}/billing/checkout`; Stripe
+  webhooks (`POST /webhooks/stripe`) mirror subscription state into
+  `workspace_billing` (FORCE RLS). Content-job creation returns **402** without
+  an active/trialing Pro plan.
+- **Rollback:** set `BILLING_ENABLED=false`, or `alembic downgrade 0030` to drop
+  billing tables (see `docs/work-packages/WP-PB-004-stripe-billing.md`).
 
 ## Health checks
 

@@ -99,6 +99,17 @@ class Settings(BaseSettings):
     # --- Outbox relay (Private Beta review decisions + future consumers) ---
     outbox_relay_interval_seconds: float = Field(default=2.0, ge=0.2)
 
+    # --- Stripe billing (P-001 / WP-PB-004) ---
+    # When false (default), entitlements are not enforced — Private Beta P0 path.
+    # When true, Stripe secrets + price + redirect URLs are required at runtime
+    # for checkout/webhook routes (validated in billing service, not at import).
+    billing_enabled: bool = Field(default=False)
+    stripe_secret_key: str | None = Field(default=None)
+    stripe_webhook_secret: str | None = Field(default=None)
+    stripe_price_id_pro: str | None = Field(default=None)
+    stripe_checkout_success_url: str | None = Field(default=None)
+    stripe_checkout_cancel_url: str | None = Field(default=None)
+
 
 @lru_cache
 def get_settings() -> Settings:

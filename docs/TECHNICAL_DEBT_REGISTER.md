@@ -30,14 +30,14 @@ Severity: CRITICAL · HIGH · MEDIUM · LOW · INFO
 
 ### HIGH
 
-### TD-016 — No Stripe / entitlements
+### TD-016 — No Stripe / entitlements — **CLOSED (P-001)**
 
 | Field | Value |
 |-------|-------|
 | Severity | HIGH |
-| Evidence | No billing code |
-| Risk | No revenue path |
-| Recommendation | Stripe Checkout + webhooks |
+| Evidence | Was: no billing code. Now: `workspace_billing` + Stripe Checkout/webhooks + entitlement gate |
+| Risk | Was: no revenue path |
+| Resolution | WP-PB-004 / P-001 on `cursor/p1-stripe-billing-b52d`; `BILLING_ENABLED` default false |
 | Effort | L |
 | Also | P-001 |
 

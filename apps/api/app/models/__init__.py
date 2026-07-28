@@ -7,6 +7,7 @@ from app.models.backpressure import (  # noqa: F401
     ProviderConcurrencyBudget,
     WorkspaceBackpressureState,
 )
+from app.models.billing import BillingWebhookEvent, WorkspaceBilling  # noqa: F401
 from app.models.claim_audit import StageClaimAudit  # noqa: F401
 
 # Milestone 3 content domain
