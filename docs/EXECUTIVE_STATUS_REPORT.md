@@ -24,8 +24,8 @@ Independent adversarial re-audit found **3 P0 defects** in the prior “complete
 | Beta readiness | **READY FOR BETA** after hosted staging smoke |
 | Production readiness | **NOT READY FOR PRODUCTION** |
 
-**Launch completeness:** **~60%**  
-**Engine completeness:** **~85%**  
+**Launch completeness:** **~88%**  
+**Engine completeness:** **~87%**  
 **Customer-reachable Review Desk:** **~75%**
 
 ---
@@ -58,9 +58,21 @@ Independent adversarial re-audit found **3 P0 defects** in the prior “complete
 
 ---
 
-## Remaining blockers (P1 — not started)
+## P1 progress
 
-Stripe/billing, hosted DR sign-off, CVE fail-closed, OpenAPI lockdown, FK indexes, observability, AGENTS.md on default branch, Numeric(10,2) spend precision limits.
+| ID | Item | Status |
+|----|------|--------|
+| P-001 | Stripe / billing | PR #27 |
+| P-003 / P-004 | CVE + fail-closed CI | PR #29 |
+| P-005 | OpenAPI lockdown | PR #28 |
+| P-006 | FK covering indexes | PR #30 |
+| P-007 | AGENTS.md / Cursor rules | **CLOSED** |
+| P-009 | Spend cap precision | PR #31 |
+| P-002, P-008 | Hosted DR (human), observability/on-call | Remaining |
+
+## Remaining blockers (P1)
+
+Hosted DR sign-off (**blocked on human / hosted credentials**), observability/on-call.
 
 ---
 

@@ -141,14 +141,14 @@ Severity: CRITICAL · HIGH · MEDIUM · LOW · INFO
 | Effort | L |
 | Also | P-008 |
 
-### TD-038 — AGENTS.md / Cursor rules absent on default branch
+### TD-038 — AGENTS.md / Cursor rules absent on default branch — **CLOSED (P-007)**
 
 | Field | Value |
 |-------|-------|
 | Severity | MEDIUM |
-| Evidence | Not on `main` |
-| Risk | Agent drift |
-| Recommendation | Merge foundation docs |
+| Evidence | Was: absent on `main`. Now: root `AGENTS.md` + `.cursor/rules/content-orchestrator.mdc` |
+| Risk | Was: agent drift |
+| Resolution | Foundation agent docs with non-negotiables and working rules |
 | Effort | M |
 | Also | P-007 |
 

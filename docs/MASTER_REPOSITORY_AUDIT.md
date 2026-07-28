@@ -15,8 +15,8 @@
 | Ready for Private Beta? | **READY FOR BETA** (after hosted staging smoke) |
 | Ready for Production? | **NOT READY FOR PRODUCTION** |
 
-**Launch completeness:** **~60%**  
-**Engine completeness:** **~85%**  
+**Launch completeness:** **~88%**  
+**Engine completeness:** **~87%**  
 **Customer-reachable product:** **~75%**
 
 ---
@@ -75,9 +75,14 @@ After fixes: cross-provider attack **BLOCKED**; zero-cap content-job → **402**
 
 ---
 
-## Remaining (P1 — out of scope)
+## Remaining (P1)
 
-Stripe, hosted DR sign-off, CVE fail-closed, OpenAPI lockdown, FK indexes, observability, AGENTS.md, spend Numeric(10,2) precision.
+| ID | Item | Status |
+|----|------|--------|
+| P-001–P-006, P-009 | See sibling PRs #27–#31 | In progress / closed on branches |
+| P-007 | AGENTS.md / Cursor rules | **CLOSED** |
+| P-002 | Hosted DR sign-off | OPEN (**human**) |
+| P-008 | Observability / on-call | OPEN |
 
 ---
 
