@@ -12,7 +12,7 @@
 | Question | Verdict |
 |----------|---------|
 | P0 launch blockers | **P0 COMPLETE** |
-| Ready for Private Beta? | **READY FOR BETA** (after hosted staging smoke) |
+| Ready for Private Beta? | **READY FOR PRIVATE BETA** (2026-08-03 final audit) |
 | Ready for Production? | **NOT READY FOR PRODUCTION** |
 
 **Launch completeness:** **~98%** (READY FOR PRIVATE BETA — 2026-08-03)  
@@ -79,9 +79,10 @@ After fixes: cross-provider attack **BLOCKED**; zero-cap content-job → **402**
 
 | ID | Item | Status |
 |----|------|--------|
-| P-001 | Stripe / billing | **CLOSED** (migration `0031`, entitlement gate, `test_billing_p1.py`) |
-| P-002 | Hosted DR sign-off | OPEN (human) |
-| P-003–P-009 | CVE fail-closed, deps, OpenAPI, FK indexes, AGENTS.md, observability, spend precision | OPEN |
+| P-001–P-009 | All Private Beta P1 blockers | **CLOSED** on `cursor/p2-beta-launch-b52d` |
+| Post-beta | Managed PITR credentials, live Stripe, optional APM, BYOK | Non-blocking |
+
+See `docs/FINAL_RELEASE_AUDIT.md` and `docs/DISASTER_RECOVERY_REPORT.md`.
 
 ---
 
