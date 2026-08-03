@@ -74,14 +74,14 @@ Severity: CRITICAL · HIGH · MEDIUM · LOW · INFO
 | Effort | S |
 | Also | P-005 |
 
-### TD-021 — 33 unindexed FK columns
+### TD-021 — 33 unindexed FK columns — **CLOSED (P-006)**
 
 | Field | Value |
 |-------|-------|
 | Severity | HIGH |
-| Evidence | Prior catalog audit |
-| Risk | Scale degradation |
-| Recommendation | Index migration |
+| Evidence | Was: 35 FKs without leading-column index. Now: migration `0031_fk` + `test_fk_indexes_p1.py` asserts zero |
+| Risk | Was: scale degradation on deletes/joins |
+| Resolution | Covering btree indexes via Alembic; probe regression test |
 | Effort | M |
 | Also | P-006 |
 
