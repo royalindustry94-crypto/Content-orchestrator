@@ -83,6 +83,11 @@ cd apps/web && npm test && npm run build
 - Backup / restore: `docs/ops/BACKUP_AND_RESTORE.md`
 - Launch status: `docs/EXECUTIVE_STATUS_REPORT.md`
 
+## Agent / contributor guide
+
+See [`AGENTS.md`](./AGENTS.md) (non-negotiables, working rules) and
+`.cursor/rules/content-orchestrator.mdc`.
+
 ## Status
 
 Orchestration engine (M3–M4) + Private Beta Review Desk surfaces are

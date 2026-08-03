@@ -1,0 +1,26 @@
+---
+description: Content Orchestrator non-negotiables and agent working rules
+alwaysApply: true
+---
+
+# Content Orchestrator — agent rules
+
+Follow `AGENTS.md` at the repo root.
+
+## Never weaken
+
+- Human Review Gate
+- FORCE RLS / workspace isolation
+- Spend fail-closed controls
+- Provider abstraction
+- Audit logging
+- No TODOs / placeholders on production paths
+
+## Working style
+
+- Highest business-value item from `docs/LAUNCH_BLOCKERS.md` first
+- No new frameworks; no speculative architecture
+- P0 frozen unless Critical defect with evidence
+- Alembic upgrade+downgrade for schema; linearize parallel heads before merge
+- Update launch/debt docs when closing a P0/P1 item
+- Prefer production-ready code with tests over incomplete scaffolds
