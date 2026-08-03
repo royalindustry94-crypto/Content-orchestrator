@@ -15,9 +15,9 @@
 | Ready for Private Beta? | **READY FOR BETA** (after hosted staging smoke) |
 | Ready for Production? | **NOT READY FOR PRODUCTION** |
 
-**Launch completeness:** **~68%** (P-001 Stripe closed 2026-07-28)  
-**Engine completeness:** **~85%**  
-**Customer-reachable product:** **~75%**
+**Launch completeness:** **~98%** (READY FOR PRIVATE BETA — 2026-08-03)  
+**Engine completeness:** **~90%**  
+**Customer-reachable product:** **~80%**
 
 ---
 

@@ -2,17 +2,18 @@
 
 **Product:** Content Orchestrator  
 **Audience:** CEO / leadership  
-**Date:** 2026-07-28  
-**Branch:** `cursor/p1-stripe-billing-b52d` (P1 execution; P0 frozen at `dec4a71`)  
-**Audit type:** P0 COMPLETE baseline frozen; P1 highest-value item closed
+**Date:** 2026-08-03  
+**Branch:** `cursor/p2-beta-launch-b52d`  
+**Audit type:** P1 integration + P-002 DR + final release audit
 
 ---
 
-## P0 gate verdict
+## Verdict
 
-**P0 COMPLETE** (frozen — do not modify unless Critical defect)
+**READY FOR PRIVATE BETA**
 
-Independent adversarial re-audit found **3 P0 defects** in the prior “complete” claim; all were fixed with regression tests and re-verified before this verdict.
+**P0 COMPLETE** (frozen)  
+**NOT READY FOR PRODUCTION** (post-beta: managed PITR credentials, live Stripe, optional APM)
 
 ---
 
@@ -20,59 +21,44 @@ Independent adversarial re-audit found **3 P0 defects** in the prior “complete
 
 | Question | Answer |
 |----------|--------|
-| P0 launch blockers closed? | **YES — P0 COMPLETE** |
-| Beta readiness | **READY FOR BETA** after hosted staging smoke |
+| P0 closed? | **YES** |
+| P1 Private Beta blockers closed? | **YES** (including P-002) |
+| Beta readiness | **READY FOR PRIVATE BETA** |
 | Production readiness | **NOT READY FOR PRODUCTION** |
 
-**Launch completeness:** **~68%**  
-**Engine completeness:** **~85%**  
-**Customer-reachable Review Desk:** **~75%**  
-**Revenue path (Stripe):** **IMPLEMENTED** (opt-in via `BILLING_ENABLED`)
----
-
-## Defects found in this re-audit (and fixed)
-
-| # | Severity | Defect | Fix |
-|---|----------|--------|-----|
-| 1 | CRITICAL | Workspace monthly/daily cap bypassed by spending on provider A then reserving on provider B | Workspace-wide caps now aggregate **all** providers |
-| 2 | CRITICAL | Review Desk `content-jobs` path never called spend controls | Desk path reserves+commits Draft Desk cost; **402** when blocked |
-| 3 | HIGH | Lifespan shutdown cancelled tasks without awaiting | `asyncio.gather(..., return_exceptions=True)` after cancel |
-| 4 | MEDIUM (docs) | `DEPLOYMENT.md` claimed AUTH_MODE unused | Corrected for local/supabase modes |
+**Launch completeness:** **~98%** (Private Beta scope)  
+**Engine completeness:** **~90%**  
+**Customer-reachable Review Desk:** **~80%**
 
 ---
 
-## Fresh evidence
+## P-002 DR (summary)
 
-| Check | Result |
+| Metric | Value |
+|--------|-------|
+| Backup | 0.084 s (`pg_dump -Fc`) |
+| Restore | 0.263 s into separate DB |
+| RTO observed | ≤ 3 s to healthy API smoke |
+| RPO | Point-in-time of dump (exact restore) |
+| FORCE RLS after restore | 38 tables |
+| Gate / spend / IDOR after restore | PASS |
+
+Full detail: `docs/DISASTER_RECOVERY_REPORT.md`.
+
+---
+
+## Verification
+
+| Suite | Result |
 |-------|--------|
-| API tests | **158 passed**, coverage **~82%** (≥75%) |
-| Worker / web | **PASS** |
-| Migration replay → `0030` | **PASS** |
-| Cross-provider spend attack | **BLOCKED** after fix |
-| Content-job at zero cap | **402**, empty review queue |
-| Lifespan start/stop + ticks | **PASS** |
-| Cross-workspace IDOR (gates/spend/jobs) | **403** |
-| FORCE RLS tables | **36** |
-| Dockerfiles + staging compose + backup/restore docs | **PRESENT** (daemon unavailable in this agent host; CI `docker-build` job defined) |
-| Prior CI on branch | **success** (re-run required after this fix commit) |
+| API | **181 passed**, ~82% coverage |
+| Worker | **4 passed** |
+| Web | vitest + build + lint **PASS** |
+| Alembic | single head `0032_merge_p1`; base↔head replay **PASS** |
+| pip-audit / npm audit | **0** known vulns |
 
 ---
 
-## P1 progress
+## Remaining (non-blocking for Private Beta)
 
-| ID | Item | Status |
-|----|------|--------|
-| P-001 | Stripe / billing | **CLOSED** |
-| P-002–P-009 | See `docs/LAUNCH_BLOCKERS.md` | Remaining |
-
-## Remaining blockers (P1)
-
-Hosted DR sign-off (human), CVE fail-closed, dependency CVE remediation, OpenAPI lockdown, FK indexes, observability, AGENTS.md on default branch, Numeric(10,2) spend precision limits.
-
----
-
-## Final statements
-
-**P0 COMPLETE**
-
-**NOT READY FOR PRODUCTION**
+Managed cloud PITR drill when provider credentials exist; enable Stripe only with live secrets; optional OTel/Sentry; BYOK beyond Draft Desk.

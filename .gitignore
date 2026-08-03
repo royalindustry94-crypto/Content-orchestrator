@@ -24,3 +24,4 @@ apps/web/dist/
 validation-logs/
 apps/api/.coverage
 *.tsbuildinfo
+backups/
