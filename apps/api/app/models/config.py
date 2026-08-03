@@ -50,8 +50,8 @@ class SpendCap(Base, WorkspaceScopedMixin, TimestampMixin, ActorMixin, VersionMi
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     provider: Mapped[str | None] = mapped_column(Text, nullable=True)
-    daily_cap_usd: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
-    monthly_cap_usd: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False)
+    daily_cap_usd: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
+    monthly_cap_usd: Mapped[float] = mapped_column(Numeric(12, 4), nullable=False)
 
 
 class ProviderCredential(

@@ -185,7 +185,7 @@ async def test_content_job_blocked_when_monthly_cap_exceeded(client, new_user):
     _user_id, _token, headers = new_user
     create = await client.post("/workspaces", headers=headers, json={"name": "Tight Cap"})
     ws_id = create.json()["id"]
-    # spend_caps use Numeric(10, 2) — zero is the reliable hard block.
+    # Hard zero caps remain the reliable block for product-path tests.
     patched = await client.patch(
         f"/workspaces/{ws_id}/spend",
         headers=headers,
