@@ -99,6 +99,7 @@ class Settings(BaseSettings):
     # --- Outbox relay (Private Beta review decisions + future consumers) ---
     outbox_relay_interval_seconds: float = Field(default=2.0, ge=0.2)
 
+<<<<<<< HEAD
     # --- Stripe billing (P-001 / WP-PB-004) ---
     # When false (default), entitlements are not enforced — Private Beta P0 path.
     # When true, Stripe secrets + price + redirect URLs are required at runtime
@@ -109,6 +110,24 @@ class Settings(BaseSettings):
     stripe_price_id_pro: str | None = Field(default=None)
     stripe_checkout_success_url: str | None = Field(default=None)
     stripe_checkout_cancel_url: str | None = Field(default=None)
+=======
+    @property
+    def openapi_docs_enabled(self) -> bool:
+        """Swagger/ReDoc/OpenAPI JSON are development-only (P-005)."""
+        return self.environment.strip().lower() in {"development", "dev"}
+
+
+def openapi_route_kwargs(environment: str) -> dict[str, str | None]:
+    """FastAPI docs URL kwargs — disabled outside development (P-005)."""
+    enabled = environment.strip().lower() in {"development", "dev"}
+    if enabled:
+        return {
+            "docs_url": "/docs",
+            "redoc_url": "/redoc",
+            "openapi_url": "/openapi.json",
+        }
+    return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+>>>>>>> cursor/p1-openapi-lockdown-b52d
 
 
 @lru_cache

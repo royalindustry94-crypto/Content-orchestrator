@@ -25,7 +25,7 @@ from app.api.routes.workers import admin_router as workers_admin_router
 from app.api.routes.workers import worker_router as workers_machine_router
 from app.api.routes.workspaces import router as workspaces_router
 from app.core.audit import RequestIDMiddleware
-from app.core.config import get_settings
+from app.core.config import get_settings, openapi_route_kwargs
 from app.core.logging import configure_logging
 from app.orchestration import consumers
 
@@ -176,10 +176,12 @@ async def lifespan(app: FastAPI):
     logger.info("service shutting down", extra={"service": settings.service_name})
 
 
+# P-005: Swagger/ReDoc/OpenAPI JSON only when ENVIRONMENT is development.
 app = FastAPI(
     title="Content Orchestrator API",
     version="0.1.0",
     lifespan=lifespan,
+    **openapi_route_kwargs(settings.environment),
 )
 
 app.add_middleware(
