@@ -25,7 +25,7 @@ import httpx
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport
-from jose import jwt
+from jwt import encode as jwt_encode
 from sqlalchemy import text
 
 from app.core.config import get_settings
@@ -47,7 +47,7 @@ def make_token(user_id: str | None = None, email: str = "test@example.com") -> s
         "exp": int(time.time()) + 3600,
         "role": "authenticated",
     }
-    return jwt.encode(
+    return jwt_encode(
         payload, settings.supabase_jwt_secret, algorithm=settings.supabase_jwt_algorithm
     )
 

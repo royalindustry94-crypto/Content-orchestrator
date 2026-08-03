@@ -14,7 +14,7 @@ import time
 import uuid
 from dataclasses import dataclass
 
-from jose import jwt
+from jwt import encode as jwt_encode
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -74,7 +74,7 @@ def mint_access_token(*, user_id: uuid.UUID, email: str, expires_in: int = 3600)
         "role": "authenticated",
         "iss": "content-orchestrator-local",
     }
-    return jwt.encode(
+    return jwt_encode(
         payload,
         settings.supabase_jwt_secret,
         algorithm=settings.supabase_jwt_algorithm,

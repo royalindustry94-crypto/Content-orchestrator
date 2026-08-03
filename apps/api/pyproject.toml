@@ -4,26 +4,36 @@ version = "0.1.0"
 description = "Content Orchestrator API service (FastAPI)"
 requires-python = ">=3.12"
 dependencies = [
-    "fastapi>=0.115,<0.116",
-    "uvicorn[standard]>=0.32,<0.33",
+    "fastapi>=0.128.0,<0.141",
+    "starlette>=0.52.1,<2.0",
+    "uvicorn[standard]>=0.34,<0.40",
     "pydantic>=2.9,<3.0",
     "pydantic-settings>=2.6,<3.0",
     "sqlalchemy[asyncio]>=2.0,<2.1",
     "asyncpg>=0.30,<0.31",
-    "alembic>=1.14,<1.15",
-    "python-jose[cryptography]>=3.3,<4.0",
-    "passlib[bcrypt]>=1.7,<2.0",
+    "alembic>=1.14,<1.17",
+    "PyJWT>=2.13.0,<3.0",
+    "cryptography>=46.0.6,<50.0",
     "python-multipart>=0.0.17",
+<<<<<<< HEAD
     "stripe>=11.0,<13.0",
+=======
+    # Patched transitive floors (P-004) — keep explicit so resolvers cannot
+    # reintroduce known-vulnerable minors via FastAPI/httpx/alembic.
+    "jinja2>=3.1.6,<4.0",
+    "urllib3>=2.7.0,<3.0",
+    "idna>=3.15,<4.0",
+>>>>>>> cursor/p1-cve-hardening-b52d
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.3,<9.0",
-    "pytest-asyncio>=0.24,<0.25",
-    "pytest-cov>=6.0,<7.0",
-    "httpx>=0.27,<0.28",
-    "ruff>=0.7,<0.8",
+    "pytest>=9.0.3,<10.0",
+    "pytest-asyncio>=1.3,<2.0",
+    "pytest-cov>=6.0,<8.0",
+    "httpx>=0.27,<0.29",
+    "ruff>=0.7,<0.15",
+    "pip-audit>=2.7,<3.0",
 ]
 
 [tool.ruff]
@@ -70,5 +80,5 @@ skip_empty = true
 include = ["app*"]
 
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=78"]
 build-backend = "setuptools.build_meta"

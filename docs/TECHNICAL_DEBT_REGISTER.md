@@ -52,14 +52,14 @@ Severity: CRITICAL · HIGH · MEDIUM · LOW · INFO
 | Effort | M |
 | Also | P-002 |
 
-### TD-018 — CI dependency audits not fail-closed
+### TD-018 — CI dependency audits not fail-closed — **CLOSED (P-003/P-004)**
 
 | Field | Value |
 |-------|-------|
 | Severity | HIGH |
-| Evidence | npm audit `continue-on-error`; pip-audit ignores vuln exit=1 |
-| Risk | Known CVEs land unnoticed |
-| Recommendation | Upgrade deps; fail on high+ |
+| Evidence | Was: soft-fail audits. Now: `pip-audit` + `npm audit --audit-level=high` fail the job; API/web/worker trees clean in isolated audit |
+| Risk | Was: known CVEs land unnoticed |
+| Resolution | Dep upgrades (FastAPI/Starlette/PyJWT/cryptography/Vite/ESLint floors) + fail-closed CI |
 | Effort | M |
 | Also | P-003/P-004 |
 

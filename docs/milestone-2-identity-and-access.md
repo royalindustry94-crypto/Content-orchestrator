@@ -16,7 +16,7 @@ issuance, refresh, or session storage.
 project's JWT secret (HS256) unless asymmetric signing (RS256/ES256 via
 JWKS) has been explicitly enabled on the project. This build assumes the
 default HS256 shared-secret model — `SUPABASE_JWT_SECRET` is a required
-env var, verified with `python-jose`. If the project later switches to
+env var, verified with `PyJWT`. If the project later switches to
 JWKS-based asymmetric signing, only `app/core/security.py` needs to
 change (fetch + cache the JWKS, verify by `kid`) — nothing above that
 layer does.
