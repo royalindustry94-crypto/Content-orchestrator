@@ -54,11 +54,18 @@ async def event_latency_seconds(session: AsyncSession, *, sample_size: int = 500
     """Average seconds between occurred_at and updated_at for recently
     dispatched events — a proxy for outbox relay latency.
     """
-    result = await session.execute(
-        select(func.avg(func.extract("epoch", OutboxEvent.updated_at - OutboxEvent.occurred_at)))
+    recent = (
+        select(
+            OutboxEvent.updated_at.label("updated_at"),
+            OutboxEvent.occurred_at.label("occurred_at"),
+        )
         .where(OutboxEvent.status == OutboxEventStatus.DISPATCHED)
         .order_by(OutboxEvent.occurred_at.desc())
         .limit(sample_size)
+        .subquery()
+    )
+    result = await session.execute(
+        select(func.avg(func.extract("epoch", recent.c.updated_at - recent.c.occurred_at)))
     )
     avg_seconds = result.scalar_one_or_none()
     return {"avg_dispatch_latency_seconds": float(avg_seconds) if avg_seconds is not None else 0.0}

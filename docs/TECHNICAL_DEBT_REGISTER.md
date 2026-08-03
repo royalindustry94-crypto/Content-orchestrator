@@ -130,14 +130,14 @@ Severity: CRITICAL · HIGH · MEDIUM · LOW · INFO
 | Recommendation | Per-workspace + IP limits |
 | Effort | M |
 
-### TD-037 — Observability limited
+### TD-037 — Observability limited — **CLOSED (P-008 in-repo baseline)**
 
 | Field | Value |
 |-------|-------|
 | Severity | MEDIUM |
-| Evidence | structlog; no OTel exporters |
-| Risk | Slow incidents |
-| Recommendation | OTel + error tracking |
+| Evidence | Was: collectors unwired. Now: `GET /metrics` Prometheus export + `docs/ops/ON_CALL.md` |
+| Risk | Was: slow incidents |
+| Resolution | Wire table-derived collectors; on-call runbook. Optional OTel/Sentry still needs vendor credentials |
 | Effort | L |
 | Also | P-008 |
 
