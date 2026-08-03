@@ -41,14 +41,14 @@ Severity: CRITICAL · HIGH · MEDIUM · LOW · INFO
 | Effort | L |
 | Also | P-001 |
 
-### TD-017 — Hosted backup drill not signed off
+### TD-017 — Hosted backup drill not signed off — **CLOSED (P-002)**
 
 | Field | Value |
 |-------|-------|
 | Severity | HIGH |
-| Evidence | Docs exist; no signed restore drill artifact |
-| Risk | Untested recovery in real hosting |
-| Recommendation | Quarterly restore drill on managed Postgres |
+| Evidence | Was: docs only. Now: signed drill in `docs/DISASTER_RECOVERY_REPORT.md` (dump 0.084s, restore 0.263s, isolated DB, Gate/spend/RLS verified) |
+| Risk | Was: untested recovery |
+| Resolution | Staging DB pair restore on Postgres 16.14; quarterly managed PITR still recommended when cloud credentials exist |
 | Effort | M |
 | Also | P-002 |
 
