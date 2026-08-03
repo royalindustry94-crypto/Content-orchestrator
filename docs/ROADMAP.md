@@ -13,9 +13,12 @@ Planning docs alone do not count as progress. Each item below is a Work Package 
 |----|---------|--------|
 | **WP-PB-001** | Review Desk API + UI (draft → Gate → approve/reject) | **Done** |
 | WP-PB-002 | Spend caps API + ledger visibility (fail-closed demo) | **Done** (P0) |
-| WP-PB-003 | Email or Slack notify on `REVIEW_REQUESTED` | Next |
+| WP-PB-003 | Email or Slack notify on `REVIEW_REQUESTED` | Next (post-beta polish) |
 | **WP-PB-004** | Stripe Checkout for founding Pro ($149–$199) | **Done (P-001)** |
 | WP-PB-005 | One real BYOK generation path (replace stub scripting) | After desk is sellable |
+
+**Launch gate:** P0–P1 Private Beta blockers closed on `cursor/p2-beta-launch-b52d` — see `docs/FINAL_RELEASE_AUDIT.md` (**READY FOR PRIVATE BETA**).
+
 
 ## Next (first 10 customers)
 
