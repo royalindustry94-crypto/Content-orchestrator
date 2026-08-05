@@ -7,7 +7,7 @@ import uuid
 
 os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test")
 os.environ.setdefault("APP_DATABASE_URL", "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test")
-os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret")
+os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret-0123456789abcdef")
 
 import pytest
 from sqlalchemy import select, text

@@ -124,7 +124,7 @@ async def register_worker(
     """
     if payload.capabilities.protocol_version not in settings.worker_capability_protocol_versions:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 "unsupported capability protocol_version "
                 f"{payload.capabilities.protocol_version}; server accepts "
@@ -182,7 +182,7 @@ async def worker_heartbeat(
     """
     if payload.status not in (WorkerStatus.ONLINE, WorkerStatus.BUSY, WorkerStatus.DRAINING):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="a heartbeat may report online, busy, or draining — not offline",
         )
     async with AsyncSessionLocal() as session:
@@ -197,7 +197,7 @@ async def worker_heartbeat(
             )
         if payload.current_load > registration.max_concurrency:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="current_load exceeds max_concurrency",
             )
         now = datetime.now(UTC)

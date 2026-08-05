@@ -29,7 +29,7 @@ async def list_review_gates(
     if status_filter is not None and status_filter != "all":
         if status_filter not in _VALID_STATUSES:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail=f"status must be one of: {', '.join(sorted(_VALID_STATUSES))}, all",
             )
     filter_value = None if status_filter in (None, "all") else status_filter

@@ -38,7 +38,7 @@ async def update_spend(
 ) -> SpendOut:
     if payload.daily_cap_usd is None and payload.monthly_cap_usd is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="at least one of daily_cap_usd or monthly_cap_usd is required",
         )
     if (
@@ -47,7 +47,7 @@ async def update_spend(
         and payload.daily_cap_usd > payload.monthly_cap_usd
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="daily_cap_usd cannot exceed monthly_cap_usd",
         )
     await spend_service.update_workspace_spend_cap(

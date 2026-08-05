@@ -9,7 +9,7 @@ from pathlib import Path
 
 os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test")
 os.environ.setdefault("APP_DATABASE_URL", "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test")
-os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret")
+os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret-0123456789abcdef")
 
 # apps/worker isn't installed as a dependency of apps/api; reach it via a
 # relative path so this integration test can import the reference client

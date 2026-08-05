@@ -86,7 +86,7 @@ async def update_workspace(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="workspace not found")
     if payload.name is None and payload.priority_tier is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="at least one of name or priority_tier is required",
         )
     if payload.name is not None:

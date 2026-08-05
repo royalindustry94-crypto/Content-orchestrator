@@ -43,7 +43,7 @@ async def stripe_webhook(
         code = (
             status.HTTP_400_BAD_REQUEST
             if exc.code in {"invalid_signature", "invalid_payload", "invalid_event"}
-            else status.HTTP_422_UNPROCESSABLE_ENTITY
+            else status.HTTP_422_UNPROCESSABLE_CONTENT
         )
         logger.warning(
             "stripe_webhook_rejected",

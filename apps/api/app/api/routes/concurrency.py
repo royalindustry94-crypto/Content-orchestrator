@@ -95,7 +95,7 @@ async def put_concurrency(
         and payload.queue_hard_limit < payload.queue_soft_limit
     ):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="queue_hard_limit must be >= queue_soft_limit",
         )
 
@@ -111,7 +111,7 @@ async def put_concurrency(
         hard = payload.queue_hard_limit if payload.queue_hard_limit is not None else 200
         if hard < soft:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="queue_hard_limit must be >= queue_soft_limit",
             )
         limit = WorkspaceConcurrencyLimit(
@@ -142,7 +142,7 @@ async def put_concurrency(
             limit.queue_hard_limit = payload.queue_hard_limit
         if limit.queue_hard_limit < limit.queue_soft_limit:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="queue_hard_limit must be >= queue_soft_limit",
             )
 
