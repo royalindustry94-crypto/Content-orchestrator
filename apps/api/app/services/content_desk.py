@@ -19,12 +19,15 @@ from app.models.content import ContentItem, ContentVersion
 from app.models.enums import (
     ContentStage,
     ContentStatus,
+    JobScheduleStatus,
+    JobType,
     PipelineRunStatus,
     ReviewGateStatus,
     WorkflowTransitionTrigger,
 )
 from app.models.pipeline import PipelineRun
 from app.models.review_gate import ReviewGate
+from app.models.scheduling import JobSchedule
 from app.models.workflow import WorkflowDefinition, WorkflowStage, WorkflowTransition
 from app.orchestration import consumers, controller, relay
 from app.services.draft_desk import generate_script_draft
@@ -282,6 +285,26 @@ async def create_content_job(
         reservation=reservation,
         actual_cost_usd=estimate,
     )
+
+    # start_run enqueued a STAGE job for scripting; Content Desk completed
+    # that stage synchronously. Cancel the orphan so the scheduler cannot
+    # re-dispatch and resurrect a Human Review Gate after publish (C-1).
+    orphan_jobs = (
+        await session.execute(
+            select(JobSchedule).where(
+                JobSchedule.ref_id == run.id,
+                JobSchedule.job_type.in_([JobType.STAGE, JobType.RETRY]),
+                JobSchedule.ref_table == ContentStage.SCRIPTING.value,
+                JobSchedule.status.in_(
+                    [JobScheduleStatus.PENDING, JobScheduleStatus.LEASED]
+                ),
+            )
+        )
+    ).scalars().all()
+    for job in orphan_jobs:
+        job.status = JobScheduleStatus.CANCELLED
+        job.lease_owner = None
+        job.lease_expires_at = None
 
     gate = (
         await session.execute(select(ReviewGate).where(ReviewGate.pipeline_run_id == run.id))

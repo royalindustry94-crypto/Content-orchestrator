@@ -314,3 +314,110 @@ async def test_m1_spend_hold_parks_job_without_dlq_or_attempt_burn():
             )
         ).scalar_one_or_none()
         assert dlq is None
+
+
+@pytest.mark.asyncio
+async def test_c1_content_desk_cancels_orphan_stage_job_and_blocks_resurrection():
+    """Orphan job_schedule must not resurrect a published run into a new gate."""
+    from app.models.enums import JobScheduleStatus, ReviewGateStatus
+    from app.models.review_gate import ReviewGate
+    from app.models.scheduling import JobSchedule
+    from app.orchestration import relay
+    from app.services import content_desk
+
+    async with AsyncSessionLocal() as session:
+        ws, user_id, _item = await _seed_workspace_item(session)
+        result = await content_desk.create_content_job(
+            session,
+            workspace_id=ws.id,
+            actor_id=user_id,
+            topic="c1-guard",
+            script_body="script body",
+        )
+        await session.commit()
+        run_id = result.pipeline_run_id
+        gate_id = result.review_gate_id
+
+        orphans = (
+            await session.execute(
+                select(JobSchedule).where(
+                    JobSchedule.ref_id == run_id,
+                    JobSchedule.status.in_(
+                        [JobScheduleStatus.PENDING, JobScheduleStatus.LEASED]
+                    ),
+                )
+            )
+        ).scalars().all()
+        assert orphans == [], "Content Desk must cancel the start_run scripting job"
+
+    async with AsyncSessionLocal() as session:
+        await content_desk.decide_review_gate(
+            session,
+            workspace_id=ws.id,
+            gate_id=gate_id,
+            reviewer_id=user_id,
+            approved=True,
+            notes="ship it",
+        )
+        await session.commit()
+
+    async with AsyncSessionLocal() as session:
+        for _ in range(10):
+            n = await relay.poll_and_dispatch(session)
+            if not n:
+                break
+        await session.commit()
+        run = await session.get(PipelineRun, run_id)
+        assert run is not None
+        assert run.status == PipelineRunStatus.SUCCEEDED
+
+        # Stale stage-success must be ignored on terminal runs.
+        await controller.handle_stage_success(
+            session, run=run, stage="scripting", result_context={}
+        )
+        await session.commit()
+        await session.refresh(run)
+        assert run.status == PipelineRunStatus.SUCCEEDED
+        awaiting = (
+            await session.execute(
+                select(ReviewGate).where(
+                    ReviewGate.pipeline_run_id == run_id,
+                    ReviewGate.status == ReviewGateStatus.AWAITING,
+                )
+            )
+        ).scalars().all()
+        assert awaiting == []
+
+
+@pytest.mark.asyncio
+async def test_h4_commit_spend_is_idempotent():
+    async with AsyncSessionLocal() as session:
+        ws, _user_id, item = await _seed_workspace_item(session)
+        run = PipelineRun(
+            id=uuid.uuid4(),
+            workspace_id=ws.id,
+            content_item_id=item.id,
+            status=PipelineRunStatus.RUNNING,
+            correlation_id=uuid.uuid4(),
+        )
+        session.add(run)
+        await session.flush()
+        reservation = await controller.reserve_spend(
+            session,
+            run=run,
+            stage="scripting",
+            provider="openai",
+            estimated_cost_usd=Decimal("0.25"),
+        )
+        assert reservation is not None
+        await controller.commit_spend(
+            session, run=run, reservation=reservation, actual_cost_usd=Decimal("0.25")
+        )
+        await controller.commit_spend(
+            session, run=run, reservation=reservation, actual_cost_usd=Decimal("0.25")
+        )
+        await session.commit()
+        logs = (
+            await session.execute(select(SpendLog).where(SpendLog.workspace_id == ws.id))
+        ).scalars().all()
+        assert len(logs) == 1

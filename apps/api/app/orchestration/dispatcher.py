@@ -19,7 +19,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.assignments import StageAssignment
-from app.models.enums import ReservationStatus, StageAssignmentStatus, WorkerStatus
+from app.models.enums import (
+    PipelineRunStatus,
+    ReservationStatus,
+    StageAssignmentStatus,
+    WorkerStatus,
+)
 from app.models.pipeline import PipelineRun, PipelineStageRun
 from app.models.scheduling import WorkspaceConcurrencyLimit
 from app.models.spend import SpendReservation
@@ -51,6 +56,7 @@ class DispatchOutcome(str, enum.Enum):
     NO_WORKER = "no_worker"
     BACKPRESSURE = "backpressure"
     SPEND_HOLD = "spend_hold"
+    SKIPPED = "skipped"  # terminal / review-paused run — do not retry or DLQ
 
 
 @dataclass(frozen=True)
@@ -191,6 +197,41 @@ async def dispatch_stage(
     if in_flight_result.scalar_one() >= max_concurrent:
         return DispatchResult(outcome=DispatchOutcome.BACKPRESSURE)
 
+    run_for_spend = await session.get(PipelineRun, pipeline_run_id)
+    if run_for_spend is not None:
+        run_status = (
+            run_for_spend.status.value
+            if hasattr(run_for_spend.status, "value")
+            else str(run_for_spend.status)
+        )
+        if run_status in {
+            PipelineRunStatus.SUCCEEDED.value,
+            PipelineRunStatus.FAILED.value,
+            PipelineRunStatus.CANCELLED.value,
+        }:
+            logger.info(
+                "dispatch_skipped_terminal_run",
+                extra={
+                    "pipeline_run_id": str(pipeline_run_id),
+                    "status": run_status,
+                    "stage": stage,
+                },
+            )
+            return DispatchResult(outcome=DispatchOutcome.SKIPPED)
+        if run_status == PipelineRunStatus.PAUSED.value:
+            pause = run_for_spend.pause_reason
+            if pause == "spend_hold":
+                return DispatchResult(outcome=DispatchOutcome.SPEND_HOLD)
+            logger.info(
+                "dispatch_skipped_paused_run",
+                extra={
+                    "pipeline_run_id": str(pipeline_run_id),
+                    "pause_reason": pause,
+                    "stage": stage,
+                },
+            )
+            return DispatchResult(outcome=DispatchOutcome.SKIPPED)
+
     if priority is None:
         workspace = await session.get(Workspace, workspace_id)
         priority = base_priority_for_tier(
@@ -218,7 +259,6 @@ async def dispatch_stage(
     # Spend reservation before creating work — Draft Desk uses a small
     # default estimate so monthly/daily caps are enforced on the hot path.
     effective_provider = provider or "draft_desk"
-    run_for_spend = await session.get(PipelineRun, pipeline_run_id)
     if run_for_spend is not None:
         estimate = Decimal(str(get_settings().default_stage_estimate_usd))
         reservation = await controller.reserve_spend(

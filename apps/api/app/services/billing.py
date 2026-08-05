@@ -255,83 +255,9 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
     data_object = (event.get("data") or {}).get("object") or {}
     workspace_id = await _workspace_id_from_metadata(data_object)
 
-    if event_type == "checkout.session.completed":
-        # Linkage only — never grant entitlement here. Payment may still be
-        # pending (async methods / first invoice). Entitlement is driven by
-        # customer.subscription.* with status in {active, trialing}.
-        if workspace_id is None:
-            raise BillingError("missing_workspace", "checkout session missing workspace_id")
-        sub_id = data_object.get("subscription")
-        customer_id = data_object.get("customer")
-        billing = await ensure_workspace_billing(session, workspace_id=workspace_id)
-        if isinstance(customer_id, str):
-            billing.stripe_customer_id = customer_id
-        if isinstance(sub_id, str):
-            billing.stripe_subscription_id = sub_id
-        await session.flush()
-        logger.info(
-            "stripe_checkout_linked",
-            extra={
-                "workspace_id": str(workspace_id),
-                "customer_id": billing.stripe_customer_id,
-                "subscription_id": billing.stripe_subscription_id,
-                "payment_status": data_object.get("payment_status"),
-            },
-        )
-    elif event_type in {
-        "customer.subscription.created",
-        "customer.subscription.updated",
-        "customer.subscription.deleted",
-    }:
-        if workspace_id is None:
-            sub_id = data_object.get("id")
-            cust = data_object.get("customer")
-            row = None
-            if isinstance(sub_id, str):
-                row = (
-                    await session.execute(
-                        select(WorkspaceBilling).where(
-                            WorkspaceBilling.stripe_subscription_id == sub_id
-                        )
-                    )
-                ).scalar_one_or_none()
-            if row is None and isinstance(cust, str):
-                row = (
-                    await session.execute(
-                        select(WorkspaceBilling).where(
-                            WorkspaceBilling.stripe_customer_id == cust
-                        )
-                    )
-                ).scalar_one_or_none()
-            if row is None:
-                raise BillingError(
-                    "unknown_subscription",
-                    "subscription event could not be mapped to a workspace",
-                )
-            workspace_id = row.workspace_id
-        await _apply_subscription(
-            session, workspace_id=workspace_id, subscription=data_object
-        )
-    elif event_type == "invoice.payment_failed":
-        sub = data_object.get("subscription")
-        if isinstance(sub, str):
-            row = (
-                await session.execute(
-                    select(WorkspaceBilling).where(
-                        WorkspaceBilling.stripe_subscription_id == sub
-                    )
-                )
-            ).scalar_one_or_none()
-            if row is not None:
-                row.status = "past_due"
-                workspace_id = row.workspace_id
-                await session.flush()
-    else:
-        logger.info(
-            "stripe_webhook_ignored",
-            extra={"stripe_event_id": event_id, "event_type": event_type},
-        )
-
+    # Claim unique stripe_event_id BEFORE mutations (H-5). The savepoint
+    # wraps insert + apply so a mapping error rolls back the receipt and
+    # Stripe can retry; a concurrent winner's IntegrityError is duplicate.
     try:
         async with session.begin_nested():
             session.add(
@@ -344,14 +270,104 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
                 )
             )
             await session.flush()
+
+            if event_type == "checkout.session.completed":
+                # Linkage only — never grant entitlement here.
+                if workspace_id is None:
+                    raise BillingError(
+                        "missing_workspace", "checkout session missing workspace_id"
+                    )
+                sub_id = data_object.get("subscription")
+                customer_id = data_object.get("customer")
+                billing = await ensure_workspace_billing(
+                    session, workspace_id=workspace_id
+                )
+                if isinstance(customer_id, str):
+                    billing.stripe_customer_id = customer_id
+                if isinstance(sub_id, str):
+                    billing.stripe_subscription_id = sub_id
+                await session.flush()
+                logger.info(
+                    "stripe_checkout_linked",
+                    extra={
+                        "workspace_id": str(workspace_id),
+                        "customer_id": billing.stripe_customer_id,
+                        "subscription_id": billing.stripe_subscription_id,
+                        "payment_status": data_object.get("payment_status"),
+                    },
+                )
+            elif event_type in {
+                "customer.subscription.created",
+                "customer.subscription.updated",
+                "customer.subscription.deleted",
+            }:
+                if workspace_id is None:
+                    sub_id = data_object.get("id")
+                    cust = data_object.get("customer")
+                    row = None
+                    if isinstance(sub_id, str):
+                        row = (
+                            await session.execute(
+                                select(WorkspaceBilling).where(
+                                    WorkspaceBilling.stripe_subscription_id == sub_id
+                                )
+                            )
+                        ).scalar_one_or_none()
+                    if row is None and isinstance(cust, str):
+                        row = (
+                            await session.execute(
+                                select(WorkspaceBilling).where(
+                                    WorkspaceBilling.stripe_customer_id == cust
+                                )
+                            )
+                        ).scalar_one_or_none()
+                    if row is None:
+                        raise BillingError(
+                            "unknown_subscription",
+                            "subscription event could not be mapped to a workspace",
+                        )
+                    workspace_id = row.workspace_id
+                await _apply_subscription(
+                    session, workspace_id=workspace_id, subscription=data_object
+                )
+            elif event_type == "invoice.payment_failed":
+                sub = data_object.get("subscription")
+                if isinstance(sub, str):
+                    row = (
+                        await session.execute(
+                            select(WorkspaceBilling).where(
+                                WorkspaceBilling.stripe_subscription_id == sub
+                            )
+                        )
+                    ).scalar_one_or_none()
+                    if row is not None:
+                        row.status = "past_due"
+                        workspace_id = row.workspace_id
+                        await session.flush()
+            else:
+                logger.info(
+                    "stripe_webhook_ignored",
+                    extra={"stripe_event_id": event_id, "event_type": event_type},
+                )
+
+            if workspace_id is not None:
+                receipt = (
+                    await session.execute(
+                        select(BillingWebhookEvent).where(
+                            BillingWebhookEvent.stripe_event_id == event_id
+                        )
+                    )
+                ).scalar_one()
+                if receipt.workspace_id is None:
+                    receipt.workspace_id = workspace_id
+                    await session.flush()
     except IntegrityError:
-        # Concurrent duplicate delivery (M-2): unique stripe_event_id won.
-        # Savepoint rolls back only the event insert; treat as success.
         logger.info(
             "stripe_webhook_duplicate_race",
             extra={"stripe_event_id": event_id, "event_type": event_type},
         )
         return {"status": "duplicate", "event_id": event_id, "event_type": event_type}
+
     logger.info(
         "stripe_webhook_processed",
         extra={

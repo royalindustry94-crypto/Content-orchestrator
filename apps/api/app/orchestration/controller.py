@@ -266,6 +266,23 @@ async def handle_stage_success(
     stage: str,
     result_context: dict | None = None,
 ) -> None:
+    # Terminal / cancelled runs must not re-enter the workflow graph —
+    # orphan job_schedule or stale worker submits must not resurrect gates.
+    status = run.status.value if hasattr(run.status, "value") else str(run.status)
+    if status in {
+        PipelineRunStatus.SUCCEEDED.value,
+        PipelineRunStatus.FAILED.value,
+        PipelineRunStatus.CANCELLED.value,
+    }:
+        logger.warning(
+            "stage_success_ignored_terminal_run",
+            extra={
+                "pipeline_run_id": str(run.id),
+                "status": status,
+                "stage": stage,
+            },
+        )
+        return
     await _advance_or_finish(
         session,
         run=run,
@@ -477,6 +494,31 @@ async def pause_for_review(
     stage_key: str,
     timeout_seconds: int,
 ) -> ReviewGate:
+    status = run.status.value if hasattr(run.status, "value") else str(run.status)
+    if status in {
+        PipelineRunStatus.SUCCEEDED.value,
+        PipelineRunStatus.FAILED.value,
+        PipelineRunStatus.CANCELLED.value,
+    }:
+        raise ValueError(f"cannot open review gate on terminal run status={status}")
+    existing_awaiting = (
+        await session.execute(
+            select(ReviewGate).where(
+                ReviewGate.pipeline_run_id == run.id,
+                ReviewGate.status == ReviewGateStatus.AWAITING,
+            )
+        )
+    ).scalar_one_or_none()
+    if existing_awaiting is not None:
+        logger.info(
+            "review_gate_already_awaiting",
+            extra={
+                "pipeline_run_id": str(run.id),
+                "gate_id": str(existing_awaiting.id),
+            },
+        )
+        return existing_awaiting
+
     run.status = PipelineRunStatus.PAUSED
     run.pause_reason = PauseReason.REVIEW_GATE.value
     timeout_at = datetime.now(UTC) + timedelta(seconds=timeout_seconds)
@@ -800,6 +842,20 @@ async def commit_spend(
     reservation: SpendReservation,
     actual_cost_usd: Decimal,
 ) -> None:
+    if reservation.status == ReservationStatus.COMMITTED:
+        logger.info(
+            "spend_commit_idempotent",
+            extra={
+                "reservation_id": str(reservation.id),
+                "pipeline_run_id": str(run.id),
+            },
+        )
+        return
+    if reservation.status != ReservationStatus.RESERVED:
+        raise ValueError(
+            f"cannot commit reservation in status {reservation.status!r}; "
+            "expected reserved"
+        )
     reserved = Decimal(str(reservation.estimated_cost_usd))
     actual = Decimal(str(actual_cost_usd))
     if actual < 0:
