@@ -13,7 +13,7 @@ dependencies = [
     "asyncpg>=0.30,<0.31",
     "alembic>=1.14,<1.17",
     "PyJWT>=2.13.0,<3.0",
-    "cryptography>=46.0.6,<50.0",
+    "cryptography>=50.0.0,<51.0",
     "python-multipart>=0.0.17",
     "stripe>=11.0,<13.0",
     # Patched transitive floors (P-004) — keep explicit so resolvers cannot
