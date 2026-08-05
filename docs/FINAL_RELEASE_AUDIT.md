@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-05  
 **Auditor stance:** Independent principal engineer — prior audits not trusted  
-**Combined tip under review:** `cursor/p2-fix-pr34-highs-b52d` @ (post-fix commit; see git log)  
+**Combined tip under review:** `cursor/p2-fix-pr34-highs-b52d` @ `b5698e5`  
 **PR #35:** https://github.com/royalindustry94-crypto/Content-orchestrator/pull/35 → base `cursor/p2-beta-launch-b52d`  
 **PR #34:** https://github.com/royalindustry94-crypto/Content-orchestrator/pull/34 → base `main`  
 
@@ -24,7 +24,7 @@
 | npm audit (high+) | **PASS** — 0 vulnerabilities |
 | RLS / FORCE RLS (sampled workspace tables) | **PASS** |
 | Human Review Gate integrity (C-1 regression) | **PASS** after fix |
-| CI on tip | See CI summary (must be green for merge) |
+| CI on tip | **GREEN** @ `b5698e5` — api / worker / web / security / docker-build |
 
 ### Final verdict
 
@@ -157,9 +157,9 @@ Attack reproductions that now fail closed:
 
 | PR | Jobs | Notes |
 |----|------|-------|
-| #35 (prior tip `9e61caf`) | api / worker / web / security / docker-build **SUCCESS** | Pre-gate-fix tip |
-| #34 | Prior tip green | Does **not** include C-1/H-* gate fixes |
-| Post-fix tip | Must show green after push of this audit commit | Required before merge |
+| #35 tip `b5698e5` | api / worker / web / security / docker-build **SUCCESS** | https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/31045196218 |
+| #34 | Prior tip green | Does **not** include C-1/H-* gate fixes — merge only after #35 |
+| Post-fix tip | **Green** | Required before merge — satisfied |
 
 Docker build: not runnable in this agent host (`docker` absent); rely on GitHub Actions `docker-build` job.
 
