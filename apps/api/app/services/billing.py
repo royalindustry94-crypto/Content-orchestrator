@@ -14,6 +14,7 @@ from datetime import UTC, datetime
 
 import stripe
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import Settings, get_settings
@@ -255,6 +256,9 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
     workspace_id = await _workspace_id_from_metadata(data_object)
 
     if event_type == "checkout.session.completed":
+        # Linkage only — never grant entitlement here. Payment may still be
+        # pending (async methods / first invoice). Entitlement is driven by
+        # customer.subscription.* with status in {active, trialing}.
         if workspace_id is None:
             raise BillingError("missing_workspace", "checkout session missing workspace_id")
         sub_id = data_object.get("subscription")
@@ -264,9 +268,16 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
             billing.stripe_customer_id = customer_id
         if isinstance(sub_id, str):
             billing.stripe_subscription_id = sub_id
-        billing.plan = PRO_PLAN
-        billing.status = "active"
         await session.flush()
+        logger.info(
+            "stripe_checkout_linked",
+            extra={
+                "workspace_id": str(workspace_id),
+                "customer_id": billing.stripe_customer_id,
+                "subscription_id": billing.stripe_subscription_id,
+                "payment_status": data_object.get("payment_status"),
+            },
+        )
     elif event_type in {
         "customer.subscription.created",
         "customer.subscription.updated",
@@ -321,16 +332,26 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
             extra={"stripe_event_id": event_id, "event_type": event_type},
         )
 
-    session.add(
-        BillingWebhookEvent(
-            id=uuid.uuid4(),
-            stripe_event_id=event_id,
-            event_type=event_type,
-            workspace_id=workspace_id,
-            payload=event,
+    try:
+        async with session.begin_nested():
+            session.add(
+                BillingWebhookEvent(
+                    id=uuid.uuid4(),
+                    stripe_event_id=event_id,
+                    event_type=event_type,
+                    workspace_id=workspace_id,
+                    payload=event,
+                )
+            )
+            await session.flush()
+    except IntegrityError:
+        # Concurrent duplicate delivery (M-2): unique stripe_event_id won.
+        # Savepoint rolls back only the event insert; treat as success.
+        logger.info(
+            "stripe_webhook_duplicate_race",
+            extra={"stripe_event_id": event_id, "event_type": event_type},
         )
-    )
-    await session.flush()
+        return {"status": "duplicate", "event_id": event_id, "event_type": event_type}
     logger.info(
         "stripe_webhook_processed",
         extra={

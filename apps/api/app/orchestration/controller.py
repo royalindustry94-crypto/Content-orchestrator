@@ -8,6 +8,7 @@ execution itself belongs to workers (out of scope this milestone).
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -48,6 +49,8 @@ from app.orchestration.events.types import (
 from app.orchestration.outbox import emit
 from app.orchestration.priority import base_priority_for_tier
 from app.orchestration.retry import compute_backoff_seconds, is_retryable, route_to_dead_letter
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_REVIEW_TIMEOUT_HOURS = 48
 
@@ -685,6 +688,21 @@ async def reserve_spend(
     WS4: the spend_caps row is locked ``FOR UPDATE`` so concurrent
     reservations serialize and cannot both slip under the remaining budget.
     """
+    # One open reservation per (run, stage). Release priors before the cap
+    # check so retry/recovery does not double-count the same stage against
+    # the budget, and so submit never sees MultipleResultsFound (H-4).
+    prior = (
+        await session.execute(
+            select(SpendReservation).where(
+                SpendReservation.pipeline_run_id == run.id,
+                SpendReservation.stage == stage,
+                SpendReservation.status == ReservationStatus.RESERVED,
+            )
+        )
+    ).scalars().all()
+    for old in prior:
+        await release_spend(session, run=run, reservation=old)
+
     cap = await _load_spend_cap_for_update(
         session, workspace_id=run.workspace_id, provider=provider
     )
@@ -782,6 +800,24 @@ async def commit_spend(
     reservation: SpendReservation,
     actual_cost_usd: Decimal,
 ) -> None:
+    reserved = Decimal(str(reservation.estimated_cost_usd))
+    actual = Decimal(str(actual_cost_usd))
+    if actual < 0:
+        raise ValueError("actual_cost_usd must be >= 0")
+    # Worker-reported cost must not exceed the reserved estimate — caps are
+    # enforced at reserve time; commit is fail-closed against overage.
+    if actual > reserved:
+        logger.warning(
+            "spend_commit_clamped",
+            extra={
+                "workspace_id": str(run.workspace_id),
+                "pipeline_run_id": str(run.id),
+                "reservation_id": str(reservation.id),
+                "reserved_usd": str(reserved),
+                "reported_usd": str(actual),
+            },
+        )
+        actual = reserved
     reservation.status = ReservationStatus.COMMITTED
     session.add(
         SpendLog(
@@ -790,7 +826,7 @@ async def commit_spend(
             content_item_id=None,
             provider=reservation.provider,
             stage=reservation.stage,
-            cost_usd=actual_cost_usd,
+            cost_usd=actual,
             occurred_at=datetime.now(UTC),
         )
     )
@@ -805,7 +841,11 @@ async def commit_spend(
         correlation_id=run.correlation_id,
         trace_id=trace_id,
         span_id=span_id,
-        payload={"reservation_id": str(reservation.id), "actual_usd": str(actual_cost_usd)},
+        payload={
+            "reservation_id": str(reservation.id),
+            "actual_usd": str(actual),
+            "reserved_usd": str(reserved),
+        },
         produced_by="controller",
     )
 

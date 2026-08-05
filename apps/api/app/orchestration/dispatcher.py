@@ -7,6 +7,7 @@ imported it from here historically.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
@@ -32,6 +33,8 @@ from app.orchestration.recovery import (  # noqa: F401 — re-export for existin
     reap_expired_leases,
     reap_worker_assignments,
 )
+
+logger = logging.getLogger(__name__)
 
 # Back-compat aliases — prefer Settings.assignment_lease_seconds.
 ACK_TIMEOUT_SECONDS = 60
@@ -404,11 +407,14 @@ async def submit_result(
         )
     open_reservation = (
         await session.execute(
-            select(SpendReservation).where(
+            select(SpendReservation)
+            .where(
                 SpendReservation.pipeline_run_id == run.id,
                 SpendReservation.stage == assignment.stage,
                 SpendReservation.status == ReservationStatus.RESERVED,
             )
+            .order_by(SpendReservation.created_at.desc())
+            .limit(1)
         )
     ).scalar_one_or_none()
 
@@ -416,7 +422,17 @@ async def submit_result(
         if open_reservation is not None:
             actual = Decimal(str(get_settings().default_stage_estimate_usd))
             if isinstance(result, dict) and result.get("estimated_cost_usd") is not None:
-                actual = Decimal(str(result["estimated_cost_usd"]))
+                try:
+                    actual = Decimal(str(result["estimated_cost_usd"]))
+                except Exception:
+                    logger.warning(
+                        "spend_commit_invalid_worker_cost",
+                        extra={
+                            "assignment_id": str(assignment.id),
+                            "reported": result.get("estimated_cost_usd"),
+                        },
+                    )
+                    actual = Decimal(str(get_settings().default_stage_estimate_usd))
             await controller.commit_spend(
                 session,
                 run=run,

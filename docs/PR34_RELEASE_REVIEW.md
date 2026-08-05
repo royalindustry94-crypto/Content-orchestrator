@@ -78,6 +78,26 @@ Work packages, ops runbooks (backup/restore, on-call, deployment), and launch-bl
 
 ## Verdict
 
+# HIGHS FIXED — READY FOR RE-REVIEW
+
+H-1…H-4 and M-2 are addressed on `cursor/p2-fix-pr34-highs-b52d` (migration `0033`). Re-review should cover the delta only.
+
+| Finding | Status | Fix |
+|---|---|---|
+| H-1 AUTH_MODE default | **Fixed** | Default `supabase`; production forbids `local` unless `ALLOW_LOCAL_AUTH_IN_PRODUCTION=true` |
+| H-2 checkout entitlement | **Fixed** | `checkout.session.completed` links customer/subscription IDs only; entitlement from `customer.subscription.*` with `active`/`trialing` |
+| H-3 spend commit overage | **Fixed** | `commit_spend` clamps `actual ≤ reserved` + structured log; dispatcher validates Decimal |
+| H-4 duplicate reservations | **Fixed** | Release prior open `(run, stage)` before re-reserve; submit picks latest; partial unique index `ux_spend_reservations_open_run_stage` |
+| M-2 webhook race | **Fixed** | `IntegrityError` on event insert → duplicate via savepoint |
+| M-1 spend-hold → DLQ | Open | Typed dispatch outcomes still recommended (non-blocking for merge of Highs) |
+| M-3 unauthenticated `/metrics` | Open | Restrict in deployment or add scraper token |
+
+**Regression tests:** `apps/api/tests/test_pr34_high_fixes.py` (+ updated billing/orchestration assertions).
+
+---
+
+## Original verdict (historical)
+
 # MERGE BLOCKED
 
 Four High-severity issues (H-1 fail-open auth default, H-2 unpaid entitlement, H-3 spend-cap commit bypass, H-4 retry-path 500s) individually justify rejection; three sit directly on the money/identity paths the beta sells as its core guarantees. All are small, well-localized fixes — none require redesign.

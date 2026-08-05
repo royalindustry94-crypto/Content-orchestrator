@@ -141,12 +141,41 @@ async def test_webhook_checkout_completed_and_idempotent(billing_on):
     async with AsyncSessionLocal() as session:
         row = await session.get(WorkspaceBilling, workspace_id)
         assert row is not None
-        assert row.plan == "pro"
-        assert row.status == "active"
+        # H-2: checkout links customer/subscription only — no entitlement yet.
+        assert row.plan == "none"
+        assert row.status == "inactive"
+        assert row.stripe_customer_id.startswith("cus_wh_")
         assert row.stripe_subscription_id.startswith("sub_wh_")
+        assert not billing_service.is_entitled(row, billing_enabled=True)
         second = await billing_service.process_stripe_event(session, event=event)
         await session.commit()
     assert second["status"] == "duplicate"
+
+    # Entitlement arrives only via subscription lifecycle with active/trialing.
+    sub_event = {
+        "id": f"evt_test_sub_{uuid.uuid4().hex}",
+        "type": "customer.subscription.updated",
+        "data": {
+            "object": {
+                "id": event["data"]["object"]["subscription"],
+                "customer": event["data"]["object"]["customer"],
+                "status": "active",
+                "current_period_end": 1_900_000_000,
+                "cancel_at_period_end": False,
+                "metadata": {"workspace_id": str(workspace_id)},
+            }
+        },
+    }
+    async with AsyncSessionLocal() as session:
+        entitled = await billing_service.process_stripe_event(session, event=sub_event)
+        await session.commit()
+    assert entitled["status"] == "processed"
+    async with AsyncSessionLocal() as session:
+        row = await session.get(WorkspaceBilling, workspace_id)
+        assert row is not None
+        assert row.plan == "pro"
+        assert row.status == "active"
+        assert billing_service.is_entitled(row, billing_enabled=True)
 
 
 @pytest.mark.asyncio

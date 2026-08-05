@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field, PostgresDsn
+from pydantic import Field, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -41,10 +41,14 @@ class Settings(BaseSettings):
     # docs/milestone-2-identity-and-access.md §1 for why.
     # AUTH_MODE=local enables /auth/signup|/auth/login which mint the same
     # JWT shape with this secret (Private Beta / staging without Supabase).
+    # Default is supabase (fail-closed): local issuance must be opted in
+    # explicitly via AUTH_MODE=local (see .env.example for Private Beta).
     supabase_jwt_secret: str
     supabase_jwt_algorithm: str = Field(default="HS256")
     supabase_jwt_audience: str = Field(default="authenticated")
-    auth_mode: str = Field(default="local")  # local | supabase
+    auth_mode: str = Field(default="supabase")  # local | supabase
+    # Explicit break-glass for AUTH_MODE=local when ENVIRONMENT=production.
+    allow_local_auth_in_production: bool = Field(default=False)
 
     # --- Scheduler (background tick in API lifespan) ---
     scheduler_interval_seconds: float = Field(default=2.0, ge=0.2)
@@ -114,6 +118,24 @@ class Settings(BaseSettings):
     def openapi_docs_enabled(self) -> bool:
         """Swagger/ReDoc/OpenAPI JSON are development-only (P-005)."""
         return self.environment.strip().lower() in {"development", "dev"}
+
+    @model_validator(mode="after")
+    def _validate_auth_mode(self) -> Settings:
+        mode = self.auth_mode.strip().lower()
+        if mode not in {"local", "supabase"}:
+            raise ValueError("AUTH_MODE must be 'local' or 'supabase'")
+        object.__setattr__(self, "auth_mode", mode)
+        env = self.environment.strip().lower()
+        if (
+            env in {"production", "prod"}
+            and mode == "local"
+            and not self.allow_local_auth_in_production
+        ):
+            raise ValueError(
+                "AUTH_MODE=local is forbidden when ENVIRONMENT is production; "
+                "set ALLOW_LOCAL_AUTH_IN_PRODUCTION=true only as an audited override"
+            )
+        return self
 
 
 def openapi_route_kwargs(environment: str) -> dict[str, str | None]:
