@@ -97,14 +97,14 @@ required for the nginx image; see commented `VITE_*` placeholders in
 | `GET /health/live` | Process up (liveness) |
 | `GET /health/ready` | DB reachable via owner session (readiness) |
 | `GET /health/automation` | Scheduler / outbox / maintenance loop ticks |
-| `GET /metrics` | Prometheus-format aggregate gauges (P-008) |
+| `GET /metrics` | Prometheus-format aggregate gauges (P-008); Bearer `METRICS_SCRAPER_TOKEN` when set / required in production |
 
 Examples:
 
 ```bash
 curl -sf http://localhost:8000/health/live
 curl -sf http://localhost:8000/health/ready
-curl -sf http://localhost:8000/metrics | head
+curl -sf -H "Authorization: Bearer $METRICS_SCRAPER_TOKEN" http://localhost:8000/metrics | head
 # via web proxy
 curl -sf http://localhost:8080/api/health/live
 ```

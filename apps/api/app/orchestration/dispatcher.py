@@ -7,8 +7,10 @@ imported it from here historically.
 
 from __future__ import annotations
 
+import enum
 import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
@@ -39,6 +41,22 @@ logger = logging.getLogger(__name__)
 # Back-compat aliases — prefer Settings.assignment_lease_seconds.
 ACK_TIMEOUT_SECONDS = 60
 DEFAULT_MAX_CONCURRENT_ASSIGNMENTS = 10  # matches WorkspaceConcurrencyLimit's column default
+
+
+class DispatchOutcome(str, enum.Enum):
+    """Why dispatch_stage returned — scheduler must not treat SPEND_HOLD as NO_WORKER (M-1)."""
+
+    DISPATCHED = "dispatched"
+    IDEMPOTENT = "idempotent"
+    NO_WORKER = "no_worker"
+    BACKPRESSURE = "backpressure"
+    SPEND_HOLD = "spend_hold"
+
+
+@dataclass(frozen=True)
+class DispatchResult:
+    outcome: DispatchOutcome
+    assignment: StageAssignment | None = None
 
 
 class LeaseError(Exception):
@@ -142,14 +160,12 @@ async def dispatch_stage(
     trace_id: str | None,
     provider: str | None = None,
     priority: int | None = None,
-) -> StageAssignment | None:
-    """Select a worker and create the assignment. Returns None (leaving
-    the caller to reschedule) if no eligible worker exists right now —
-    work is never dropped for lack of a worker (design doc §5.2).
+) -> DispatchResult:
+    """Select a worker and create the assignment.
 
-    WS4: ``priority`` defaults from the workspace tier; ``provider`` is
-    stored for budget accounting. When a provider budget is exhausted the
-    assignment is still created as PENDING (never dropped).
+    Returns a typed ``DispatchResult`` so callers can distinguish spend-hold
+    from capacity outage (M-1). Work is never dropped for lack of a worker
+    (design doc §5.2).
     """
     lease_seconds = _lease_seconds()
     limit_result = await session.execute(
@@ -173,7 +189,7 @@ async def dispatch_stage(
         )
     )
     if in_flight_result.scalar_one() >= max_concurrent:
-        return None  # over workspace concurrency cap — caller reschedules, nothing is dropped
+        return DispatchResult(outcome=DispatchOutcome.BACKPRESSURE)
 
     if priority is None:
         workspace = await session.get(Workspace, workspace_id)
@@ -197,7 +213,7 @@ async def dispatch_stage(
     )
     already = existing.scalar_one_or_none()
     if already is not None:
-        return already  # idempotent re-dispatch of the same attempt
+        return DispatchResult(outcome=DispatchOutcome.IDEMPOTENT, assignment=already)
 
     # Spend reservation before creating work — Draft Desk uses a small
     # default estimate so monthly/daily caps are enforced on the hot path.
@@ -213,7 +229,15 @@ async def dispatch_stage(
             estimated_cost_usd=estimate,
         )
         if reservation is None:
-            return None  # run paused on spend hold; caller may reschedule
+            logger.info(
+                "dispatch_spend_hold",
+                extra={
+                    "workspace_id": str(workspace_id),
+                    "pipeline_run_id": str(pipeline_run_id),
+                    "stage": stage,
+                },
+            )
+            return DispatchResult(outcome=DispatchOutcome.SPEND_HOLD)
 
     now = datetime.now(UTC)
     trace_id, span_id = child_span(trace_id)
@@ -260,7 +284,9 @@ async def dispatch_stage(
         },
         produced_by="dispatcher",
     )
-    return assignment
+    if worker is None:
+        return DispatchResult(outcome=DispatchOutcome.NO_WORKER, assignment=assignment)
+    return DispatchResult(outcome=DispatchOutcome.DISPATCHED, assignment=assignment)
 
 
 async def acknowledge(

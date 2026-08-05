@@ -1,8 +1,9 @@
-"""Regression tests for PR #34 High findings H-1…H-4 (+ M-2 webhook race)."""
+"""Regression tests for PR #34 High findings H-1…H-4 (+ M-1/M-2/M-3)."""
 
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
 import pytest
@@ -13,12 +14,21 @@ from app.core.config import Settings
 from app.db.session import AsyncSessionLocal
 from app.models.billing import WorkspaceBilling
 from app.models.content import ContentItem
-from app.models.enums import ContentStage, ContentStatus, PipelineRunStatus, ReservationStatus
+from app.models.enums import (
+    ContentStage,
+    ContentStatus,
+    JobScheduleStatus,
+    JobType,
+    PipelineRunStatus,
+    ReservationStatus,
+)
+from app.models.operations import DeadLetterJob
 from app.models.pipeline import PipelineRun
+from app.models.scheduling import JobSchedule
 from app.models.spend import SpendLog, SpendReservation
 from app.models.workspace import Workspace
 from app.models.workspace_membership import WorkspaceMembership, WorkspaceRole
-from app.orchestration import controller
+from app.orchestration import controller, dispatcher, scheduler
 from app.services import billing as billing_service
 from app.services.spend import ensure_default_spend_cap
 
@@ -232,3 +242,75 @@ async def test_h2_checkout_does_not_entitle_without_subscription():
         assert row.plan == "none"
         assert row.status == "inactive"
         assert not billing_service.is_entitled(row, billing_enabled=True)
+
+
+@pytest.mark.asyncio
+async def test_m1_spend_hold_parks_job_without_dlq_or_attempt_burn():
+    async with AsyncSessionLocal() as session:
+        ws, _user_id, item = await _seed_workspace_item(session)
+        await session.execute(
+            text(
+                "UPDATE spend_caps SET daily_cap_usd = 1000, monthly_cap_usd = 1 "
+                "WHERE workspace_id = :ws"
+            ),
+            {"ws": str(ws.id)},
+        )
+        session.add(
+            SpendLog(
+                id=uuid.uuid4(),
+                workspace_id=ws.id,
+                provider="draft_desk",
+                stage=ContentStage.SCRIPTING,
+                cost_usd=Decimal("1.00"),
+                occurred_at=datetime.now(UTC),
+            )
+        )
+        run = PipelineRun(
+            id=uuid.uuid4(),
+            workspace_id=ws.id,
+            content_item_id=item.id,
+            status=PipelineRunStatus.RUNNING,
+            correlation_id=uuid.uuid4(),
+        )
+        session.add(run)
+        await session.flush()
+        job = JobSchedule(
+            id=uuid.uuid4(),
+            workspace_id=ws.id,
+            job_type=JobType.STAGE,
+            ref_table="scripting",
+            ref_id=run.id,
+            run_after=datetime.now(UTC),
+            status=JobScheduleStatus.LEASED,
+            attempt=0,
+            lease_owner="test",
+            lease_expires_at=datetime.now(UTC) + timedelta(seconds=30),
+            correlation_id=run.correlation_id,
+        )
+        session.add(job)
+        await session.flush()
+
+        dispatch = await dispatcher.dispatch_stage(
+            session,
+            workspace_id=ws.id,
+            pipeline_run_id=run.id,
+            stage="scripting",
+            attempt_number=1,
+            correlation_id=run.correlation_id,
+            trace_id=None,
+        )
+        assert dispatch.outcome == dispatcher.DispatchOutcome.SPEND_HOLD
+
+        await scheduler.process_leased_job(session, job)
+        await session.commit()
+        await session.refresh(job)
+        await session.refresh(run)
+        assert job.status == JobScheduleStatus.PENDING
+        assert job.attempt == 0
+        assert run.pause_reason == "spend_hold"
+        dlq = (
+            await session.execute(
+                select(DeadLetterJob).where(DeadLetterJob.related_id == job.id)
+            )
+        ).scalar_one_or_none()
+        assert dlq is None

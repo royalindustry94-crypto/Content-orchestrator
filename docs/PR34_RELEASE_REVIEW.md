@@ -88,9 +88,9 @@ H-1…H-4 and M-2 are addressed on `cursor/p2-fix-pr34-highs-b52d` (migration `0
 | H-2 checkout entitlement | **Fixed** | `checkout.session.completed` links customer/subscription IDs only; entitlement from `customer.subscription.*` with `active`/`trialing` |
 | H-3 spend commit overage | **Fixed** | `commit_spend` clamps `actual ≤ reserved` + structured log; dispatcher validates Decimal |
 | H-4 duplicate reservations | **Fixed** | Release prior open `(run, stage)` before re-reserve; submit picks latest; partial unique index `ux_spend_reservations_open_run_stage` |
+| M-1 spend-hold → DLQ | **Fixed** | `DispatchOutcome.SPEND_HOLD`; scheduler parks job without attempt++/DLQ |
 | M-2 webhook race | **Fixed** | `IntegrityError` on event insert → duplicate via savepoint |
-| M-1 spend-hold → DLQ | Open | Typed dispatch outcomes still recommended (non-blocking for merge of Highs) |
-| M-3 unauthenticated `/metrics` | Open | Restrict in deployment or add scraper token |
+| M-3 unauthenticated `/metrics` | **Fixed** | `METRICS_SCRAPER_TOKEN` Bearer auth; required in production |
 
 **Regression tests:** `apps/api/tests/test_pr34_high_fixes.py` (+ updated billing/orchestration assertions).
 

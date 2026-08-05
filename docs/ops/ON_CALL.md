@@ -14,7 +14,8 @@
 ## First 5 minutes
 
 1. Confirm blast radius: `GET /health/live`, `/health/ready`, `/health/automation`
-2. Scrape `GET /metrics` — look at `co_dead_letter_pending`, `co_lease_contention`,
+2. Scrape `GET /metrics` (Bearer `METRICS_SCRAPER_TOKEN` when set; required in
+   production) — look at `co_dead_letter_pending`, `co_lease_contention`,
    `co_assignment_failure_rate`, `co_job_schedule_depth{status="pending"}`
 3. Check recent JSON logs for `exception`, `spend_hold`, `stripe_webhook_rejected`
 4. If readiness fails → Postgres / `APP_DATABASE_URL` first
@@ -27,7 +28,7 @@
 | `/health/live` | Process up |
 | `/health/ready` | DB reachable |
 | `/health/automation` | Scheduler / outbox / maintenance ticks + last errors |
-| `/metrics` | Prometheus text (aggregates only; no tenant secrets) |
+| `/metrics` | Prometheus text (aggregates only; Bearer token when `METRICS_SCRAPER_TOKEN` is set; required in production) |
 
 ## Non-negotiables during incidents
 

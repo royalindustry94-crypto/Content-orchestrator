@@ -161,6 +161,7 @@ async def test_regression_stage_completion_advances_run_exactly_once():
             session, workspace_id=ws, pipeline_run_id=run.id, stage="scripting",
             attempt_number=1, correlation_id=run.correlation_id, trace_id=run.trace_id,
         )
+        assert assignment.assignment is not None
         await session.commit()
 
     async with AsyncSessionLocal() as session:
@@ -168,7 +169,7 @@ async def test_regression_stage_completion_advances_run_exactly_once():
 
         from app.models.assignments import StageAssignment
         result = await session.execute(
-            _select(StageAssignment).where(StageAssignment.id == assignment.id)
+            _select(StageAssignment).where(StageAssignment.id == assignment.assignment.id)
         )
         loaded_assignment = result.scalar_one()
         await dispatcher.submit_result(

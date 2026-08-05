@@ -114,6 +114,12 @@ class Settings(BaseSettings):
     stripe_checkout_success_url: str | None = Field(default=None)
     stripe_checkout_cancel_url: str | None = Field(default=None)
 
+    # --- Metrics scrape auth (M-3) ---
+    # When set, GET /metrics requires Authorization: Bearer <token>.
+    # When unset in production/prod, /metrics is disabled (401). Non-prod
+    # may scrape without a token for local docker-compose / CI convenience.
+    metrics_scraper_token: str | None = Field(default=None)
+
     @property
     def openapi_docs_enabled(self) -> bool:
         """Swagger/ReDoc/OpenAPI JSON are development-only (P-005)."""

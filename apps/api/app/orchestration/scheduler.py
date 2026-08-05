@@ -26,6 +26,8 @@ LEASE_SECONDS = 30
 NO_WORKER_MAX_RETRIES = 20  # bounds the 'no eligible worker yet' reschedule loop
 NO_WORKER_RETRY_BASE_SECONDS = 5
 NO_WORKER_RETRY_MAX_SECONDS = 120
+# Spend-hold parks the job without burning NO_WORKER retries / DLQ (M-1).
+SPEND_HOLD_RETRY_SECONDS = 60
 
 
 def _scheduler_owner_id() -> str:
@@ -127,7 +129,7 @@ async def process_leased_job(session: AsyncSession, job: JobSchedule) -> None:
     honest behavior until a real recurring job type is introduced.
     """
     if job.job_type == JobType.STAGE or job.job_type == JobType.RETRY:
-        assignment = await dispatcher.dispatch_stage(
+        result = await dispatcher.dispatch_stage(
             session,
             workspace_id=job.workspace_id,
             pipeline_run_id=job.ref_id,
@@ -136,7 +138,33 @@ async def process_leased_job(session: AsyncSession, job: JobSchedule) -> None:
             correlation_id=job.correlation_id or uuid.uuid4(),
             trace_id=job.trace_id,
         )
-        if assignment is None or assignment.worker_id is None:
+        if result.outcome == dispatcher.DispatchOutcome.SPEND_HOLD:
+            # Budget hold: keep the job pending, do not increment attempt,
+            # never dead-letter as "no worker" (M-1).
+            logger.info(
+                "scheduler_spend_hold_park",
+                extra={
+                    "job_id": str(job.id),
+                    "pipeline_run_id": str(job.ref_id),
+                    "stage": job.ref_table,
+                    "attempt": job.attempt,
+                },
+            )
+            job.status = JobScheduleStatus.PENDING
+            job.run_after = datetime.now(UTC) + timedelta(seconds=SPEND_HOLD_RETRY_SECONDS)
+            job.lease_owner = None
+            job.lease_expires_at = None
+            return
+        assignment = result.assignment
+        if (
+            result.outcome
+            in {
+                dispatcher.DispatchOutcome.NO_WORKER,
+                dispatcher.DispatchOutcome.BACKPRESSURE,
+            }
+            or assignment is None
+            or assignment.worker_id is None
+        ):
             # No eligible worker (or over the back-pressure cap) right
             # now — reschedule with backoff rather than dropping the
             # work (design doc §5.2). Bounded: after NO_WORKER_MAX_RETRIES

@@ -88,7 +88,8 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
         )
         await session.commit()
         run_id = run.id
-        assignment_id = dispatched.id
+        assert dispatched.assignment is not None
+        assignment_id = dispatched.assignment.id
 
     http = httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
     admin_headers = {"Authorization": f"Bearer {make_token(user_id=admin_user)}"}

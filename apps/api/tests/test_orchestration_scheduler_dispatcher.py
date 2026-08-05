@@ -223,12 +223,13 @@ async def test_dispatcher_enforces_max_concurrent_assignments_back_pressure():
             attempt_number=1, correlation_id=uuid.uuid4(), trace_id=None,
         )
         await session.commit()
-        assert first is not None and first.worker_id is not None
+        assert first.assignment is not None and first.assignment.worker_id is not None
 
         second = await dispatcher.dispatch_stage(
             session, workspace_id=ws, pipeline_run_id=run.id, stage="scripting",
             attempt_number=2, correlation_id=uuid.uuid4(), trace_id=None,
         )
-        assert second is None, (
+        assert second.outcome == dispatcher.DispatchOutcome.BACKPRESSURE
+        assert second.assignment is None, (
             "workspace at its max_concurrent_assignments cap must not get a second dispatch"
         )

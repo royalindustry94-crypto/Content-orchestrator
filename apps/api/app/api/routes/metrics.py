@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Response
+import hmac
+
+from fastapi import APIRouter, Header, HTTPException, Response, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.session import AsyncSessionLocal
 from app.orchestration import metrics as metrics_mod
 
@@ -28,8 +31,8 @@ async def _collect(session: AsyncSession) -> str:
     depth = await metrics_mod.queue_depth(session)
     lines.append("# HELP co_job_schedule_depth Job schedule rows by status")
     lines.append("# TYPE co_job_schedule_depth gauge")
-    for status, count in sorted(depth.items()):
-        lines.append(_prom_line("co_job_schedule_depth", count, {"status": status}))
+    for status_name, count in sorted(depth.items()):
+        lines.append(_prom_line("co_job_schedule_depth", count, {"status": status_name}))
 
     latency = await metrics_mod.event_latency_seconds(session)
     lines.append("# HELP co_outbox_dispatch_latency_seconds Avg outbox dispatch latency")
@@ -83,9 +86,37 @@ async def _collect(session: AsyncSession) -> str:
     return "\n".join(lines)
 
 
+def _authorize_metrics_scrape(authorization: str | None) -> None:
+    """Fail-closed metrics auth (PR #34 M-3)."""
+    settings = get_settings()
+    expected = (settings.metrics_scraper_token or "").strip()
+    env = settings.environment.strip().lower()
+    if not expected:
+        if env in {"production", "prod"}:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="metrics scrape token required",
+            )
+        return
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="missing metrics bearer token",
+        )
+    presented = authorization[7:].strip()
+    if len(presented) != len(expected) or not hmac.compare_digest(presented, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="invalid metrics bearer token",
+        )
+
+
 @router.get("/metrics")
-async def prometheus_metrics() -> Response:
+async def prometheus_metrics(
+    authorization: str | None = Header(default=None),
+) -> Response:
     """Aggregate operational metrics for scrapers. No workspace-scoped data."""
+    _authorize_metrics_scrape(authorization)
     async with AsyncSessionLocal() as session:
         body = await _collect(session)
     return Response(content=body, media_type="text/plain; version=0.0.4; charset=utf-8")
