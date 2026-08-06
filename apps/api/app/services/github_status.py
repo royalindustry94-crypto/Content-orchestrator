@@ -67,6 +67,7 @@ async def github_status() -> GitHubOut:
             repository=repo,
             latest_commits=[],
             open_pull_requests=[],
+            recently_merged_pull_requests=[],
             failed_actions=[],
             branch_status=branch_fallback,
             generated_at=now,
@@ -80,6 +81,7 @@ async def github_status() -> GitHubOut:
     }
     commits: list[GitHubCommit] = []
     prs: list[GitHubPullRequest] = []
+    merged: list[GitHubPullRequest] = []
     failed: list[GitHubActionRun] = []
     branch_status = branch_fallback
 
@@ -124,8 +126,40 @@ async def github_status() -> GitHubOut:
                         author=(item.get("user") or {}).get("login"),
                         updated_at=_parse_dt(item.get("updated_at")),
                         url=item.get("html_url"),
+                        merged_at=None,
                     )
                 )
+
+            merged_resp = await client.get(
+                f"{_API}/repos/{repo}/pulls",
+                params={
+                    "state": "closed",
+                    "per_page": 20,
+                    "sort": "updated",
+                    "direction": "desc",
+                },
+            )
+            if merged_resp.status_code >= 400:
+                raise RuntimeError(
+                    f"closed pulls HTTP {merged_resp.status_code}: {merged_resp.text[:200]}"
+                )
+            for item in merged_resp.json():
+                merged_at = _parse_dt(item.get("merged_at"))
+                if merged_at is None:
+                    continue
+                merged.append(
+                    GitHubPullRequest(
+                        number=int(item["number"]),
+                        title=item.get("title") or "",
+                        state="merged",
+                        author=(item.get("user") or {}).get("login"),
+                        updated_at=_parse_dt(item.get("updated_at")),
+                        url=item.get("html_url"),
+                        merged_at=merged_at,
+                    )
+                )
+                if len(merged) >= 10:
+                    break
 
             actions_resp = await client.get(
                 f"{_API}/repos/{repo}/actions/runs",
@@ -176,6 +210,7 @@ async def github_status() -> GitHubOut:
             repository=repo,
             latest_commits=[],
             open_pull_requests=[],
+            recently_merged_pull_requests=[],
             failed_actions=[],
             branch_status=branch_fallback,
             generated_at=now,
@@ -187,6 +222,7 @@ async def github_status() -> GitHubOut:
         repository=repo,
         latest_commits=commits,
         open_pull_requests=prs,
+        recently_merged_pull_requests=merged,
         failed_actions=failed,
         branch_status=branch_status,
         generated_at=now,

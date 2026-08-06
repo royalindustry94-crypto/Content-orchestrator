@@ -219,6 +219,16 @@ export type GitHubOut = {
     author: string | null;
     updated_at: string | null;
     url: string | null;
+    merged_at?: string | null;
+  }>;
+  recently_merged_pull_requests?: Array<{
+    number: number;
+    title: string;
+    state: string;
+    author: string | null;
+    updated_at: string | null;
+    url: string | null;
+    merged_at?: string | null;
   }>;
   failed_actions: Array<{
     id: number;
@@ -236,6 +246,105 @@ export type GitHubOut = {
     ci_status: string;
   };
   generated_at: string;
+};
+
+export type ActivityFeed = {
+  items: Array<{
+    id: string;
+    kind: string;
+    title: string;
+    detail: string | null;
+    severity: string;
+    occurred_at: string;
+    source: string;
+  }>;
+  generated_at: string;
+};
+
+export type SystemHealth = {
+  indicators: Array<{
+    key: string;
+    label: string;
+    status: string;
+    detail: string;
+  }>;
+  generated_at: string;
+};
+
+export type CostControl = {
+  daily_ai_spend_usd: string;
+  monthly_ai_spend_usd: string;
+  budget_remaining_daily_usd: string | null;
+  budget_remaining_monthly_usd: string | null;
+  by_provider: Array<{ provider: string; today_usd: string; month_usd: string }>;
+  top_expensive_jobs: Array<{
+    pipeline_run_id: string | null;
+    content_item_id: string | null;
+    topic: string | null;
+    stage: string | null;
+    provider: string | null;
+    cost_usd: string;
+    completed_at: string | null;
+  }>;
+  projected_month_end_usd: string;
+  generated_at: string;
+};
+
+export type WorkerTimeline = {
+  workers: Array<{
+    worker_id: string;
+    name: string;
+    status: string;
+    current_task: string | null;
+    last_heartbeat_at: string | null;
+    average_execution_seconds: number | null;
+    failure_percent: number;
+    retry_percent: number;
+    jobs: Array<{
+      assignment_id: string;
+      pipeline_run_id: string;
+      stage: string;
+      status: string;
+      attempt_number: number;
+      dispatched_at: string | null;
+      completed_at: string | null;
+      duration_seconds: number | null;
+    }>;
+  }>;
+  generated_at: string;
+};
+
+export type ContentCommand = {
+  ideas: number;
+  scripts: number;
+  voiceovers: number;
+  videos_rendering: number;
+  ready_for_review: number;
+  waiting_for_approval: number;
+  publishing: number;
+  published: number;
+  failed: number;
+  generated_at: string;
+};
+
+export type ExecutiveInsights = {
+  todays_achievements: string[];
+  todays_failures: string[];
+  highest_risk: string;
+  suggested_next_action: string;
+  biggest_cost_today_usd: string;
+  biggest_cost_today_label: string | null;
+  most_active_worker: string | null;
+  most_active_customer: string | null;
+  generated_at: string;
+};
+
+export type QuickActionResult = {
+  action: string;
+  ok: boolean;
+  affected: number;
+  message: string;
+  details: Record<string, unknown>;
 };
 
 async function apiFetch<T>(
@@ -418,6 +527,84 @@ export function getGitHubStatus(
   return apiFetch<GitHubOut>(
     `/workspaces/${workspaceId}/operations/github`,
     token,
+  );
+}
+
+export function getActivityFeed(
+  token: string,
+  workspaceId: string,
+): Promise<ActivityFeed> {
+  return apiFetch<ActivityFeed>(
+    `/workspaces/${workspaceId}/operations/activity`,
+    token,
+  );
+}
+
+export function getSystemHealth(
+  token: string,
+  workspaceId: string,
+): Promise<SystemHealth> {
+  return apiFetch<SystemHealth>(
+    `/workspaces/${workspaceId}/operations/health`,
+    token,
+  );
+}
+
+export function getCostControl(
+  token: string,
+  workspaceId: string,
+): Promise<CostControl> {
+  return apiFetch<CostControl>(
+    `/workspaces/${workspaceId}/operations/cost-control`,
+    token,
+  );
+}
+
+export function getWorkerTimeline(
+  token: string,
+  workspaceId: string,
+): Promise<WorkerTimeline> {
+  return apiFetch<WorkerTimeline>(
+    `/workspaces/${workspaceId}/operations/worker-timeline`,
+    token,
+  );
+}
+
+export function getContentCommand(
+  token: string,
+  workspaceId: string,
+): Promise<ContentCommand> {
+  return apiFetch<ContentCommand>(
+    `/workspaces/${workspaceId}/operations/content-command`,
+    token,
+  );
+}
+
+export function getExecutiveInsights(
+  token: string,
+  workspaceId: string,
+): Promise<ExecutiveInsights> {
+  return apiFetch<ExecutiveInsights>(
+    `/workspaces/${workspaceId}/operations/insights`,
+    token,
+  );
+}
+
+export function postMissionAction(
+  token: string,
+  workspaceId: string,
+  action:
+    | "pause-workers"
+    | "resume-workers"
+    | "emergency-stop"
+    | "retry-failed-jobs"
+    | "clear-dead-letter"
+    | "sync-github",
+): Promise<QuickActionResult> {
+  return apiFetch<QuickActionResult>(
+    `/workspaces/${workspaceId}/operations/actions/${action}`,
+    token,
+    { method: "POST" },
   );
 }
 

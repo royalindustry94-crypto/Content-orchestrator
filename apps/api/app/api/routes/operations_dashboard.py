@@ -1,10 +1,10 @@
-"""Workspace-admin Operations Dashboard APIs (V1 + V2 Founder Control Center)."""
+"""Workspace-admin Operations Dashboard APIs (V1–V3 Mission Control)."""
 
 from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from app.core.authorization import require_workspace_admin
 from app.core.security import AuthenticatedUser, get_current_user
@@ -24,7 +24,16 @@ from app.schemas.operations_dashboard import (
     SpendOut,
     WorkerMonitorOut,
 )
-from app.services import github_status, operations_dashboard
+from app.schemas.operations_mission import (
+    ActivityFeedOut,
+    ContentCommandCenterOut,
+    CostControlOut,
+    ExecutiveInsightsOut,
+    QuickActionResult,
+    SystemHealthOut,
+    WorkerTimelineOut,
+)
+from app.services import github_status, operations_dashboard, operations_mission
 
 router = APIRouter(
     prefix="/workspaces/{workspace_id}/operations",
@@ -160,3 +169,135 @@ async def github_dashboard(
 ) -> GitHubOut:
     del workspace_id, membership
     return await github_status.github_status()
+
+
+# --- V3 Mission Control -------------------------------------------------
+
+
+@router.get("/activity", response_model=ActivityFeedOut)
+async def activity_feed(
+    workspace_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+) -> ActivityFeedOut:
+    async with AsyncSessionLocal() as session:
+        return await operations_mission.activity_feed(session, workspace_id)
+
+
+@router.get("/health", response_model=SystemHealthOut)
+async def system_health(
+    workspace_id: uuid.UUID,
+    request: Request,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+) -> SystemHealthOut:
+    from app.main import automation_state as module_state
+
+    state = getattr(request.app.state, "automation", None) or module_state
+    automation = {
+        "tasks_running": list(state.tasks_running),
+        "scheduler": {
+            "ticks": state.scheduler_ticks,
+            "last_ok_at": (
+                state.scheduler_last_ok_at.isoformat()
+                if state.scheduler_last_ok_at
+                else None
+            ),
+            "last_error": state.scheduler_last_error,
+        },
+    }
+    async with AsyncSessionLocal() as session:
+        return await operations_mission.system_health(
+            session, workspace_id, automation=automation
+        )
+
+
+@router.get("/cost-control", response_model=CostControlOut)
+async def cost_control(
+    workspace_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+) -> CostControlOut:
+    async with AsyncSessionLocal() as session:
+        return await operations_mission.cost_control(session, workspace_id)
+
+
+@router.get("/worker-timeline", response_model=WorkerTimelineOut)
+async def worker_timeline(
+    workspace_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+) -> WorkerTimelineOut:
+    async with AsyncSessionLocal() as session:
+        return await operations_mission.worker_timeline(session, workspace_id)
+
+
+@router.get("/content-command", response_model=ContentCommandCenterOut)
+async def content_command(
+    workspace_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+) -> ContentCommandCenterOut:
+    async with AsyncSessionLocal() as session:
+        return await operations_mission.content_command_center(session, workspace_id)
+
+
+@router.get("/insights", response_model=ExecutiveInsightsOut)
+async def executive_insights(
+    workspace_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> ExecutiveInsightsOut:
+    async with AsyncSessionLocal() as session:
+        return await operations_mission.executive_insights(
+            session, workspace_id, admin_user_id=uuid.UUID(user.id)
+        )
+
+
+@router.post("/actions/pause-workers", response_model=QuickActionResult)
+async def action_pause_workers(
+    workspace_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+) -> QuickActionResult:
+    async with AsyncSessionLocal() as session:
+        return await operations_mission.pause_workers(session, workspace_id)
+
+
+@router.post("/actions/resume-workers", response_model=QuickActionResult)
+async def action_resume_workers(
+    workspace_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+) -> QuickActionResult:
+    async with AsyncSessionLocal() as session:
+        return await operations_mission.resume_workers(session, workspace_id)
+
+
+@router.post("/actions/emergency-stop", response_model=QuickActionResult)
+async def action_emergency_stop(
+    workspace_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+) -> QuickActionResult:
+    async with AsyncSessionLocal() as session:
+        return await operations_mission.emergency_stop(session, workspace_id)
+
+
+@router.post("/actions/retry-failed-jobs", response_model=QuickActionResult)
+async def action_retry_failed_jobs(
+    workspace_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+) -> QuickActionResult:
+    async with AsyncSessionLocal() as session:
+        return await operations_mission.retry_failed_jobs(session, workspace_id)
+
+
+@router.post("/actions/clear-dead-letter", response_model=QuickActionResult)
+async def action_clear_dead_letter(
+    workspace_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+) -> QuickActionResult:
+    async with AsyncSessionLocal() as session:
+        return await operations_mission.clear_dead_letter_queue(session, workspace_id)
+
+
+@router.post("/actions/sync-github", response_model=QuickActionResult)
+async def action_sync_github(
+    workspace_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+) -> QuickActionResult:
+    del workspace_id, membership
+    return await operations_mission.sync_github()
