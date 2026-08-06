@@ -194,6 +194,7 @@ class GitHubPullRequest(BaseModel):
     author: str | None
     updated_at: datetime | None
     url: str | None
+    merged_at: datetime | None = None
 
 
 class GitHubActionRun(BaseModel):
@@ -219,6 +220,7 @@ class GitHubOut(BaseModel):
     repository: str | None
     latest_commits: list[GitHubCommit]
     open_pull_requests: list[GitHubPullRequest]
+    recently_merged_pull_requests: list[GitHubPullRequest] = []
     failed_actions: list[GitHubActionRun]
     branch_status: GitHubBranchStatus
     generated_at: datetime

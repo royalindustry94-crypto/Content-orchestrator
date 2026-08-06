@@ -7,29 +7,57 @@ import {
 } from "react";
 import {
   createLead,
+  getActivityFeed,
+  getContentCommand,
+  getCostControl,
   getCustomers,
   getExecutiveDashboard,
+  getExecutiveInsights,
   getGitHubStatus,
   getLeads,
   getNotifications,
   getOperationsAlerts,
   getPipelineMonitor,
   getSpendDashboard,
+  getSystemHealth,
   getWorkerMonitor,
+  getWorkerTimeline,
   updateLead,
+  type ActivityFeed,
   type Alerts,
+  type ContentCommand,
+  type CostControl,
   type Customers,
   type ExecutiveDashboard,
+  type ExecutiveInsights,
   type GitHubOut,
   type Leads,
   type Notifications,
   type PipelineMonitor,
   type SpendDashboard,
+  type SystemHealth,
   type WorkerMonitor,
+  type WorkerTimeline,
 } from "./api";
+import {
+  ActivityFeedView,
+  ContentCommandView,
+  CostControlView,
+  InsightsView,
+  QuickActionsView,
+  SystemHealthView,
+  WorkerTimelineView,
+} from "./MissionControlPanels";
 
 type Screen =
   | "executive"
+  | "activity"
+  | "health"
+  | "cost"
+  | "worker-timeline"
+  | "content"
+  | "actions"
+  | "insights"
   | "workers"
   | "leads"
   | "customers"
@@ -48,6 +76,13 @@ type Props = {
 
 const NAV: Array<{ id: Screen; label: string }> = [
   { id: "executive", label: "Executive Dashboard" },
+  { id: "activity", label: "Live Activity" },
+  { id: "health", label: "System Health" },
+  { id: "cost", label: "Cost Control" },
+  { id: "worker-timeline", label: "Worker Timeline" },
+  { id: "content", label: "Content Command" },
+  { id: "actions", label: "Quick Actions" },
+  { id: "insights", label: "Executive Insights" },
   { id: "workers", label: "AI Workers" },
   { id: "leads", label: "Leads CRM" },
   { id: "customers", label: "Customers" },
@@ -536,7 +571,14 @@ type ScreenData =
   | Leads
   | Customers
   | SpendDashboard
-  | GitHubOut;
+  | GitHubOut
+  | ActivityFeed
+  | SystemHealth
+  | CostControl
+  | WorkerTimeline
+  | ContentCommand
+  | ExecutiveInsights
+  | { kind: "actions" };
 
 export default function OperationsDashboard({
   token,
@@ -587,6 +629,27 @@ export default function OperationsDashboard({
         case "github":
           next = await getGitHubStatus(token, workspaceId);
           break;
+        case "activity":
+          next = await getActivityFeed(token, workspaceId);
+          break;
+        case "health":
+          next = await getSystemHealth(token, workspaceId);
+          break;
+        case "cost":
+          next = await getCostControl(token, workspaceId);
+          break;
+        case "worker-timeline":
+          next = await getWorkerTimeline(token, workspaceId);
+          break;
+        case "content":
+          next = await getContentCommand(token, workspaceId);
+          break;
+        case "insights":
+          next = await getExecutiveInsights(token, workspaceId);
+          break;
+        case "actions":
+          next = { kind: "actions" };
+          break;
       }
       setData(next);
     } catch (err) {
@@ -602,7 +665,7 @@ export default function OperationsDashboard({
   }, [load]);
 
   useEffect(() => {
-    if (screen !== "notifications") return;
+    if (screen !== "notifications" && screen !== "activity") return;
     const timer = window.setInterval(() => {
       void load();
     }, 15000);
@@ -614,7 +677,7 @@ export default function OperationsDashboard({
       <aside className="sidebar">
         <div>
           <p className="eyebrow">Lumora</p>
-          <h1>Founder Control</h1>
+          <h1>Mission Control</h1>
           <p className="workspace-id">Workspace {workspaceId.slice(0, 8)}</p>
         </div>
         <nav aria-label="Operations screens">
@@ -676,6 +739,20 @@ export default function OperationsDashboard({
           <SpendView data={data as SpendDashboard} />
         ) : screen === "github" && data ? (
           <GitHubView data={data as GitHubOut} />
+        ) : screen === "activity" && data ? (
+          <ActivityFeedView data={data as ActivityFeed} />
+        ) : screen === "health" && data ? (
+          <SystemHealthView data={data as SystemHealth} />
+        ) : screen === "cost" && data ? (
+          <CostControlView data={data as CostControl} />
+        ) : screen === "worker-timeline" && data ? (
+          <WorkerTimelineView data={data as WorkerTimeline} />
+        ) : screen === "content" && data ? (
+          <ContentCommandView data={data as ContentCommand} />
+        ) : screen === "insights" && data ? (
+          <InsightsView data={data as ExecutiveInsights} />
+        ) : screen === "actions" ? (
+          <QuickActionsView token={token} workspaceId={workspaceId} />
         ) : screen === "leads" && data ? (
           <LeadsPanel
             data={data as Leads}

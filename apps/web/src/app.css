@@ -626,9 +626,101 @@ tbody tr:hover {
   border-left-color: #6ea8fe;
 }
 
+.health--green {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.health--amber {
+  box-shadow: inset 3px 0 0 var(--warning);
+}
+
+.health--red {
+  box-shadow: inset 3px 0 0 var(--danger);
+}
+
+.timeline-stack {
+  display: grid;
+  gap: 1rem;
+}
+
+.timeline-card {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+}
+
+.timeline-card header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.timeline-card h3 {
+  margin: 0;
+}
+
+.timeline-stats {
+  display: flex;
+  gap: 0.75rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.85rem;
+  margin-top: 1rem;
+}
+
+.insight-grid section {
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+}
+
+.insight-grid h3 {
+  margin: 0 0 0.65rem;
+  font-size: 0.92rem;
+}
+
+.insight-grid ul {
+  margin: 0;
+  padding-left: 1.1rem;
+  color: var(--muted);
+}
+
+.actions-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.action-btn {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  padding: 0.9rem 1rem;
+  font: inherit;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.action-btn--danger {
+  border-color: rgba(255, 127, 143, 0.45);
+  color: var(--danger);
+}
+
 @media (max-width: 900px) {
   .ops-toolbar,
-  .ops-form__grid {
+  .ops-form__grid,
+  .insight-grid,
+  .actions-grid {
     grid-template-columns: 1fr;
   }
 }
