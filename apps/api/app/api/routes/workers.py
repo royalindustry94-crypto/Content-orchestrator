@@ -124,7 +124,7 @@ async def register_worker(
     """
     if payload.capabilities.protocol_version not in settings.worker_capability_protocol_versions:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail=(
                 "unsupported capability protocol_version "
                 f"{payload.capabilities.protocol_version}; server accepts "
@@ -182,7 +182,7 @@ async def worker_heartbeat(
     """
     if payload.status not in (WorkerStatus.ONLINE, WorkerStatus.BUSY, WorkerStatus.DRAINING):
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="a heartbeat may report online, busy, or draining — not offline",
         )
     async with AsyncSessionLocal() as session:
@@ -197,7 +197,7 @@ async def worker_heartbeat(
             )
         if payload.current_load > registration.max_concurrency:
             raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
                 detail="current_load exceeds max_concurrency",
             )
         now = datetime.now(UTC)
@@ -277,12 +277,25 @@ async def claim_assignment_endpoint(
             worker_id=worker.worker_id,
             claim_token=payload.claim_token,
         )
+        assignment_out = None
+        if result.assignment is not None:
+            from app.models.content import ContentItem
+            from app.models.pipeline import PipelineRun
+
+            run = await session.get(PipelineRun, result.assignment.pipeline_run_id)
+            item = (
+                await session.get(ContentItem, run.content_item_id)
+                if run is not None and run.content_item_id is not None
+                else None
+            )
+            assignment_out = ClaimedAssignmentOut.model_validate(result.assignment)
+            assignment_out.workspace_id = result.assignment.workspace_id
+            assignment_out.provider = result.assignment.provider
+            if item is not None:
+                assignment_out.content_item_id = item.id
+                assignment_out.topic = item.topic
+                assignment_out.target_length_seconds = item.target_length_seconds
         await session.commit()
-        assignment_out = (
-            ClaimedAssignmentOut.model_validate(result.assignment)
-            if result.assignment is not None
-            else None
-        )
     audit(
         request,
         "worker_claim",

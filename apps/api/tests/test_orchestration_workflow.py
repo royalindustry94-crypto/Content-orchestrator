@@ -8,7 +8,7 @@ from decimal import Decimal
 
 os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test")
 os.environ.setdefault("APP_DATABASE_URL", "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test")
-os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret")
+os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret-0123456789abcdef")
 
 import pytest
 from sqlalchemy import select, text
@@ -226,8 +226,10 @@ async def test_spend_reservation_blocked_over_cap_pauses_run():
         )
         assert first is not None
 
+        # Different stage — same-stage retry releases the prior reservation
+        # (H-4); cap accumulation must be proven across distinct stages.
         second = await controller.reserve_spend(
-            session, run=run, stage="scripting",
+            session, run=run, stage="voiceover",
             provider="openai", estimated_cost_usd=Decimal("2.00"),
         )
         assert second is None

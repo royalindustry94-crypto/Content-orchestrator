@@ -1,3 +1,8 @@
+# Local development: Postgres only.
+# Full staging stack (api + worker + web + migrate-on-start):
+#   docker compose -f docker-compose.staging.yml up --build
+# See docs/ops/DEPLOYMENT.md.
+
 services:
   # app_runtime (the RLS-scoped runtime role) is created by the Milestone 2
   # Alembic migration, not here — see docs/milestone-2-identity-and-access.md §6.

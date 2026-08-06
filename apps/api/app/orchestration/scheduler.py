@@ -26,6 +26,8 @@ LEASE_SECONDS = 30
 NO_WORKER_MAX_RETRIES = 20  # bounds the 'no eligible worker yet' reschedule loop
 NO_WORKER_RETRY_BASE_SECONDS = 5
 NO_WORKER_RETRY_MAX_SECONDS = 120
+# Spend-hold parks the job without burning NO_WORKER retries / DLQ (M-1).
+SPEND_HOLD_RETRY_SECONDS = 60
 
 
 def _scheduler_owner_id() -> str:
@@ -127,7 +129,7 @@ async def process_leased_job(session: AsyncSession, job: JobSchedule) -> None:
     honest behavior until a real recurring job type is introduced.
     """
     if job.job_type == JobType.STAGE or job.job_type == JobType.RETRY:
-        assignment = await dispatcher.dispatch_stage(
+        result = await dispatcher.dispatch_stage(
             session,
             workspace_id=job.workspace_id,
             pipeline_run_id=job.ref_id,
@@ -136,7 +138,60 @@ async def process_leased_job(session: AsyncSession, job: JobSchedule) -> None:
             correlation_id=job.correlation_id or uuid.uuid4(),
             trace_id=job.trace_id,
         )
-        if assignment is None or assignment.worker_id is None:
+        if result.outcome == dispatcher.DispatchOutcome.SPEND_HOLD:
+            # Budget hold: keep the job pending, do not increment attempt,
+            # never dead-letter as "no worker" (M-1).
+            logger.info(
+                "scheduler_spend_hold_park",
+                extra={
+                    "job_id": str(job.id),
+                    "pipeline_run_id": str(job.ref_id),
+                    "stage": job.ref_table,
+                    "attempt": job.attempt,
+                },
+            )
+            job.status = JobScheduleStatus.PENDING
+            job.run_after = datetime.now(UTC) + timedelta(seconds=SPEND_HOLD_RETRY_SECONDS)
+            job.lease_owner = None
+            job.lease_expires_at = None
+            return
+        if result.outcome == dispatcher.DispatchOutcome.SKIPPED:
+            # Terminal or review-paused run — retire the job without DLQ.
+            logger.info(
+                "scheduler_dispatch_skipped",
+                extra={
+                    "job_id": str(job.id),
+                    "pipeline_run_id": str(job.ref_id),
+                    "stage": job.ref_table,
+                },
+            )
+            job.status = JobScheduleStatus.CANCELLED
+            job.lease_owner = None
+            job.lease_expires_at = None
+            return
+        assignment = result.assignment
+        if result.outcome in {
+            dispatcher.DispatchOutcome.DISPATCHED,
+            dispatcher.DispatchOutcome.IDEMPOTENT,
+        }:
+            job.status = JobScheduleStatus.DONE
+            return
+        if (
+            result.outcome == dispatcher.DispatchOutcome.NO_WORKER
+            and assignment is not None
+        ):
+            # PENDING assignment is claimable by workers — do not mint
+            # duplicate attempt rows on reschedule (H-2).
+            job.status = JobScheduleStatus.DONE
+            return
+        if (
+            result.outcome
+            in {
+                dispatcher.DispatchOutcome.NO_WORKER,
+                dispatcher.DispatchOutcome.BACKPRESSURE,
+            }
+            or assignment is None
+        ):
             # No eligible worker (or over the back-pressure cap) right
             # now — reschedule with backoff rather than dropping the
             # work (design doc §5.2). Bounded: after NO_WORKER_MAX_RETRIES
@@ -144,9 +199,33 @@ async def process_leased_job(session: AsyncSession, job: JobSchedule) -> None:
             # stage with no registered worker doesn't retry indefinitely.
             job.attempt += 1
             if job.attempt >= NO_WORKER_MAX_RETRIES:
+                from app.models.assignments import StageAssignment
+                from app.models.enums import StageAssignmentStatus
+                from app.models.pipeline import PipelineRun
+                from app.orchestration import controller
                 from app.orchestration.retry import route_to_dead_letter
 
                 job.status = JobScheduleStatus.CANCELLED
+                run = await session.get(PipelineRun, job.ref_id)
+                if run is not None:
+                    await controller.release_all_reservations(session, run=run)
+                    open_assignments = (
+                        await session.execute(
+                            select(StageAssignment).where(
+                                StageAssignment.pipeline_run_id == run.id,
+                                StageAssignment.stage == job.ref_table,
+                                StageAssignment.status.in_(
+                                    [
+                                        StageAssignmentStatus.PENDING,
+                                        StageAssignmentStatus.DISPATCHED,
+                                        StageAssignmentStatus.ACKNOWLEDGED,
+                                    ]
+                                ),
+                            )
+                        )
+                    ).scalars().all()
+                    for asn in open_assignments:
+                        asn.status = StageAssignmentStatus.CANCELLED
                 await route_to_dead_letter(
                     session, workspace_id=job.workspace_id, related_table="job_schedule",
                     related_id=job.id, job_type=f"stage_dispatch:{job.ref_table}",

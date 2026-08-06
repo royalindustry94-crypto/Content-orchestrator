@@ -27,7 +27,12 @@ class ContentStatus(str, enum.Enum):
 
 
 class PipelineRunStatus(str, enum.Enum):
+    """Full pipeline_run_status enum (M3 + M4 paused/compensating/created)."""
+
+    CREATED = "created"
     RUNNING = "running"
+    PAUSED = "paused"
+    COMPENSATING = "compensating"
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     CANCELLED = "cancelled"
@@ -156,18 +161,8 @@ class ReviewGateStatus(str, enum.Enum):
     ESCALATED = "escalated"
 
 
-class PipelineRunStatusV2(str, enum.Enum):
-    """Extends M3 PipelineRunStatus with paused/compensating for the
-    orchestration engine. See migration 0014 for the ALTER TYPE that adds
-    these values to the existing pipeline_run_status enum.
-    """
-    CREATED = "created"
-    RUNNING = "running"
-    PAUSED = "paused"
-    COMPENSATING = "compensating"
-    SUCCEEDED = "succeeded"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
+# PipelineRunStatusV2 removed — use PipelineRunStatus (aligned with DB enum
+# values from migration 0014: created/paused/compensating).
 
 
 class PauseReason(str, enum.Enum):

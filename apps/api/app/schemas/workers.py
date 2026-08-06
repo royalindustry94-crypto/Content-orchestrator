@@ -146,6 +146,12 @@ class ClaimedAssignmentOut(BaseModel):
     lease_expires_at: datetime | None
     correlation_id: uuid.UUID | None
     trace_id: str | None
+    # Execution context for Draft Desk / generators (optional enrichment).
+    workspace_id: uuid.UUID | None = None
+    content_item_id: uuid.UUID | None = None
+    topic: str | None = None
+    target_length_seconds: int | None = None
+    provider: str | None = None
 
 
 class ClaimOut(BaseModel):

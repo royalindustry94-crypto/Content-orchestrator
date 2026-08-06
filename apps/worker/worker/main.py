@@ -26,6 +26,7 @@ logger = logging.getLogger(__name__)
 
 async def _run_http_loop(stop_event: asyncio.Event) -> None:
     from worker.client import ReferenceWorkerClient
+    from worker.executors import draft_desk_executor
 
     credential = settings.worker_credential
     worker_id = settings.worker_id
@@ -43,6 +44,7 @@ async def _run_http_loop(stop_event: asyncio.Event) -> None:
             worker_id=uuid.UUID(worker_id) if isinstance(worker_id, str) else worker_id,
             max_concurrency=settings.max_concurrency,
             heartbeat_interval_seconds=settings.heartbeat_interval_seconds,
+            executor=draft_desk_executor,
         )
         await client.register()
         logger.info("worker registered", extra={"worker_id": str(client.worker_id)})

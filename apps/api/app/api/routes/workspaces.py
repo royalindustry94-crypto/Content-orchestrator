@@ -11,6 +11,7 @@ from app.core.security import AuthenticatedUser, get_current_session, get_curren
 from app.models.workspace import Workspace
 from app.models.workspace_membership import WorkspaceMembership, WorkspaceRole
 from app.schemas.workspace import WorkspaceCreate, WorkspaceOut, WorkspaceUpdate
+from app.services.spend import ensure_default_spend_cap
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 
@@ -35,9 +36,11 @@ async def create_workspace(
         role=WorkspaceRole.ADMIN,
     )
     db.add(membership)
-
-    # Flush both objects in the same transaction so RLS set_config remains
-    # active. rls_scoped_session commits after the route returns.
+    # Membership must be visible to RLS helpers before seeding spend_caps.
+    await db.flush()
+    await ensure_default_spend_cap(
+        db, workspace_id=workspace.id, actor_id=uuid.UUID(user.id)
+    )
     await db.flush()
     return workspace
 
@@ -83,7 +86,7 @@ async def update_workspace(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="workspace not found")
     if payload.name is None and payload.priority_tier is None:
         raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="at least one of name or priority_tier is required",
         )
     if payload.name is not None:

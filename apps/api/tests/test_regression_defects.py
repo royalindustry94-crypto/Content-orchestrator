@@ -19,7 +19,7 @@ from decimal import Decimal
 
 os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test")
 os.environ.setdefault("APP_DATABASE_URL", "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test")
-os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret")
+os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret-0123456789abcdef")
 
 import pytest
 from sqlalchemy import select, text
@@ -161,6 +161,7 @@ async def test_regression_stage_completion_advances_run_exactly_once():
             session, workspace_id=ws, pipeline_run_id=run.id, stage="scripting",
             attempt_number=1, correlation_id=run.correlation_id, trace_id=run.trace_id,
         )
+        assert assignment.assignment is not None
         await session.commit()
 
     async with AsyncSessionLocal() as session:
@@ -168,7 +169,7 @@ async def test_regression_stage_completion_advances_run_exactly_once():
 
         from app.models.assignments import StageAssignment
         result = await session.execute(
-            _select(StageAssignment).where(StageAssignment.id == assignment.id)
+            _select(StageAssignment).where(StageAssignment.id == assignment.assignment.id)
         )
         loaded_assignment = result.scalar_one()
         await dispatcher.submit_result(

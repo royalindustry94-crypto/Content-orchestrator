@@ -1,0 +1,146 @@
+# Deployment (staging stack)
+
+This document covers building and running the containerized staging stack.
+Local day-to-day development still uses `docker compose up -d postgres` plus
+processes on the host (see root `README.md`).
+
+## Prerequisites
+
+- Docker Engine with Compose v2
+- A filled `.env` at the repo root (`cp .env.example .env`)
+
+Required for API boot:
+
+| Variable | Purpose |
+|----------|---------|
+| `DATABASE_URL` | Owner/migration connection (Alembic) |
+| `APP_DATABASE_URL` | Runtime connection as `app_runtime` (RLS) |
+| `SUPABASE_JWT_SECRET` | Verifies Supabase-issued JWTs |
+
+Compose overrides DB hostnames to the `postgres` service; keep the local
+`.env` values for host-run processes if you mix modes.
+
+## Build and run staging
+
+```bash
+cp .env.example .env
+# set at least SUPABASE_JWT_SECRET
+
+docker compose -f docker-compose.staging.yml up --build
+```
+
+Services:
+
+| Service | Image / build | Host port | Notes |
+|---------|---------------|-----------|--------|
+| `postgres` | `postgres:16-alpine` | `5432` | Creates `content_orchestrator` DB |
+| `api` | `apps/api/Dockerfile` | `8000` | `RUN_MIGRATIONS=1` → `alembic upgrade head` then uvicorn |
+| `worker` | `apps/worker/Dockerfile` | — | `python -m worker.main`; needs `WORKER_CREDENTIAL` / `WORKER_ID` to claim work |
+| `web` | `apps/web/Dockerfile` | `8080` | nginx serves `dist`; proxies `/api/` → `api:8000/` |
+
+Stop / tear down:
+
+```bash
+docker compose -f docker-compose.staging.yml down
+# add -v to drop the Postgres volume
+```
+
+Build images individually (also exercised in CI `docker-build` job):
+
+```bash
+docker build -t co-api ./apps/api
+docker build -t co-worker ./apps/worker
+docker build -t co-web ./apps/web
+```
+
+## Environment variables
+
+See `.env.example` for the full annotated list. Staging-relevant knobs:
+
+| Variable | Default / notes |
+|----------|-----------------|
+| `ENVIRONMENT` | `staging` in compose override |
+| `AUTH_MODE` | `local` (default): `POST /auth/signup|/login` mint Supabase-shaped JWTs. `supabase`: local auth routes return 404; use Supabase-issued tokens. |
+| `ENVIRONMENT` | `development` enables `/docs`, `/redoc`, `/openapi.json`. Any other value (including `staging` / `production` / `test`) disables them (P-005). |
+| `CORS_ALLOW_ORIGINS` | Include the web origin, e.g. `["http://localhost:8080"]` |
+| `RUN_MIGRATIONS` | Set to `1` on the API container for migrate-on-start |
+| `OUTBOX_RELAY_INTERVAL_SECONDS` | API outbox relay tick |
+| `ASSIGNMENT_REAPER_INTERVAL_SECONDS` | Lease reaper / maintenance tick |
+| `WORKER_OFFLINE_SWEEP_INTERVAL_SECONDS` | Offline worker sweep (via maintenance loop) |
+| `HEALTH_CHECK_INTERVAL_SECONDS` | Worker health-monitor interval |
+| `API_BASE_URL` | Worker → API (`http://api:8000` in compose) |
+| `WORKER_CREDENTIAL` / `WORKER_ID` | Required for the worker to register and claim |
+| `BILLING_ENABLED` | Default `false` (Private Beta). When `true`, content-jobs require an active/trialing Pro entitlement |
+| `STRIPE_SECRET_KEY` | Required when billing enabled |
+| `STRIPE_WEBHOOK_SECRET` | Required when billing enabled; used by `POST /webhooks/stripe` |
+| `STRIPE_PRICE_ID_PRO` | Stripe Price ID for founding Pro |
+| `STRIPE_CHECKOUT_SUCCESS_URL` / `STRIPE_CHECKOUT_CANCEL_URL` | Checkout redirect URLs |
+
+Web: the SPA calls relative `/api/...` paths. No `VITE_*` build args are
+required for the nginx image; see commented `VITE_*` placeholders in
+`.env.example` for a future absolute-API build mode.
+
+## Billing (Stripe)
+
+- **Off by default** (`BILLING_ENABLED=false`) — P0 Private Beta path unchanged.
+- **On:** workspace admins call `POST /workspaces/{id}/billing/checkout`; Stripe
+  webhooks (`POST /webhooks/stripe`) mirror subscription state into
+  `workspace_billing` (FORCE RLS). Content-job creation returns **402** without
+  an active/trialing Pro plan.
+- **Rollback:** set `BILLING_ENABLED=false`, or `alembic downgrade 0030` to drop
+  billing tables (see `docs/work-packages/WP-PB-004-stripe-billing.md`).
+
+## Health checks
+
+| Endpoint | Meaning |
+|----------|---------|
+| `GET /health/live` | Process up (liveness) |
+| `GET /health/ready` | DB reachable via owner session (readiness) |
+| `GET /health/automation` | Scheduler / outbox / maintenance loop ticks |
+| `GET /metrics` | Prometheus-format aggregate gauges (P-008); Bearer `METRICS_SCRAPER_TOKEN` when set / required in production |
+
+Examples:
+
+```bash
+curl -sf http://localhost:8000/health/live
+curl -sf http://localhost:8000/health/ready
+curl -sf -H "Authorization: Bearer $METRICS_SCRAPER_TOKEN" http://localhost:8000/metrics | head
+# via web proxy
+curl -sf http://localhost:8080/api/health/live
+```
+
+On-call: [`ON_CALL.md`](./ON_CALL.md).
+
+Compose marks `api` healthy only after `/health/live` succeeds; `worker`
+and `web` wait on that condition.
+
+## Migrations
+
+- **Staging compose:** API entrypoint runs `alembic upgrade head` when
+  `RUN_MIGRATIONS=1` before starting uvicorn.
+- **Manual / host:**
+
+  ```bash
+  cd apps/api
+  alembic upgrade head
+  alembic current
+  ```
+
+- Migrations use `DATABASE_URL` (owner). They create the `app_runtime`
+  role (password `app_runtime` in the local/dev migration) and the
+  `auth.users` shim when absent — see
+  `docs/milestone-2-identity-and-access.md` §6.
+- Against managed Supabase, if `CREATE ROLE` is denied, create
+  `app_runtime` once in the SQL editor, then run Alembic for the rest.
+- CI also runs a migration replay: `alembic downgrade base && alembic upgrade head`.
+
+## Auth note
+
+Private-beta Review Desk expects a Bearer token (Supabase JWT) and a
+workspace id in the UI. Provision users/memberships against the DB (or
+Supabase Auth + profiles) before exercising authenticated routes.
+
+## Related
+
+- Backups: [`BACKUP_AND_RESTORE.md`](./BACKUP_AND_RESTORE.md)
+- Identity / RLS: [`../milestone-2-identity-and-access.md`](../milestone-2-identity-and-access.md)

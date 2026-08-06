@@ -7,19 +7,30 @@ imported it from here historically.
 
 from __future__ import annotations
 
+import enum
+import logging
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.assignments import StageAssignment
-from app.models.enums import StageAssignmentStatus, WorkerStatus
-from app.models.pipeline import PipelineStageRun
+from app.models.enums import (
+    PipelineRunStatus,
+    ReservationStatus,
+    StageAssignmentStatus,
+    WorkerStatus,
+)
+from app.models.pipeline import PipelineRun, PipelineStageRun
 from app.models.scheduling import WorkspaceConcurrencyLimit
+from app.models.spend import SpendReservation
 from app.models.workers import WorkerRegistration
 from app.models.workspace import Workspace
+from app.orchestration import controller
 from app.orchestration.events.envelope import child_span
 from app.orchestration.events.types import STAGE_ASSIGNED
 from app.orchestration.outbox import emit
@@ -30,9 +41,28 @@ from app.orchestration.recovery import (  # noqa: F401 — re-export for existin
     reap_worker_assignments,
 )
 
+logger = logging.getLogger(__name__)
+
 # Back-compat aliases — prefer Settings.assignment_lease_seconds.
 ACK_TIMEOUT_SECONDS = 60
 DEFAULT_MAX_CONCURRENT_ASSIGNMENTS = 10  # matches WorkspaceConcurrencyLimit's column default
+
+
+class DispatchOutcome(str, enum.Enum):
+    """Why dispatch_stage returned — scheduler must not treat SPEND_HOLD as NO_WORKER (M-1)."""
+
+    DISPATCHED = "dispatched"
+    IDEMPOTENT = "idempotent"
+    NO_WORKER = "no_worker"
+    BACKPRESSURE = "backpressure"
+    SPEND_HOLD = "spend_hold"
+    SKIPPED = "skipped"  # terminal / review-paused run — do not retry or DLQ
+
+
+@dataclass(frozen=True)
+class DispatchResult:
+    outcome: DispatchOutcome
+    assignment: StageAssignment | None = None
 
 
 class LeaseError(Exception):
@@ -136,14 +166,12 @@ async def dispatch_stage(
     trace_id: str | None,
     provider: str | None = None,
     priority: int | None = None,
-) -> StageAssignment | None:
-    """Select a worker and create the assignment. Returns None (leaving
-    the caller to reschedule) if no eligible worker exists right now —
-    work is never dropped for lack of a worker (design doc §5.2).
+) -> DispatchResult:
+    """Select a worker and create the assignment.
 
-    WS4: ``priority`` defaults from the workspace tier; ``provider`` is
-    stored for budget accounting. When a provider budget is exhausted the
-    assignment is still created as PENDING (never dropped).
+    Returns a typed ``DispatchResult`` so callers can distinguish spend-hold
+    from capacity outage (M-1). Work is never dropped for lack of a worker
+    (design doc §5.2).
     """
     lease_seconds = _lease_seconds()
     limit_result = await session.execute(
@@ -167,7 +195,42 @@ async def dispatch_stage(
         )
     )
     if in_flight_result.scalar_one() >= max_concurrent:
-        return None  # over workspace concurrency cap — caller reschedules, nothing is dropped
+        return DispatchResult(outcome=DispatchOutcome.BACKPRESSURE)
+
+    run_for_spend = await session.get(PipelineRun, pipeline_run_id)
+    if run_for_spend is not None:
+        run_status = (
+            run_for_spend.status.value
+            if hasattr(run_for_spend.status, "value")
+            else str(run_for_spend.status)
+        )
+        if run_status in {
+            PipelineRunStatus.SUCCEEDED.value,
+            PipelineRunStatus.FAILED.value,
+            PipelineRunStatus.CANCELLED.value,
+        }:
+            logger.info(
+                "dispatch_skipped_terminal_run",
+                extra={
+                    "pipeline_run_id": str(pipeline_run_id),
+                    "status": run_status,
+                    "stage": stage,
+                },
+            )
+            return DispatchResult(outcome=DispatchOutcome.SKIPPED)
+        if run_status == PipelineRunStatus.PAUSED.value:
+            pause = run_for_spend.pause_reason
+            if pause == "spend_hold":
+                return DispatchResult(outcome=DispatchOutcome.SPEND_HOLD)
+            logger.info(
+                "dispatch_skipped_paused_run",
+                extra={
+                    "pipeline_run_id": str(pipeline_run_id),
+                    "pause_reason": pause,
+                    "stage": stage,
+                },
+            )
+            return DispatchResult(outcome=DispatchOutcome.SKIPPED)
 
     if priority is None:
         workspace = await session.get(Workspace, workspace_id)
@@ -191,7 +254,30 @@ async def dispatch_stage(
     )
     already = existing.scalar_one_or_none()
     if already is not None:
-        return already  # idempotent re-dispatch of the same attempt
+        return DispatchResult(outcome=DispatchOutcome.IDEMPOTENT, assignment=already)
+
+    # Spend reservation before creating work — Draft Desk uses a small
+    # default estimate so monthly/daily caps are enforced on the hot path.
+    effective_provider = provider or "draft_desk"
+    if run_for_spend is not None:
+        estimate = Decimal(str(get_settings().default_stage_estimate_usd))
+        reservation = await controller.reserve_spend(
+            session,
+            run=run_for_spend,
+            stage=stage,
+            provider=effective_provider,
+            estimated_cost_usd=estimate,
+        )
+        if reservation is None:
+            logger.info(
+                "dispatch_spend_hold",
+                extra={
+                    "workspace_id": str(workspace_id),
+                    "pipeline_run_id": str(pipeline_run_id),
+                    "stage": stage,
+                },
+            )
+            return DispatchResult(outcome=DispatchOutcome.SPEND_HOLD)
 
     now = datetime.now(UTC)
     trace_id, span_id = child_span(trace_id)
@@ -211,7 +297,7 @@ async def dispatch_stage(
         correlation_id=correlation_id,
         trace_id=trace_id,
         priority=priority,
-        provider=provider,
+        provider=effective_provider,
     )
     session.add(assignment)
     if worker is not None:
@@ -234,11 +320,13 @@ async def dispatch_stage(
             "worker_id": str(worker.id) if worker else None,
             "assignment_id": str(assignment.id),
             "priority": priority,
-            "provider": provider,
+            "provider": effective_provider,
         },
         produced_by="dispatcher",
     )
-    return assignment
+    if worker is None:
+        return DispatchResult(outcome=DispatchOutcome.NO_WORKER, assignment=assignment)
+    return DispatchResult(outcome=DispatchOutcome.DISPATCHED, assignment=assignment)
 
 
 async def acknowledge(
@@ -316,9 +404,6 @@ async def submit_result(
     """
     import uuid as _uuid
 
-    from app.models.pipeline import PipelineRun
-    from app.orchestration import controller
-
     now = now or datetime.now(UTC)
     if worker_id is not None and assignment.worker_id != worker_id:
         raise LeaseNotOwned()
@@ -386,11 +471,48 @@ async def submit_result(
             },
             produced_by="dispatcher",
         )
+    open_reservation = (
+        await session.execute(
+            select(SpendReservation)
+            .where(
+                SpendReservation.pipeline_run_id == run.id,
+                SpendReservation.stage == assignment.stage,
+                SpendReservation.status == ReservationStatus.RESERVED,
+            )
+            .order_by(SpendReservation.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
     if success:
+        if open_reservation is not None:
+            actual = Decimal(str(get_settings().default_stage_estimate_usd))
+            if isinstance(result, dict) and result.get("estimated_cost_usd") is not None:
+                try:
+                    actual = Decimal(str(result["estimated_cost_usd"]))
+                except Exception:
+                    logger.warning(
+                        "spend_commit_invalid_worker_cost",
+                        extra={
+                            "assignment_id": str(assignment.id),
+                            "reported": result.get("estimated_cost_usd"),
+                        },
+                    )
+                    actual = Decimal(str(get_settings().default_stage_estimate_usd))
+            await controller.commit_spend(
+                session,
+                run=run,
+                reservation=open_reservation,
+                actual_cost_usd=actual,
+            )
         await controller.handle_stage_success(
             session, run=run, stage=assignment.stage, result_context=result or {}
         )
     else:
+        if open_reservation is not None:
+            await controller.release_spend(
+                session, run=run, reservation=open_reservation
+            )
         await controller.handle_stage_failure(
             session, run=run, stage=assignment.stage,
             attempt_number=assignment.attempt_number, error_message=error_message,

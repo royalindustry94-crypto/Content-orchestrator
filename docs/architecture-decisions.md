@@ -1,5 +1,28 @@
 # Architecture Decisions
 
+## Private Beta Review Desk (WP-PB-001 · 2026-07-27)
+
+**Decision:** Expose the existing orchestration Human Review Gate via HTTP
+product APIs and a minimal web Review Desk before building BYOK generation,
+Stripe, or more worker features.
+
+**Why:** Revenue and customer value require a reachable Gate. The engine
+already paused runs and recorded decisions; customers could not call it.
+
+**How:**
+- Service-role session (`AsyncSessionLocal`) performs orchestration writes
+  after FastAPI role guards (pipeline/gate/outbox are not freely writable
+  under `app_runtime` RLS).
+- Default workflow `agency_content_desk` v1: `scripting` → `review` (gate) →
+  `published`. Reject with no reject-edge **fails the run** (`review_rejected`).
+- Private Beta “generation” is the caller-supplied script
+  (`generated_by=private_beta_draft`); the Gate is never skipped.
+- Outbox consumers registered at API import; relay loop runs in lifespan;
+  decision endpoint also dispatches in-request for snappy UX.
+
+**Non-negotiables preserved:** Human Review Gate, spend controls (unchanged
+this WP), FORCE RLS multi-tenant isolation, no silent failures.
+
 ## Source-of-truth spec
 
 `content_engine_app_spec_v2.md` + the Claude Project Instructions doc are

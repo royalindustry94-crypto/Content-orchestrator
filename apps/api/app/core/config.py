@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-from pydantic import Field, PostgresDsn
+from pydantic import Field, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -39,9 +39,23 @@ class Settings(BaseSettings):
     # --- Supabase Auth ---
     # Supabase-issued JWTs are verified here, not issued here — see
     # docs/milestone-2-identity-and-access.md §1 for why.
+    # AUTH_MODE=local enables /auth/signup|/auth/login which mint the same
+    # JWT shape with this secret (Private Beta / staging without Supabase).
+    # Default is supabase (fail-closed): local issuance must be opted in
+    # explicitly via AUTH_MODE=local (see .env.example for Private Beta).
     supabase_jwt_secret: str
     supabase_jwt_algorithm: str = Field(default="HS256")
     supabase_jwt_audience: str = Field(default="authenticated")
+    auth_mode: str = Field(default="supabase")  # local | supabase
+    # Explicit break-glass for AUTH_MODE=local when ENVIRONMENT=production.
+    allow_local_auth_in_production: bool = Field(default=False)
+
+    # --- Scheduler (background tick in API lifespan) ---
+    scheduler_interval_seconds: float = Field(default=2.0, ge=0.2)
+    scheduler_batch_size: int = Field(default=50, ge=1)
+
+    # Default estimated stage cost used when dispatching with Draft Desk.
+    default_stage_estimate_usd: float = Field(default=0.01, ge=0)
 
     # --- CORS ---
     cors_allow_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
@@ -85,6 +99,61 @@ class Settings(BaseSettings):
     # --- Spend controls (defaults; per-workspace overrides live in DB) ---
     default_daily_spend_cap_usd: float = Field(default=50.0)
     default_monthly_spend_cap_usd: float = Field(default=1000.0)
+
+    # --- Outbox relay (Private Beta review decisions + future consumers) ---
+    outbox_relay_interval_seconds: float = Field(default=2.0, ge=0.2)
+
+    # --- Stripe billing (P-001 / WP-PB-004) ---
+    # When false (default), entitlements are not enforced — Private Beta P0 path.
+    # When true, Stripe secrets + price + redirect URLs are required at runtime
+    # for checkout/webhook routes (validated in billing service, not at import).
+    billing_enabled: bool = Field(default=False)
+    stripe_secret_key: str | None = Field(default=None)
+    stripe_webhook_secret: str | None = Field(default=None)
+    stripe_price_id_pro: str | None = Field(default=None)
+    stripe_checkout_success_url: str | None = Field(default=None)
+    stripe_checkout_cancel_url: str | None = Field(default=None)
+
+    # --- Metrics scrape auth (M-3) ---
+    # When set, GET /metrics requires Authorization: Bearer <token>.
+    # When unset in production/prod, /metrics is disabled (401). Non-prod
+    # may scrape without a token for local docker-compose / CI convenience.
+    metrics_scraper_token: str | None = Field(default=None)
+
+    @property
+    def openapi_docs_enabled(self) -> bool:
+        """Swagger/ReDoc/OpenAPI JSON are development-only (P-005)."""
+        return self.environment.strip().lower() in {"development", "dev"}
+
+    @model_validator(mode="after")
+    def _validate_auth_mode(self) -> Settings:
+        mode = self.auth_mode.strip().lower()
+        if mode not in {"local", "supabase"}:
+            raise ValueError("AUTH_MODE must be 'local' or 'supabase'")
+        object.__setattr__(self, "auth_mode", mode)
+        env = self.environment.strip().lower()
+        if (
+            env in {"production", "prod"}
+            and mode == "local"
+            and not self.allow_local_auth_in_production
+        ):
+            raise ValueError(
+                "AUTH_MODE=local is forbidden when ENVIRONMENT is production; "
+                "set ALLOW_LOCAL_AUTH_IN_PRODUCTION=true only as an audited override"
+            )
+        return self
+
+
+def openapi_route_kwargs(environment: str) -> dict[str, str | None]:
+    """FastAPI docs URL kwargs — disabled outside development (P-005)."""
+    enabled = environment.strip().lower() in {"development", "dev"}
+    if enabled:
+        return {
+            "docs_url": "/docs",
+            "redoc_url": "/redoc",
+            "openapi_url": "/openapi.json",
+        }
+    return {"docs_url": None, "redoc_url": None, "openapi_url": None}
 
 
 @lru_cache

@@ -9,7 +9,7 @@ from pathlib import Path
 
 os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test")
 os.environ.setdefault("APP_DATABASE_URL", "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test")
-os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret")
+os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret-0123456789abcdef")
 
 # apps/worker isn't installed as a dependency of apps/api; reach it via a
 # relative path so this integration test can import the reference client
@@ -88,7 +88,8 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
         )
         await session.commit()
         run_id = run.id
-        assignment_id = dispatched.id
+        assert dispatched.assignment is not None
+        assignment_id = dispatched.assignment.id
 
     http = httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
     admin_headers = {"Authorization": f"Bearer {make_token(user_id=admin_user)}"}

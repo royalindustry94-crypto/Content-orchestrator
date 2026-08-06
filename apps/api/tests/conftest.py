@@ -17,14 +17,15 @@ import uuid
 # (pointing at the helium managed-Postgres) never bleeds into the test run.
 os.environ["DATABASE_URL"] = "postgresql://postgres:postgres@127.0.0.1:5432/content_orchestrator_test"
 os.environ["APP_DATABASE_URL"] = "postgresql://app_runtime:app_runtime@127.0.0.1:5432/content_orchestrator_test"
-os.environ["SUPABASE_JWT_SECRET"] = "test-supabase-jwt-secret"
+os.environ["SUPABASE_JWT_SECRET"] = "test-supabase-jwt-secret-0123456789abcdef"
 os.environ["ENVIRONMENT"] = "test"
+os.environ["AUTH_MODE"] = "local"
 
 import httpx
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport
-from jose import jwt
+from jwt import encode as jwt_encode
 from sqlalchemy import text
 
 from app.core.config import get_settings
@@ -46,7 +47,7 @@ def make_token(user_id: str | None = None, email: str = "test@example.com") -> s
         "exp": int(time.time()) + 3600,
         "role": "authenticated",
     }
-    return jwt.encode(
+    return jwt_encode(
         payload, settings.supabase_jwt_secret, algorithm=settings.supabase_jwt_algorithm
     )
 
