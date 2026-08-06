@@ -1,5 +1,11 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { listReviewGates } from "./api";
+import {
+  getExecutiveDashboard,
+  getOperationsAlerts,
+  getPipelineMonitor,
+  getWorkerMonitor,
+  listReviewGates,
+} from "./api";
 
 describe("review desk api client", () => {
   afterEach(() => {
@@ -43,5 +49,60 @@ describe("review desk api client", () => {
     );
     const headers = fetchMock.mock.calls[0]?.[1]?.headers as Headers;
     expect(headers.get("Authorization")).toBe("Bearer token-123");
+  });
+});
+
+describe("operations dashboard api client", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("loads all four workspace-scoped operations APIs with bearer auth", async () => {
+    const payloads = [
+      { workers_online: 2 },
+      { workers: [] },
+      { active_pipelines: 1, pipelines: [] },
+      { alerts: [] },
+    ];
+    const fetchMock = vi
+      .fn()
+      .mockImplementation(async () => ({
+        ok: true,
+        status: 200,
+        json: async () => payloads.shift(),
+      }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await getExecutiveDashboard("ops-token", "ws-7");
+    await getWorkerMonitor("ops-token", "ws-7");
+    await getPipelineMonitor("ops-token", "ws-7");
+    await getOperationsAlerts("ops-token", "ws-7");
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/workspaces/ws-7/operations/executive",
+      "/api/workspaces/ws-7/operations/workers",
+      "/api/workspaces/ws-7/operations/pipelines",
+      "/api/workspaces/ws-7/operations/alerts",
+    ]);
+    for (const call of fetchMock.mock.calls) {
+      const headers = call[1]?.headers as Headers;
+      expect(headers.get("Authorization")).toBe("Bearer ops-token");
+    }
+  });
+
+  it("surfaces backend failures instead of rendering fake data", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        text: async () => "database unavailable",
+      }),
+    );
+
+    await expect(getExecutiveDashboard("token", "ws")).rejects.toThrow(
+      "503: database unavailable",
+    );
   });
 });

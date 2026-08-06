@@ -39,6 +39,80 @@ export type Workspace = {
   name: string;
 };
 
+export type DeploymentInfo = {
+  ci_status: string;
+  ci_url: string | null;
+  git_branch: string | null;
+  commit_sha: string | null;
+  deployed_at: string | null;
+};
+
+export type ExecutiveDashboard = {
+  workers_online: number;
+  workers_busy: number;
+  jobs_running: number;
+  jobs_queued: number;
+  jobs_failed: number;
+  human_reviews_waiting: number;
+  spend_today_usd: string;
+  spend_month_usd: string;
+  active_workspaces: number;
+  deployment: DeploymentInfo;
+  generated_at: string;
+};
+
+export type WorkerMonitorRow = {
+  id: string;
+  name: string;
+  status: string;
+  current_job: string | null;
+  queue: number;
+  last_heartbeat_at: string | null;
+  retry_count: number;
+  jobs_completed: number;
+  jobs_failed: number;
+  lease_status: string;
+};
+
+export type WorkerMonitor = {
+  workers: WorkerMonitorRow[];
+  generated_at: string;
+};
+
+export type PipelineRow = {
+  id: string;
+  status: string;
+  current_stage: string;
+  pause_reason: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PipelineMonitor = {
+  active_pipelines: number;
+  queue_depth: number;
+  failed_pipelines: number;
+  retrying_pipelines: number;
+  dead_letter_queue: number;
+  review_gates: number;
+  publish_queue: number;
+  pipelines: PipelineRow[];
+  generated_at: string;
+};
+
+export type OperationsAlert = {
+  key: string;
+  severity: "critical" | "warning" | "info";
+  title: string;
+  count: number;
+  message: string;
+};
+
+export type Alerts = {
+  alerts: OperationsAlert[];
+  generated_at: string;
+};
+
 async function apiFetch<T>(
   path: string,
   token: string | null,
@@ -97,6 +171,46 @@ export function createWorkspace(token: string, name: string): Promise<Workspace>
 
 export function listWorkspaces(token: string): Promise<Workspace[]> {
   return apiFetch<Workspace[]>("/workspaces", token);
+}
+
+export function getExecutiveDashboard(
+  token: string,
+  workspaceId: string,
+): Promise<ExecutiveDashboard> {
+  return apiFetch<ExecutiveDashboard>(
+    `/workspaces/${workspaceId}/operations/executive`,
+    token,
+  );
+}
+
+export function getWorkerMonitor(
+  token: string,
+  workspaceId: string,
+): Promise<WorkerMonitor> {
+  return apiFetch<WorkerMonitor>(
+    `/workspaces/${workspaceId}/operations/workers`,
+    token,
+  );
+}
+
+export function getPipelineMonitor(
+  token: string,
+  workspaceId: string,
+): Promise<PipelineMonitor> {
+  return apiFetch<PipelineMonitor>(
+    `/workspaces/${workspaceId}/operations/pipelines`,
+    token,
+  );
+}
+
+export function getOperationsAlerts(
+  token: string,
+  workspaceId: string,
+): Promise<Alerts> {
+  return apiFetch<Alerts>(
+    `/workspaces/${workspaceId}/operations/alerts`,
+    token,
+  );
 }
 
 export function createContentJob(
