@@ -66,11 +66,16 @@ export type WorkerMonitorRow = {
   name: string;
   status: string;
   current_job: string | null;
+  current_task: string | null;
   queue: number;
   last_heartbeat_at: string | null;
   retry_count: number;
   jobs_completed: number;
   jobs_failed: number;
+  jobs_completed_today: number;
+  jobs_failed_today: number;
+  cpu_percent: number | null;
+  memory_percent: number | null;
   lease_status: string;
 };
 
@@ -96,6 +101,11 @@ export type PipelineMonitor = {
   dead_letter_queue: number;
   review_gates: number;
   publish_queue: number;
+  jobs_completed: number;
+  jobs_waiting: number;
+  jobs_failed: number;
+  human_reviews_waiting: number;
+  publishing_queue: number;
   pipelines: PipelineRow[];
   generated_at: string;
 };
@@ -106,10 +116,125 @@ export type OperationsAlert = {
   title: string;
   count: number;
   message: string;
+  occurred_at?: string | null;
 };
 
 export type Alerts = {
   alerts: OperationsAlert[];
+  generated_at: string;
+};
+
+export type Notifications = {
+  notifications: OperationsAlert[];
+  generated_at: string;
+};
+
+export type Lead = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  company: string | null;
+  email: string;
+  source: string;
+  status: string;
+  notes: string | null;
+  follow_up_date: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type Leads = {
+  leads: Lead[];
+  total: number;
+  generated_at: string;
+};
+
+export type LeadInput = {
+  name: string;
+  company?: string | null;
+  email: string;
+  source?: string;
+  status?: string;
+  notes?: string | null;
+  follow_up_date?: string | null;
+};
+
+export type CustomerRow = {
+  workspace_id: string;
+  name: string;
+  plan: string;
+  subscription_status: string;
+  member_count: number;
+  stripe_customer_id: string | null;
+  current_period_end: string | null;
+  cancel_at_period_end: boolean;
+  created_at: string;
+};
+
+export type Customers = {
+  beta_users: number;
+  active_users: number;
+  paying_users: number;
+  trial_users: number;
+  revenue_mtd_usd: string;
+  revenue_source: string;
+  customers: CustomerRow[];
+  generated_at: string;
+};
+
+export type SpendProviderRow = {
+  provider: string;
+  today_usd: string;
+  week_usd: string;
+  month_usd: string;
+};
+
+export type SpendDashboard = {
+  today_usd: string;
+  week_usd: string;
+  month_usd: string;
+  by_provider: SpendProviderRow[];
+  daily_cap_usd: string | null;
+  monthly_cap_usd: string | null;
+  budget_remaining_daily_usd: string | null;
+  budget_remaining_monthly_usd: string | null;
+  generated_at: string;
+};
+
+export type GitHubOut = {
+  available: boolean;
+  unavailable_reason: string | null;
+  repository: string | null;
+  latest_commits: Array<{
+    sha: string;
+    message: string;
+    author: string | null;
+    committed_at: string | null;
+    url: string | null;
+  }>;
+  open_pull_requests: Array<{
+    number: number;
+    title: string;
+    state: string;
+    author: string | null;
+    updated_at: string | null;
+    url: string | null;
+  }>;
+  failed_actions: Array<{
+    id: number;
+    name: string;
+    status: string;
+    conclusion: string | null;
+    branch: string | null;
+    updated_at: string | null;
+    url: string | null;
+  }>;
+  branch_status: {
+    name: string | null;
+    sha: string | null;
+    protected: boolean | null;
+    ci_status: string;
+  };
   generated_at: string;
 };
 
@@ -209,6 +334,89 @@ export function getOperationsAlerts(
 ): Promise<Alerts> {
   return apiFetch<Alerts>(
     `/workspaces/${workspaceId}/operations/alerts`,
+    token,
+  );
+}
+
+export function getNotifications(
+  token: string,
+  workspaceId: string,
+): Promise<Notifications> {
+  return apiFetch<Notifications>(
+    `/workspaces/${workspaceId}/operations/notifications`,
+    token,
+  );
+}
+
+export function getLeads(
+  token: string,
+  workspaceId: string,
+  params: { search?: string; status?: string; source?: string } = {},
+): Promise<Leads> {
+  const query = new URLSearchParams();
+  if (params.search) query.set("search", params.search);
+  if (params.status) query.set("status", params.status);
+  if (params.source) query.set("source", params.source);
+  const suffix = query.toString() ? `?${query}` : "";
+  return apiFetch<Leads>(
+    `/workspaces/${workspaceId}/operations/leads${suffix}`,
+    token,
+  );
+}
+
+export function createLead(
+  token: string,
+  workspaceId: string,
+  payload: LeadInput,
+): Promise<Lead> {
+  return apiFetch<Lead>(`/workspaces/${workspaceId}/operations/leads`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function updateLead(
+  token: string,
+  workspaceId: string,
+  leadId: string,
+  payload: Partial<LeadInput>,
+): Promise<Lead> {
+  return apiFetch<Lead>(
+    `/workspaces/${workspaceId}/operations/leads/${leadId}`,
+    token,
+    {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export function getCustomers(
+  token: string,
+  workspaceId: string,
+): Promise<Customers> {
+  return apiFetch<Customers>(
+    `/workspaces/${workspaceId}/operations/customers`,
+    token,
+  );
+}
+
+export function getSpendDashboard(
+  token: string,
+  workspaceId: string,
+): Promise<SpendDashboard> {
+  return apiFetch<SpendDashboard>(
+    `/workspaces/${workspaceId}/operations/spend`,
+    token,
+  );
+}
+
+export function getGitHubStatus(
+  token: string,
+  workspaceId: string,
+): Promise<GitHubOut> {
+  return apiFetch<GitHubOut>(
+    `/workspaces/${workspaceId}/operations/github`,
     token,
   );
 }

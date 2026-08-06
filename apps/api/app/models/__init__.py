@@ -16,6 +16,7 @@ from app.models.content import ContentItem, ContentLineage, ContentVersion  # no
 from app.models.delivery import Asset, PublishJob  # noqa: F401
 from app.models.events import ConsumerCheckpoint, EventConsumer, OutboxEvent  # noqa: F401
 from app.models.history import AnalyticsSnapshot, ProviderUsage, ReviewDecision  # noqa: F401
+from app.models.leads import Lead  # noqa: F401
 from app.models.local_auth import LocalAuthCredential  # noqa: F401
 from app.models.operations import DeadLetterJob, WebhookEvent  # noqa: F401
 from app.models.pipeline import PipelineRun, PipelineStageRun  # noqa: F401
@@ -49,4 +50,7 @@ __all__ = [
     "StageRecoveryAudit", "ProviderEffectKey",
     "WorkspaceBackpressureState", "ProviderConcurrencyBudget",
     "ReviewGate",
+    "Lead",
+    "BillingWebhookEvent",
+    "WorkspaceBilling",
 ]

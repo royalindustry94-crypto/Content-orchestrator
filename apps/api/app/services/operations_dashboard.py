@@ -1,7 +1,8 @@
-"""Workspace-scoped Operations Dashboard projections.
+"""Workspace-scoped Operations Dashboard projections (V1 + V2).
 
-All values come from durable tables or deploy-injected metadata. Missing
-deployment metadata is returned as unavailable rather than fabricated.
+All values come from durable tables, Stripe webhook receipts, or live
+upstream APIs when configured. Missing sources are unavailable — never
+fabricated.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.assignments import StageAssignment
-from app.models.billing import BillingWebhookEvent
+from app.models.billing import BillingWebhookEvent, WorkspaceBilling
 from app.models.config import SpendCap
 from app.models.delivery import PublishJob
 from app.models.enums import (
@@ -30,6 +31,7 @@ from app.models.enums import (
     WebhookStatus,
     WorkerStatus,
 )
+from app.models.leads import Lead
 from app.models.operations import DeadLetterJob, WebhookEvent
 from app.models.pipeline import PipelineRun
 from app.models.review_gate import ReviewGate
@@ -37,19 +39,33 @@ from app.models.scheduling import JobSchedule, WorkspaceConcurrencyLimit
 from app.models.spend import SpendLog
 from app.models.workers import WorkerRegistration
 from app.models.workspace import Workspace
+from app.models.workspace_membership import WorkspaceMembership, WorkspaceRole
 from app.schemas.operations_dashboard import (
     AlertsOut,
+    CustomerRow,
+    CustomersOut,
     DeploymentInfo,
     ExecutiveDashboardOut,
+    LeadCreate,
+    LeadOut,
+    LeadsOut,
+    LeadUpdate,
+    NotificationsOut,
     OperationsAlert,
     PipelineMonitorOut,
     PipelineRow,
+    SpendOut,
+    SpendProviderRow,
     WorkerMonitorOut,
     WorkerMonitorRow,
 )
 from app.services.workers import compute_liveness
 
 logger = logging.getLogger(__name__)
+
+LEAD_STATUSES = frozenset(
+    {"new", "contacted", "qualified", "negotiation", "won", "lost", "nurturing"}
+)
 
 
 def _enum_value(value: object) -> str:
@@ -81,6 +97,24 @@ def _deployment_info() -> DeploymentInfo:
 async def _count(session: AsyncSession, stmt) -> int:
     value = (await session.execute(stmt)).scalar_one()
     return int(value or 0)
+
+
+def _resource_percent(capabilities: dict | None, *keys: str) -> float | None:
+    if not isinstance(capabilities, dict):
+        return None
+    for key in keys:
+        value = capabilities.get(key)
+        if value is None and isinstance(capabilities.get("resources"), dict):
+            value = capabilities["resources"].get(key)
+        if value is None:
+            continue
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if 0 <= number <= 100:
+            return number
+    return None
 
 
 async def _spend_totals(
@@ -191,6 +225,7 @@ async def workers(
     )
     rows: list[WorkerMonitorRow] = []
     now = datetime.now(UTC)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     for worker in result.scalars().all():
         active = (
             await session.execute(
@@ -228,6 +263,27 @@ async def workers(
                 StageAssignment.attempt_number > 1,
             ),
         )
+        completed_today = await _count(
+            session,
+            select(func.count(StageAssignment.id)).where(
+                StageAssignment.workspace_id == workspace_id,
+                StageAssignment.worker_id == worker.id,
+                StageAssignment.status == StageAssignmentStatus.COMPLETED,
+                or_(
+                    StageAssignment.completed_at >= day_start,
+                    StageAssignment.updated_at >= day_start,
+                ),
+            ),
+        )
+        failed_today = await _count(
+            session,
+            select(func.count(StageAssignment.id)).where(
+                StageAssignment.workspace_id == workspace_id,
+                StageAssignment.worker_id == worker.id,
+                StageAssignment.status == StageAssignmentStatus.FAILED,
+                StageAssignment.updated_at >= day_start,
+            ),
+        )
         queue = 0
         if worker.supported_stages:
             queue = await _count(
@@ -251,16 +307,18 @@ async def workers(
             if liveness == "dead"
             else ("suspect" if liveness == "suspect" else _enum_value(worker.status))
         )
+        current = (
+            f"{_enum_value(active.stage)} · {active.pipeline_run_id}"
+            if active is not None
+            else None
+        )
         rows.append(
             WorkerMonitorRow(
                 id=worker.id,
                 name=worker.name,
                 status=display_status,
-                current_job=(
-                    f"{_enum_value(active.stage)} · {active.pipeline_run_id}"
-                    if active is not None
-                    else None
-                ),
+                current_job=current,
+                current_task=current,
                 queue=queue,
                 last_heartbeat_at=worker.last_heartbeat_at,
                 retry_count=retry_count,
@@ -268,6 +326,14 @@ async def workers(
                     StageAssignmentStatus.COMPLETED.value, 0
                 ),
                 jobs_failed=status_counts.get(StageAssignmentStatus.FAILED.value, 0),
+                jobs_completed_today=completed_today,
+                jobs_failed_today=failed_today,
+                cpu_percent=_resource_percent(
+                    worker.capabilities, "cpu_percent", "cpu", "cpu_usage"
+                ),
+                memory_percent=_resource_percent(
+                    worker.capabilities, "memory_percent", "memory", "mem_percent"
+                ),
                 lease_status=lease_status,
             )
         )
@@ -338,6 +404,20 @@ async def pipelines(
             ),
         ),
     )
+    jobs_completed = await _count(
+        session,
+        select(func.count(StageAssignment.id)).where(
+            StageAssignment.workspace_id == workspace_id,
+            StageAssignment.status == StageAssignmentStatus.COMPLETED,
+        ),
+    )
+    jobs_failed = await _count(
+        session,
+        select(func.count(StageAssignment.id)).where(
+            StageAssignment.workspace_id == workspace_id,
+            StageAssignment.status == StageAssignmentStatus.FAILED,
+        ),
+    )
     result = await session.execute(
         select(PipelineRun)
         .where(
@@ -368,12 +448,331 @@ async def pipelines(
         dead_letter_queue=dlq,
         review_gates=reviews,
         publish_queue=publish_queue,
+        jobs_completed=jobs_completed,
+        jobs_waiting=queued,
+        jobs_failed=jobs_failed,
+        human_reviews_waiting=reviews,
+        publishing_queue=publish_queue,
         pipelines=rows,
         generated_at=datetime.now(UTC),
     )
 
 
-async def alerts(session: AsyncSession, workspace_id: uuid.UUID) -> AlertsOut:
+def _lead_out(lead: Lead) -> LeadOut:
+    return LeadOut(
+        id=lead.id,
+        workspace_id=lead.workspace_id,
+        name=lead.name,
+        company=lead.company,
+        email=lead.email,
+        source=lead.source,
+        status=lead.status,
+        notes=lead.notes,
+        follow_up_date=lead.follow_up_date,
+        created_at=lead.created_at,
+        updated_at=lead.updated_at,
+    )
+
+
+async def list_leads(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    *,
+    search: str | None = None,
+    status: str | None = None,
+    source: str | None = None,
+) -> LeadsOut:
+    stmt = select(Lead).where(Lead.workspace_id == workspace_id)
+    if status:
+        stmt = stmt.where(Lead.status == status)
+    if source:
+        stmt = stmt.where(Lead.source == source)
+    if search:
+        pattern = f"%{search.strip()}%"
+        stmt = stmt.where(
+            or_(
+                Lead.name.ilike(pattern),
+                Lead.email.ilike(pattern),
+                Lead.company.ilike(pattern),
+                Lead.notes.ilike(pattern),
+            )
+        )
+    stmt = stmt.order_by(Lead.updated_at.desc())
+    rows = list((await session.execute(stmt)).scalars().all())
+    return LeadsOut(
+        leads=[_lead_out(row) for row in rows],
+        total=len(rows),
+        generated_at=datetime.now(UTC),
+    )
+
+
+async def create_lead(
+    session: AsyncSession, workspace_id: uuid.UUID, payload: LeadCreate
+) -> LeadOut:
+    status = payload.status.strip().lower()
+    if status not in LEAD_STATUSES:
+        raise ValueError(f"invalid lead status: {payload.status}")
+    email = str(payload.email).strip().lower()
+    if "@" not in email or email.startswith("@") or email.endswith("@"):
+        raise ValueError("invalid lead email")
+    lead = Lead(
+        workspace_id=workspace_id,
+        name=payload.name.strip(),
+        company=payload.company.strip() if payload.company else None,
+        email=email,
+        source=payload.source.strip(),
+        status=status,
+        notes=payload.notes,
+        follow_up_date=payload.follow_up_date,
+    )
+    session.add(lead)
+    await session.commit()
+    await session.refresh(lead)
+    return _lead_out(lead)
+
+
+async def update_lead(
+    session: AsyncSession,
+    workspace_id: uuid.UUID,
+    lead_id: uuid.UUID,
+    payload: LeadUpdate,
+) -> LeadOut | None:
+    lead = await session.get(Lead, lead_id)
+    if lead is None or lead.workspace_id != workspace_id:
+        return None
+    data = payload.model_dump(exclude_unset=True)
+    if "status" in data and data["status"] is not None:
+        status = str(data["status"]).strip().lower()
+        if status not in LEAD_STATUSES:
+            raise ValueError(f"invalid lead status: {data['status']}")
+        data["status"] = status
+    if "email" in data and data["email"] is not None:
+        data["email"] = str(data["email"]).strip().lower()
+    if "name" in data and data["name"] is not None:
+        data["name"] = str(data["name"]).strip()
+    if "company" in data and data["company"] is not None:
+        data["company"] = str(data["company"]).strip() or None
+    if "source" in data and data["source"] is not None:
+        data["source"] = str(data["source"]).strip()
+    for key, value in data.items():
+        setattr(lead, key, value)
+    await session.commit()
+    await session.refresh(lead)
+    return _lead_out(lead)
+
+
+def _revenue_from_payload(payload: dict) -> Decimal:
+    """Extract paid amount from a Stripe invoice webhook payload (cents → USD)."""
+    obj = payload.get("data", {}).get("object", {}) if isinstance(payload, dict) else {}
+    if not isinstance(obj, dict):
+        return Decimal("0")
+    for key in ("amount_paid", "amount_due", "total"):
+        raw = obj.get(key)
+        if raw is None:
+            continue
+        try:
+            cents = Decimal(str(raw))
+        except Exception:
+            continue
+        if cents >= 0:
+            return (cents / Decimal("100")).quantize(Decimal("0.01"))
+    return Decimal("0")
+
+
+async def customers(
+    session: AsyncSession, *, admin_user_id: uuid.UUID
+) -> CustomersOut:
+    """Customers = workspaces the caller administers, with billing + members."""
+    now = datetime.now(UTC)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    admin_ws = (
+        await session.execute(
+            select(Workspace)
+            .join(
+                WorkspaceMembership,
+                WorkspaceMembership.workspace_id == Workspace.id,
+            )
+            .where(
+                WorkspaceMembership.user_id == admin_user_id,
+                WorkspaceMembership.role == WorkspaceRole.ADMIN,
+            )
+            .order_by(Workspace.created_at.desc())
+        )
+    ).scalars().all()
+    workspace_ids = [ws.id for ws in admin_ws]
+    rows: list[CustomerRow] = []
+    beta_users = active_users = paying_users = trial_users = 0
+    revenue = Decimal("0")
+
+    if workspace_ids:
+        billing_map = {
+            row.workspace_id: row
+            for row in (
+                await session.execute(
+                    select(WorkspaceBilling).where(
+                        WorkspaceBilling.workspace_id.in_(workspace_ids)
+                    )
+                )
+            ).scalars().all()
+        }
+        member_counts = {
+            wid: int(count)
+            for wid, count in (
+                await session.execute(
+                    select(
+                        WorkspaceMembership.workspace_id,
+                        func.count(WorkspaceMembership.id),
+                    )
+                    .where(WorkspaceMembership.workspace_id.in_(workspace_ids))
+                    .group_by(WorkspaceMembership.workspace_id)
+                )
+            ).all()
+        }
+        for ws in admin_ws:
+            billing = billing_map.get(ws.id)
+            plan = billing.plan if billing else "none"
+            status = billing.status if billing else "inactive"
+            members = member_counts.get(ws.id, 0)
+            if status == "trialing" and plan == "pro":
+                trial_users += members
+                active_users += members
+            elif status == "active" and plan == "pro":
+                paying_users += members
+                active_users += members
+            else:
+                beta_users += members
+            rows.append(
+                CustomerRow(
+                    workspace_id=ws.id,
+                    name=ws.name,
+                    plan=plan,
+                    subscription_status=status,
+                    member_count=members,
+                    stripe_customer_id=billing.stripe_customer_id if billing else None,
+                    current_period_end=billing.current_period_end if billing else None,
+                    cancel_at_period_end=(
+                        billing.cancel_at_period_end if billing else False
+                    ),
+                    created_at=ws.created_at,
+                )
+            )
+        events = (
+            await session.execute(
+                select(BillingWebhookEvent).where(
+                    BillingWebhookEvent.workspace_id.in_(workspace_ids),
+                    BillingWebhookEvent.event_type.in_(
+                        ["invoice.paid", "invoice.payment_succeeded"]
+                    ),
+                    BillingWebhookEvent.processed_at >= month_start,
+                )
+            )
+        ).scalars().all()
+        for event in events:
+            revenue += _revenue_from_payload(event.payload or {})
+
+    return CustomersOut(
+        beta_users=beta_users,
+        active_users=active_users,
+        paying_users=paying_users,
+        trial_users=trial_users,
+        revenue_mtd_usd=revenue,
+        revenue_source="stripe_invoice_webhooks",
+        customers=rows,
+        generated_at=now,
+    )
+
+
+async def spend(session: AsyncSession, workspace_id: uuid.UUID) -> SpendOut:
+    now = datetime.now(UTC)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = day_start - timedelta(days=day_start.weekday())
+    month_start = day_start.replace(day=1)
+    totals = (
+        await session.execute(
+            select(
+                func.coalesce(
+                    func.sum(SpendLog.cost_usd).filter(SpendLog.occurred_at >= day_start),
+                    0,
+                ),
+                func.coalesce(
+                    func.sum(SpendLog.cost_usd).filter(SpendLog.occurred_at >= week_start),
+                    0,
+                ),
+                func.coalesce(
+                    func.sum(SpendLog.cost_usd).filter(
+                        SpendLog.occurred_at >= month_start
+                    ),
+                    0,
+                ),
+            ).where(SpendLog.workspace_id == workspace_id)
+        )
+    ).one()
+    today = Decimal(str(totals[0]))
+    week = Decimal(str(totals[1]))
+    month = Decimal(str(totals[2]))
+    by_provider_rows = (
+        await session.execute(
+            select(
+                SpendLog.provider,
+                func.coalesce(
+                    func.sum(SpendLog.cost_usd).filter(SpendLog.occurred_at >= day_start),
+                    0,
+                ),
+                func.coalesce(
+                    func.sum(SpendLog.cost_usd).filter(SpendLog.occurred_at >= week_start),
+                    0,
+                ),
+                func.coalesce(
+                    func.sum(SpendLog.cost_usd).filter(
+                        SpendLog.occurred_at >= month_start
+                    ),
+                    0,
+                ),
+            )
+            .where(SpendLog.workspace_id == workspace_id)
+            .group_by(SpendLog.provider)
+            .order_by(SpendLog.provider)
+        )
+    ).all()
+    by_provider = [
+        SpendProviderRow(
+            provider=provider,
+            today_usd=Decimal(str(t)),
+            week_usd=Decimal(str(w)),
+            month_usd=Decimal(str(m)),
+        )
+        for provider, t, w, m in by_provider_rows
+    ]
+    cap = (
+        await session.execute(
+            select(SpendCap).where(
+                SpendCap.workspace_id == workspace_id,
+                SpendCap.provider.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    daily_cap = Decimal(str(cap.daily_cap_usd)) if cap else None
+    monthly_cap = Decimal(str(cap.monthly_cap_usd)) if cap else None
+    return SpendOut(
+        today_usd=today,
+        week_usd=week,
+        month_usd=month,
+        by_provider=by_provider,
+        daily_cap_usd=daily_cap,
+        monthly_cap_usd=monthly_cap,
+        budget_remaining_daily_usd=(
+            max(daily_cap - today, Decimal("0")) if daily_cap is not None else None
+        ),
+        budget_remaining_monthly_usd=(
+            max(monthly_cap - month, Decimal("0")) if monthly_cap is not None else None
+        ),
+        generated_at=now,
+    )
+
+
+async def _build_alerts(
+    session: AsyncSession, workspace_id: uuid.UUID
+) -> list[OperationsAlert]:
     now = datetime.now(UTC)
     since = now - timedelta(days=1)
     items: list[OperationsAlert] = []
@@ -404,6 +803,14 @@ async def alerts(session: AsyncSession, workspace_id: uuid.UUID) -> AlertsOut:
             StageAssignment.workspace_id == workspace_id,
             StageAssignment.status == StageAssignmentStatus.FAILED,
             StageAssignment.updated_at >= since,
+        ),
+    )
+    pipeline_failed = await _count(
+        session,
+        select(func.count(PipelineRun.id)).where(
+            PipelineRun.workspace_id == workspace_id,
+            PipelineRun.status == PipelineRunStatus.FAILED,
+            PipelineRun.updated_at >= since,
         ),
     )
     reviews = await _count(
@@ -443,6 +850,20 @@ async def alerts(session: AsyncSession, workspace_id: uuid.UUID) -> AlertsOut:
             BillingWebhookEvent.processed_at >= since,
         ),
     )
+    new_leads = await _count(
+        session,
+        select(func.count(Lead.id)).where(
+            Lead.workspace_id == workspace_id,
+            Lead.created_at >= since,
+        ),
+    )
+    customer_signups = await _count(
+        session,
+        select(func.count(WorkspaceMembership.id)).where(
+            WorkspaceMembership.workspace_id == workspace_id,
+            WorkspaceMembership.created_at >= since,
+        ),
+    )
     spend_today, spend_month = await _spend_totals(session, workspace_id)
     cap = (
         await session.execute(
@@ -466,7 +887,14 @@ async def alerts(session: AsyncSession, workspace_id: uuid.UUID) -> AlertsOut:
             f"${spend_month:.4f} month / ${monthly_cap:.4f} cap"
         )
 
-    def add(key: str, title: str, count: int, message: str, severity: str) -> None:
+    def add(
+        key: str,
+        title: str,
+        count: int,
+        message: str,
+        severity: str,
+        occurred_at: datetime | None = None,
+    ) -> None:
         if count > 0:
             items.append(
                 OperationsAlert(
@@ -475,6 +903,7 @@ async def alerts(session: AsyncSession, workspace_id: uuid.UUID) -> AlertsOut:
                     title=title,
                     count=count,
                     message=message,
+                    occurred_at=occurred_at or now,
                 )
             )
 
@@ -483,6 +912,13 @@ async def alerts(session: AsyncSession, workspace_id: uuid.UUID) -> AlertsOut:
         "Worker Offline",
         offline_count,
         f"{offline_count} registered worker(s) are offline",
+        "critical",
+    )
+    add(
+        "pipeline_failed",
+        "Pipeline Failed",
+        pipeline_failed,
+        f"{pipeline_failed} pipeline run(s) failed in the last 24 hours",
         "critical",
     )
     add(
@@ -496,7 +932,7 @@ async def alerts(session: AsyncSession, workspace_id: uuid.UUID) -> AlertsOut:
     ci_failed = int(ci.ci_status not in {"success", "passing", "green", "unavailable"})
     add(
         "failed_ci",
-        "Failed CI",
+        "CI Failed",
         ci_failed,
         f"Deployment CI status is {ci.ci_status}",
         "critical",
@@ -508,6 +944,14 @@ async def alerts(session: AsyncSession, workspace_id: uuid.UUID) -> AlertsOut:
         spend_message,
         "warning",
     )
+    add(
+        "review_required",
+        "Review Required",
+        reviews,
+        f"{reviews} Human Review Gate(s) are waiting",
+        "warning",
+    )
+    # Keep V1 key for compatibility with existing clients/tests.
     add(
         "review_waiting",
         "Review Waiting",
@@ -529,4 +973,47 @@ async def alerts(session: AsyncSession, workspace_id: uuid.UUID) -> AlertsOut:
         f"{failed_webhooks} webhook failure(s) in the last 24 hours",
         "critical",
     )
-    return AlertsOut(alerts=items, generated_at=now)
+    add(
+        "new_lead",
+        "New Lead",
+        new_leads,
+        f"{new_leads} lead(s) created in the last 24 hours",
+        "info",
+    )
+    add(
+        "customer_signup",
+        "Customer Signup",
+        customer_signups,
+        f"{customer_signups} membership signup(s) in the last 24 hours",
+        "info",
+    )
+    return items
+
+
+async def alerts(session: AsyncSession, workspace_id: uuid.UUID) -> AlertsOut:
+    now = datetime.now(UTC)
+    items = await _build_alerts(session, workspace_id)
+    # V1 clients expect the original alert set without the V2 aliases/info noise.
+    v1_keys = {
+        "worker_offline",
+        "failed_jobs",
+        "failed_ci",
+        "spend_warning",
+        "review_waiting",
+        "queue_backlog",
+        "failed_webhooks",
+    }
+    return AlertsOut(
+        alerts=[item for item in items if item.key in v1_keys],
+        generated_at=now,
+    )
+
+
+async def notifications(
+    session: AsyncSession, workspace_id: uuid.UUID
+) -> NotificationsOut:
+    now = datetime.now(UTC)
+    items = await _build_alerts(session, workspace_id)
+    # Prefer the V2 review key in the notification center.
+    filtered = [item for item in items if item.key != "review_waiting"]
+    return NotificationsOut(notifications=filtered, generated_at=now)
