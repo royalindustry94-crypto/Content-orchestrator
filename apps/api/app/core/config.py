@@ -129,6 +129,13 @@ class Settings(BaseSettings):
     deployment_ci_status: str | None = Field(default=None)
     deployment_ci_url: str | None = Field(default=None)
 
+    # --- GitHub live status (Operations Dashboard V2) ---
+    # Optional. When unset, GitHub widgets report unavailable (never fake).
+    # Prefer GITHUB_TOKEN from Actions; GITHUB_API_TOKEN is an alternate name.
+    github_token: str | None = Field(default=None)
+    github_api_token: str | None = Field(default=None)
+    github_repository: str | None = Field(default=None)  # owner/repo
+
     @property
     def openapi_docs_enabled(self) -> bool:
         """Swagger/ReDoc/OpenAPI JSON are development-only (P-005)."""

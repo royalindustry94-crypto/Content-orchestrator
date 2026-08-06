@@ -1,45 +1,47 @@
-# Lumora Operations Dashboard V1
+# Lumora Operations Dashboard — Founder Control Center (V2)
 
-The Operations Dashboard is a read-only, workspace-admin control plane. It
-uses durable orchestration tables and deploy-injected metadata; it does not
-generate sample data or infer values from browser state.
+Extends V1. Existing Executive / Worker / Pipeline / Alerts projections remain;
+V2 adds CRM, customers, spend breakdown, GitHub, AI Pipeline metrics, and a
+notification center. All widgets use durable backend data or live upstream APIs
+when configured — never placeholders or fabricated values.
 
 ## Screens and APIs
 
 | Screen | API |
 |---|---|
-| Executive Dashboard | `GET /workspaces/{workspace_id}/operations/executive` |
-| Worker Monitor | `GET /workspaces/{workspace_id}/operations/workers` |
-| Pipeline Monitor | `GET /workspaces/{workspace_id}/operations/pipelines` |
-| Alerts | `GET /workspaces/{workspace_id}/operations/alerts` |
+| Executive Dashboard | `GET /workspaces/{id}/operations/executive` |
+| AI Workers | `GET /workspaces/{id}/operations/workers` |
+| Leads CRM | `GET/POST /workspaces/{id}/operations/leads`, `PATCH .../leads/{lead_id}` |
+| Customers | `GET /workspaces/{id}/operations/customers` |
+| Spend | `GET /workspaces/{id}/operations/spend` |
+| GitHub | `GET /workspaces/{id}/operations/github` |
+| AI Pipeline | `GET /workspaces/{id}/operations/pipelines` |
+| Notifications | `GET /workspaces/{id}/operations/notifications` |
+| Alerts (V1) | `GET /workspaces/{id}/operations/alerts` |
 
-All endpoints require a verified bearer JWT and `admin` membership in the
-requested workspace. Queries are explicitly scoped to `workspace_id`.
-Global workers are included because they serve all workspaces; their job
-counts and current work remain scoped to the requested workspace.
+All endpoints require a verified bearer JWT and `admin` membership.
 
-## Metric definitions
+## Module notes
 
-- **Jobs Running:** dispatched or acknowledged stage assignments.
-- **Jobs Queued / Queue Depth:** pending `job_schedule` rows.
-- **Jobs Failed:** failed stage assignments.
-- **Human Reviews Waiting:** review gates in `awaiting`.
-- **Spend Today / Month:** committed `spend_logs`, UTC boundaries.
-- **Active Workspaces:** the authorized workspace represented by the current
-  dashboard (1 when it exists).
-- **Retrying Pipelines:** distinct active RETRY schedule references.
-- **Dead Letter Queue:** pending dead-letter jobs.
-- **Publish Queue:** pending or publishing, non-deleted publish jobs.
+- **AI Workers:** live status, current task, queue, optional CPU/Memory from
+  worker `capabilities` (Unavailable when absent), heartbeat, completed/failed
+  today, retry count.
+- **Leads CRM:** workspace-scoped `leads` table (migration `0034`) with search
+  and status/source filters.
+- **Customers:** workspaces the caller administers + `workspace_billing` +
+  membership counts. Revenue MTD sums Stripe `invoice.paid` /
+  `invoice.payment_succeeded` webhook payloads (cents → USD).
+- **Spend:** today / week / month, by provider from `spend_logs`, budget
+  remaining vs workspace-wide spend caps.
+- **GitHub:** live REST API when `GITHUB_TOKEN` (or `GITHUB_API_TOKEN`) and
+  `GITHUB_REPOSITORY` are set; otherwise `available=false` with reason.
+  Branch CI still uses deploy-injected `DEPLOYMENT_*` metadata.
+- **AI Pipeline:** jobs completed / waiting / failed, human reviews waiting,
+  publishing queue (extends V1 pipeline monitor).
+- **Notifications:** real-time center (15s poll) for worker offline, pipeline
+  failed, spend warning, CI failed, customer signup, new lead, review required.
 
-Alerts are emitted only for active conditions: dead workers, failed jobs in
-the last 24 hours, failed CI metadata, ≥80% spend-cap use, waiting reviews,
-queue depth at/above the workspace soft limit, and failed webhooks in the
-last 24 hours.
-
-## Deployment metadata
-
-The database does not contain GitHub or deployment state. Inject real values
-from the deploy system:
+## Configuration
 
 ```env
 DEPLOYMENT_GIT_BRANCH=main
@@ -47,14 +49,6 @@ DEPLOYMENT_COMMIT_SHA=<deployed commit>
 DEPLOYMENT_AT=2026-08-06T05:00:00Z
 DEPLOYMENT_CI_STATUS=success
 DEPLOYMENT_CI_URL=https://github.com/org/repo/actions/runs/123
+GITHUB_TOKEN=<optional>
+GITHUB_REPOSITORY=owner/repo
 ```
-
-Missing values are returned as `null` / `unavailable` and rendered as
-**Unavailable**. The API never substitutes a branch, CI result, deployment
-time, or commit.
-
-## Operations
-
-The frontend loads one screen at a time, shows skeleton loading states,
-provides explicit retry on errors, and never preserves stale data after a
-failed refresh. Use the Refresh action to request a new server projection.
