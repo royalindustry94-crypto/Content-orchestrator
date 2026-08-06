@@ -347,6 +347,65 @@ export type QuickActionResult = {
   details: Record<string, unknown>;
 };
 
+export type SearchResult = {
+  type: string;
+  id: string;
+  title: string;
+  subtitle: string | null;
+  status: string | null;
+  occurred_at: string | null;
+  url: string | null;
+};
+
+export type GlobalSearch = {
+  query: string;
+  results: SearchResult[];
+  total: number;
+  generated_at: string;
+};
+
+export type LiveLogs = {
+  logs: Array<{
+    id: string;
+    workspace_id: string;
+    worker_id: string;
+    worker_name: string;
+    pipeline_run_id: string | null;
+    assignment_id: string | null;
+    severity: string;
+    message: string;
+    context: Record<string, unknown>;
+    occurred_at: string;
+    received_at: string;
+  }>;
+  generated_at: string;
+};
+
+export type ExecutiveMode = {
+  health: SystemHealth["indicators"];
+  revenue_mtd_usd: string;
+  spend_today_usd: string;
+  spend_month_usd: string;
+  workers_online: number;
+  workers_total: number;
+  jobs_running: number;
+  jobs_waiting: number;
+  jobs_failed_today: number;
+  critical_alerts: number;
+  reviews_waiting: number;
+  new_customers_today: number;
+  todays_summary: string[];
+  generated_at: string;
+};
+
+export type AssistantAnswer = {
+  question: string;
+  intent: string;
+  answer: string;
+  facts: Array<Record<string, unknown>>;
+  generated_at: string;
+};
+
 async function apiFetch<T>(
   path: string,
   token: string | null,
@@ -587,6 +646,70 @@ export function getExecutiveInsights(
   return apiFetch<ExecutiveInsights>(
     `/workspaces/${workspaceId}/operations/insights`,
     token,
+  );
+}
+
+export function globalSearch(
+  token: string,
+  workspaceId: string,
+  query: string,
+): Promise<GlobalSearch> {
+  return apiFetch<GlobalSearch>(
+    `/workspaces/${workspaceId}/operations/search?q=${encodeURIComponent(query)}`,
+    token,
+  );
+}
+
+export function getUniversalTimeline(
+  token: string,
+  workspaceId: string,
+): Promise<ActivityFeed> {
+  return apiFetch<ActivityFeed>(
+    `/workspaces/${workspaceId}/operations/timeline`,
+    token,
+  );
+}
+
+export function getLiveLogs(
+  token: string,
+  workspaceId: string,
+  filters: {
+    worker_id?: string;
+    pipeline_id?: string;
+    job_id?: string;
+    severity?: string;
+  } = {},
+): Promise<LiveLogs> {
+  const params = new URLSearchParams();
+  Object.entries(filters).forEach(([key, value]) => {
+    if (value) params.set(key, value);
+  });
+  const suffix = params.toString() ? `?${params}` : "";
+  return apiFetch<LiveLogs>(
+    `/workspaces/${workspaceId}/operations/logs${suffix}`,
+    token,
+  );
+}
+
+export function getExecutiveMode(
+  token: string,
+  workspaceId: string,
+): Promise<ExecutiveMode> {
+  return apiFetch<ExecutiveMode>(
+    `/workspaces/${workspaceId}/operations/executive-mode`,
+    token,
+  );
+}
+
+export function askMissionAssistant(
+  token: string,
+  workspaceId: string,
+  question: string,
+): Promise<AssistantAnswer> {
+  return apiFetch<AssistantAnswer>(
+    `/workspaces/${workspaceId}/operations/assistant`,
+    token,
+    { method: "POST", body: JSON.stringify({ question }) },
   );
 }
 

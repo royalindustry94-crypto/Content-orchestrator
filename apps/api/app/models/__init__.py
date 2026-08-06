@@ -26,6 +26,7 @@ from app.models.recovery_audit import StageRecoveryAudit  # noqa: F401
 from app.models.review_gate import ReviewGate  # noqa: F401
 from app.models.scheduling import JobSchedule, WorkspaceConcurrencyLimit  # noqa: F401
 from app.models.spend import SpendLog, SpendReservation  # noqa: F401
+from app.models.worker_logs import WorkerLog  # noqa: F401
 from app.models.workers import WorkerHeartbeat, WorkerRegistration  # noqa: F401
 
 # Milestone 4 orchestration
@@ -53,4 +54,5 @@ __all__ = [
     "Lead",
     "BillingWebhookEvent",
     "WorkspaceBilling",
+    "WorkerLog",
 ]
