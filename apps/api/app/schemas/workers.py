@@ -81,6 +81,22 @@ class WorkerHeartbeatIn(BaseModel):
     current_load: int = Field(default=0, ge=0)
 
 
+class WorkerLogIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    severity: str = Field(pattern="^(debug|info|warning|error|critical)$")
+    message: str = Field(min_length=1, max_length=8000)
+    pipeline_run_id: uuid.UUID | None = None
+    assignment_id: uuid.UUID | None = None
+    occurred_at: datetime | None = None
+    context: dict = Field(default_factory=dict)
+
+
+class WorkerLogAccepted(BaseModel):
+    id: uuid.UUID
+    received_at: datetime
+
+
 class WorkerOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

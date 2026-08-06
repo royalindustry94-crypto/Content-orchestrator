@@ -96,6 +96,34 @@ class ReferenceWorkerClient:
         )
         response.raise_for_status()
 
+    async def log(
+        self,
+        severity: str,
+        message: str,
+        *,
+        pipeline_run_id: uuid.UUID | str | None = None,
+        assignment_id: uuid.UUID | str | None = None,
+        context: dict | None = None,
+    ) -> dict:
+        """Submit one durable Mission Control log event."""
+        response = await self._http.post(
+            "/workers/logs",
+            headers=self._auth_headers,
+            json={
+                "severity": severity,
+                "message": message,
+                "pipeline_run_id": (
+                    str(pipeline_run_id) if pipeline_run_id is not None else None
+                ),
+                "assignment_id": (
+                    str(assignment_id) if assignment_id is not None else None
+                ),
+                "context": context or {},
+            },
+        )
+        response.raise_for_status()
+        return response.json()
+
     async def drain(self) -> None:
         """Graceful shutdown: stop accepting new work, let in-flight
         assignments finish naturally (their leases aren't touched)."""

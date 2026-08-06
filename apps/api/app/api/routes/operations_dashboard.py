@@ -33,7 +33,20 @@ from app.schemas.operations_mission import (
     SystemHealthOut,
     WorkerTimelineOut,
 )
-from app.services import github_status, operations_dashboard, operations_mission
+from app.schemas.operations_v4 import (
+    AssistantAnswerOut,
+    AssistantQuestionIn,
+    ExecutiveModeOut,
+    GlobalSearchOut,
+    LiveLogsOut,
+    UniversalTimelineOut,
+)
+from app.services import (
+    github_status,
+    operations_dashboard,
+    operations_mission,
+    operations_v4,
+)
 
 router = APIRouter(
     prefix="/workspaces/{workspace_id}/operations",
@@ -301,3 +314,105 @@ async def action_sync_github(
 ) -> QuickActionResult:
     del workspace_id, membership
     return await operations_mission.sync_github()
+
+
+# --- V4 integrated Mission Control --------------------------------------
+
+
+@router.get("/search", response_model=GlobalSearchOut)
+async def global_search(
+    workspace_id: uuid.UUID,
+    q: str = Query(min_length=1, max_length=200),
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> GlobalSearchOut:
+    async with AsyncSessionLocal() as session:
+        return await operations_v4.global_search(
+            session,
+            workspace_id,
+            admin_user_id=uuid.UUID(user.id),
+            query=q,
+        )
+
+
+@router.get("/timeline", response_model=UniversalTimelineOut)
+async def universal_timeline(
+    workspace_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+) -> UniversalTimelineOut:
+    async with AsyncSessionLocal() as session:
+        return await operations_v4.universal_timeline(session, workspace_id)
+
+
+@router.get("/logs", response_model=LiveLogsOut)
+async def live_logs(
+    workspace_id: uuid.UUID,
+    worker_id: uuid.UUID | None = None,
+    pipeline_id: uuid.UUID | None = None,
+    job_id: uuid.UUID | None = None,
+    severity: str | None = Query(
+        default=None, pattern="^(debug|info|warning|error|critical)$"
+    ),
+    limit: int = Query(default=200, ge=1, le=1000),
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+) -> LiveLogsOut:
+    async with AsyncSessionLocal() as session:
+        return await operations_v4.live_logs(
+            session,
+            workspace_id,
+            worker_id=worker_id,
+            pipeline_id=pipeline_id,
+            job_id=job_id,
+            severity=severity,
+            limit=limit,
+        )
+
+
+def _automation_payload(request: Request) -> dict:
+    from app.main import automation_state as module_state
+
+    state = getattr(request.app.state, "automation", None) or module_state
+    return {
+        "tasks_running": list(state.tasks_running),
+        "scheduler": {
+            "ticks": state.scheduler_ticks,
+            "last_ok_at": (
+                state.scheduler_last_ok_at.isoformat()
+                if state.scheduler_last_ok_at
+                else None
+            ),
+            "last_error": state.scheduler_last_error,
+        },
+    }
+
+
+@router.get("/executive-mode", response_model=ExecutiveModeOut)
+async def executive_mode(
+    workspace_id: uuid.UUID,
+    request: Request,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> ExecutiveModeOut:
+    async with AsyncSessionLocal() as session:
+        return await operations_v4.executive_mode(
+            session,
+            workspace_id,
+            admin_user_id=uuid.UUID(user.id),
+            automation=_automation_payload(request),
+        )
+
+
+@router.post("/assistant", response_model=AssistantAnswerOut)
+async def assistant(
+    workspace_id: uuid.UUID,
+    payload: AssistantQuestionIn,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> AssistantAnswerOut:
+    async with AsyncSessionLocal() as session:
+        return await operations_v4.assistant_answer(
+            session,
+            workspace_id,
+            admin_user_id=uuid.UUID(user.id),
+            question=payload.question,
+        )

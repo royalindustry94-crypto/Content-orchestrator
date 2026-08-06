@@ -12,6 +12,7 @@ import {
   getCostControl,
   getCustomers,
   getExecutiveDashboard,
+  getExecutiveMode,
   getExecutiveInsights,
   getGitHubStatus,
   getLeads,
@@ -20,6 +21,8 @@ import {
   getPipelineMonitor,
   getSpendDashboard,
   getSystemHealth,
+  getUniversalTimeline,
+  getLiveLogs,
   getWorkerMonitor,
   getWorkerTimeline,
   updateLead,
@@ -29,9 +32,11 @@ import {
   type CostControl,
   type Customers,
   type ExecutiveDashboard,
+  type ExecutiveMode,
   type ExecutiveInsights,
   type GitHubOut,
   type Leads,
+  type LiveLogs,
   type Notifications,
   type PipelineMonitor,
   type SpendDashboard,
@@ -48,8 +53,20 @@ import {
   SystemHealthView,
   WorkerTimelineView,
 } from "./MissionControlPanels";
+import {
+  AssistantPanel,
+  CommandPalette,
+  ExecutiveModeView,
+  GlobalSearchBar,
+  LiveLogsView,
+  UniversalTimelineView,
+} from "./MissionControlV4";
 
 type Screen =
+  | "executive-mode"
+  | "timeline"
+  | "logs"
+  | "assistant"
   | "executive"
   | "activity"
   | "health"
@@ -75,6 +92,10 @@ type Props = {
 };
 
 const NAV: Array<{ id: Screen; label: string }> = [
+  { id: "executive-mode", label: "Executive Mode" },
+  { id: "timeline", label: "Universal Timeline" },
+  { id: "logs", label: "Live Logs" },
+  { id: "assistant", label: "AI Assistant" },
   { id: "executive", label: "Executive Dashboard" },
   { id: "activity", label: "Live Activity" },
   { id: "health", label: "System Health" },
@@ -578,6 +599,8 @@ type ScreenData =
   | WorkerTimeline
   | ContentCommand
   | ExecutiveInsights
+  | ExecutiveMode
+  | LiveLogs
   | { kind: "actions" };
 
 export default function OperationsDashboard({
@@ -586,7 +609,7 @@ export default function OperationsDashboard({
   email,
   onSignOut,
 }: Props) {
-  const [screen, setScreen] = useState<Screen>("executive");
+  const [screen, setScreen] = useState<Screen>("executive-mode");
   const [data, setData] = useState<ScreenData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -602,6 +625,18 @@ export default function OperationsDashboard({
     try {
       let next: ScreenData;
       switch (screen) {
+        case "executive-mode":
+          next = await getExecutiveMode(token, workspaceId);
+          break;
+        case "timeline":
+          next = await getUniversalTimeline(token, workspaceId);
+          break;
+        case "logs":
+          next = await getLiveLogs(token, workspaceId);
+          break;
+        case "assistant":
+          next = { kind: "actions" };
+          break;
         case "executive":
           next = await getExecutiveDashboard(token, workspaceId);
           break;
@@ -665,7 +700,12 @@ export default function OperationsDashboard({
   }, [load]);
 
   useEffect(() => {
-    if (screen !== "notifications" && screen !== "activity") return;
+    if (
+      screen !== "notifications"
+      && screen !== "activity"
+      && screen !== "timeline"
+      && screen !== "logs"
+    ) return;
     const timer = window.setInterval(() => {
       void load();
     }, 15000);
@@ -674,6 +714,11 @@ export default function OperationsDashboard({
 
   return (
     <div className="ops-shell">
+      <CommandPalette
+        token={token}
+        workspaceId={workspaceId}
+        navigate={(next) => setScreen(next as Screen)}
+      />
       <aside className="sidebar">
         <div>
           <p className="eyebrow">Lumora</p>
@@ -699,6 +744,25 @@ export default function OperationsDashboard({
       </aside>
 
       <main className="ops-main">
+        <GlobalSearchBar
+          token={token}
+          workspaceId={workspaceId}
+          onOpen={(type) => {
+            const targets: Record<string, Screen> = {
+              customer: "customers",
+              lead: "leads",
+              pipeline: "pipelines",
+              worker: "worker-timeline",
+              job: "pipelines",
+              content: "content",
+              review: "content",
+              video: "content",
+              log: "logs",
+              github: "github",
+            };
+            setScreen(targets[type] ?? "timeline");
+          }}
+        />
         <header className="page-header">
           <div>
             <p className="eyebrow">Control plane</p>
@@ -717,6 +781,18 @@ export default function OperationsDashboard({
           </section>
         ) : loading ? (
           <Loading />
+        ) : screen === "executive-mode" && data ? (
+          <ExecutiveModeView data={data as ExecutiveMode} />
+        ) : screen === "timeline" && data ? (
+          <UniversalTimelineView data={data as ActivityFeed} />
+        ) : screen === "logs" && data ? (
+          <LiveLogsView
+            token={token}
+            workspaceId={workspaceId}
+            initial={data as LiveLogs}
+          />
+        ) : screen === "assistant" ? (
+          <AssistantPanel token={token} workspaceId={workspaceId} />
         ) : screen === "executive" && data ? (
           <Executive data={data as ExecutiveDashboard} />
         ) : screen === "workers" && data ? (
