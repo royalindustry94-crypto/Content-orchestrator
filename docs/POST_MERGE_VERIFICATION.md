@@ -2,7 +2,7 @@
 
 **Date:** 2026-08-06  
 **Approved tip:** `a31cfef5496723d2b3ec4da7093b5682326a5a60`  
-**Main merge commit:** (see git log / this file after push)  
+**Main merge commit:** `43b286d30f0f0734b480251b98050f4d5337273e`  
 **Auditor:** Autonomous release execution of CEO merge path
 
 ---
@@ -17,7 +17,7 @@
 | 4 | Critical / High / regressions | **PASS** (see below) |
 | 5 | Merge PR #34 → `main` (`--no-ff`) | **DONE** — preserves migration history |
 | 6 | Verify `main` contains approved tip | **PASS** — `a31cfef` is ancestor of `main` tip |
-| 7 | Post-merge CI on `main` | See Main CI URL in executive return |
+| 7 | Post-merge CI on `main` | **PASS** — https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/31073497705 |
 | 8 | Close superseded PRs | After `main` verified |
 
 ---
@@ -56,4 +56,4 @@ alembic head on tip: 0033
 
 ## Verdict
 
-**BETA BASELINE MERGED** (pending final Main CI URL fill after push)
+**BETA BASELINE MERGED**
