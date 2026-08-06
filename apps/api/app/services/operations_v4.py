@@ -529,6 +529,7 @@ async def executive_mode(
     spend = await operations_dashboard.spend(session, workspace_id)
     workers = await operations_dashboard.workers(session, workspace_id)
     pipelines = await operations_dashboard.pipelines(session, workspace_id)
+    executive = await operations_dashboard.executive(session, workspace_id)
     alerts = await operations_dashboard.notifications(session, workspace_id)
     insights = await operations_mission.executive_insights(
         session, workspace_id, admin_user_id=admin_user_id
@@ -560,7 +561,7 @@ async def executive_mode(
             }
         ),
         workers_total=len(workers.workers),
-        jobs_running=pipelines.active_pipelines,
+        jobs_running=executive.jobs_running,
         jobs_waiting=pipelines.jobs_waiting,
         jobs_failed_today=int(failed_today.scalar_one() or 0),
         critical_alerts=sum(

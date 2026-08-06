@@ -289,6 +289,7 @@ export function LiveLogsView({
   return (
     <>
       <form className="ops-toolbar log-filters" onSubmit={submit}>
+        <input aria-label="Workspace filter" value={workspaceId} disabled />
         <input placeholder="Worker UUID" value={filters.worker_id} onChange={(e) => setFilters({ ...filters, worker_id: e.target.value })} />
         <input placeholder="Pipeline UUID" value={filters.pipeline_id} onChange={(e) => setFilters({ ...filters, pipeline_id: e.target.value })} />
         <input placeholder="Job UUID" value={filters.job_id} onChange={(e) => setFilters({ ...filters, job_id: e.target.value })} />
