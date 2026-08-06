@@ -1,4 +1,5 @@
 modules = ["python-base-3.13", "nodejs-24"]
+
 [workflows]
 runButton = "Project"
 
@@ -13,7 +14,7 @@ args = "PostgreSQL"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "Start application"
+args = "Ops Preview"
 
 [[workflows.workflow]]
 name = "PostgreSQL"
@@ -21,18 +22,18 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "postgres -D /home/runner/workspace/.pg/data -k /tmp -p 5432 -c listen_addresses=127.0.0.1"
+args = "mkdir -p /home/runner/workspace/.pg/data && ([ -f /home/runner/workspace/.pg/data/PG_VERSION ] || initdb -D /home/runner/workspace/.pg/data) && postgres -D /home/runner/workspace/.pg/data -k /tmp -p 5432 -c listen_addresses=127.0.0.1"
 
 [workflows.workflow.metadata]
 outputType = "console"
 
 [[workflows.workflow]]
-name = "Start application"
+name = "Ops Preview"
 author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python3 report_server.py"
+args = "bash scripts/run_ops_preview_replit.sh"
 waitForPort = 5000
 
 [workflows.workflow.metadata]
@@ -40,8 +41,16 @@ outputType = "webview"
 
 [nix]
 channel = "stable-25_05"
-packages = ["postgresql"]
+packages = ["postgresql", "openssl"]
 
 [[ports]]
 localPort = 5000
 externalPort = 80
+
+[[ports]]
+localPort = 8000
+externalPort = 8000
+
+[deployment]
+run = ["bash", "scripts/run_ops_preview_replit.sh"]
+deploymentTarget = "cloudrun"
