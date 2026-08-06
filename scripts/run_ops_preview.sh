@@ -18,7 +18,9 @@ set +a
 
 export ENVIRONMENT="${ENVIRONMENT:-development}"
 export AUTH_MODE="${AUTH_MODE:-local}"
-export CORS_ALLOW_ORIGINS="${CORS_ALLOW_ORIGINS:-[\"http://localhost:5173\",\"http://127.0.0.1:5173\",\"http://localhost:8080\"]}"
+if [[ -z "${CORS_ALLOW_ORIGINS:-}" ]] || ! python3 -c 'import json,os,sys; json.loads(os.environ["CORS_ALLOW_ORIGINS"])' 2>/dev/null; then
+  export CORS_ALLOW_ORIGINS='["http://localhost:5173","http://127.0.0.1:5173","http://localhost:8080","http://localhost:5000"]'
+fi
 
 echo "==> Migrating database"
 (cd apps/api && alembic upgrade head && alembic current)
