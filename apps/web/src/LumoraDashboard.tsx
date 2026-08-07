@@ -1,10 +1,12 @@
 import {
   useCallback,
   useEffect,
+  useRef,
   useState,
   type FormEvent,
   type ReactNode,
 } from "react";
+import ErrorBoundary from "./ErrorBoundary";
 import {
   createLead,
   decideReviewGate,
@@ -30,7 +32,6 @@ import {
   listWorkspaces,
   updateLead,
   type ActivityFeed,
-  type Alerts,
   type ContentCommand,
   type CostControl,
   type Customers,
@@ -66,6 +67,23 @@ import {
   LiveLogsView,
   UniversalTimelineView,
 } from "./MissionControlV4";
+import {
+  HEALTH_COPY,
+  aggregateHealth,
+  isActivityFeed,
+  isAnalyticsData,
+  isBillingData,
+  isContentCommand,
+  isCustomers,
+  isDashboardData,
+  isExecutiveMode,
+  isLeads,
+  isLiveLogs,
+  isPipelineMonitor,
+  isSettingsData,
+  isWorkersData,
+  type DashboardData,
+} from "./dashboardModel";
 
 type NavKey =
   | "dashboard"
@@ -208,10 +226,29 @@ function ErrorState({ error, retry }: { error: string; retry: () => void }) {
       <Icon name="alert" size={24} />
       <h3>We couldn&apos;t load this view</h3>
       <p>{error}</p>
-      <button onClick={retry} type="button">Try again</button>
+      <button className="button button--primary" onClick={retry} type="button">Try again</button>
     </div>
   );
 }
+
+function EmptyState({
+  icon = "activity",
+  title,
+  message,
+}: {
+  icon?: IconName;
+  title: string;
+  message: string;
+}) {
+  return (
+    <div className="empty-state">
+      <span className="empty-icon"><Icon name={icon} size={28} /></span>
+      <h3>{title}</h3>
+      <p>{message}</p>
+    </div>
+  );
+}
+
 
 function Status({ value }: { value: string }) {
   const normalized = value.toLowerCase();
@@ -243,15 +280,6 @@ function SectionHeader({
   );
 }
 
-type DashboardData = {
-  executive: ExecutiveDashboard;
-  pipelines: PipelineMonitor;
-  alerts: Alerts;
-  activity: ActivityFeed;
-  health: SystemHealth;
-  customers: Customers;
-};
-
 function DashboardHome({
   data,
   token,
@@ -263,6 +291,10 @@ function DashboardHome({
   workspaceId: string;
   navigate: (key: NavKey) => void;
 }) {
+  const activeAlerts = data.alerts.alerts;
+  const scrollToAlerts = () => {
+    document.getElementById("active-alerts")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
   const metrics = [
     { label: "Jobs Running", value: data.executive.jobs_running, icon: "activity" as IconName, tone: "violet" },
     { label: "Jobs Completed Today", value: data.pipelines.jobs_completed, icon: "check" as IconName, tone: "green" },
@@ -270,7 +302,7 @@ function DashboardHome({
     { label: "Workers Online", value: data.executive.workers_online, icon: "workers" as IconName, tone: "blue" },
     { label: "Spend Today", value: money(data.executive.spend_today_usd), icon: "billing" as IconName, tone: "pink" },
     { label: "Revenue", value: money(data.customers.revenue_mtd_usd), icon: "analytics" as IconName, tone: "green" },
-    { label: "Alerts", value: data.alerts.alerts.length, icon: "alert" as IconName, tone: data.alerts.alerts.length ? "red" : "green" },
+    { label: "Active Alerts", value: activeAlerts.length, icon: "alert" as IconName, tone: activeAlerts.length ? "red" : "green" },
   ];
   return (
     <div className="dashboard-home">
@@ -292,7 +324,7 @@ function DashboardHome({
               if (metric.label === "Reviews Waiting") navigate("review");
               else if (metric.label === "Workers Online") navigate("workers");
               else if (metric.label === "Spend Today" || metric.label === "Revenue") navigate("billing");
-              else if (metric.label === "Alerts") navigate("mission");
+              else if (metric.label === "Active Alerts") scrollToAlerts();
               else navigate("pipelines");
             }}
             type="button"
@@ -304,6 +336,26 @@ function DashboardHome({
           </button>
         ))}
       </div>
+
+      <section className="surface alerts-surface" id="active-alerts">
+        <SectionHeader title="Active Alerts" detail={activeAlerts.length ? `${activeAlerts.length} condition${activeAlerts.length === 1 ? "" : "s"} need attention` : "Live operational alerts"} />
+        {activeAlerts.length === 0 ? (
+          <EmptyState icon="check" title="No active alerts" message="Every monitored condition is currently healthy." />
+        ) : (
+          <ul className="alerts-list">
+            {activeAlerts.map((alert) => (
+              <li className={`alert-row alert-row--${alert.severity}`} key={alert.key}>
+                <span className={`severity-tag severity-tag--${alert.severity}`}>{alert.severity}</span>
+                <div>
+                  <strong>{alert.title}</strong>
+                  <small>{alert.message}</small>
+                </div>
+                {alert.count > 1 ? <b className="alert-count">{alert.count}</b> : null}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <div className="dashboard-columns">
         <section className="surface activity-surface">
@@ -538,6 +590,9 @@ function LeadsView({
           <button className="button button--primary" disabled={busy} type="submit">{busy ? "Saving…" : "Save lead"}</button>
         </form>
       ) : null}
+      {data.leads.length === 0 ? (
+        <EmptyState icon="leads" title="No leads yet" message="Add your first lead or connect a source to start tracking your pipeline." />
+      ) : (
       <div className="data-table leads-table">
         <div className="data-row data-row--head"><span>Lead</span><span>Company</span><span>Source</span><span>Status</span></div>
         {data.leads.map((lead) => (
@@ -557,6 +612,7 @@ function LeadsView({
           </div>
         ))}
       </div>
+      )}
     </>
   );
 }
@@ -621,27 +677,44 @@ export default function LumoraDashboard({
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [notifications, setNotifications] = useState<Notifications | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
+  const [health, setHealth] = useState<SystemHealth | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [reviewBusy, setReviewBusy] = useState<string | null>(null);
+  const requestId = useRef(0);
 
   const currentWorkspace = workspaces.find((workspace) => workspace.id === workspaceId);
 
   useEffect(() => {
-    void listWorkspaces(token).then(setWorkspaces);
+    let active = true;
+    void listWorkspaces(token)
+      .then((rows) => { if (active) setWorkspaces(rows); })
+      .catch(() => { if (active) setWorkspaces([]); });
+    return () => { active = false; };
   }, [token]);
 
   useEffect(() => {
-    void getNotifications(token, workspaceId).then(setNotifications).catch(() => setNotifications(null));
+    let active = true;
+    void getNotifications(token, workspaceId)
+      .then((value) => { if (active) setNotifications(value); })
+      .catch(() => { if (active) setNotifications(null); });
     void listReviewGates(token, workspaceId)
-      .then((gates) => setReviewCount(gates.length))
-      .catch(() => setReviewCount(0));
+      .then((gates) => { if (active) setReviewCount(gates.length); })
+      .catch(() => { if (active) setReviewCount(0); });
+    void getSystemHealth(token, workspaceId)
+      .then((value) => { if (active) setHealth(value); })
+      .catch(() => { if (active) setHealth(null); });
+    return () => { active = false; };
   }, [token, workspaceId]);
 
   const load = useCallback(async () => {
+    const currentRequest = requestId.current + 1;
+    requestId.current = currentRequest;
+    const isCurrent = () => requestId.current === currentRequest;
     setLoading(true);
     setError(null);
     try {
@@ -684,28 +757,51 @@ export default function LumoraDashboard({
         const [spend, cost] = await Promise.all([getSpendDashboard(token, workspaceId), getCostControl(token, workspaceId)]);
         next = { spend, cost };
       } else {
-        const [health, executive] = await Promise.all([getSystemHealth(token, workspaceId), getExecutiveDashboard(token, workspaceId)]);
-        next = { health, executive };
+        const [healthData, executive] = await Promise.all([getSystemHealth(token, workspaceId), getExecutiveDashboard(token, workspaceId)]);
+        next = { health: healthData, executive };
       }
+      if (!isCurrent()) return;
       setData(next);
+      if (nav === "dashboard" && next && "health" in next) {
+        setHealth((next as DashboardData).health);
+      } else if (nav === "settings" && next && "health" in next) {
+        setHealth((next as { health: SystemHealth }).health);
+      }
     } catch (cause) {
+      if (!isCurrent()) return;
       setData(null);
       setError(cause instanceof Error ? cause.message : "Unable to load this view");
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
   }, [nav, missionTab, token, workspaceId]);
 
   useEffect(() => { void load(); }, [load]);
 
   const navigate = (next: NavKey) => {
+    if (next !== nav) {
+      setData(null);
+      setError(null);
+      setLoading(true);
+      setMissionTab("overview");
+    }
     setNav(next);
     setMobileOpen(false);
+  };
+
+  const changeMissionTab = (next: MissionTab) => {
+    if (next !== missionTab) {
+      setData(null);
+      setError(null);
+      setLoading(true);
+      setMissionTab(next);
+    }
   };
 
   const title = NAV.find((item) => item.id === nav)?.label ?? "Dashboard";
   const awaitingReviews = Array.isArray(data) ? data.filter((gate) => gate.status === "awaiting") : [];
   const notificationCount = notifications?.notifications.length ?? 0;
+  const healthLevel = aggregateHealth(health);
 
   const decide = async (gate: ReviewGate, approved: boolean) => {
     setReviewBusy(gate.id);
@@ -719,63 +815,105 @@ export default function LumoraDashboard({
 
   const renderView = () => {
     if (error) return <ErrorState error={error} retry={() => void load()} />;
-    if (loading) return <Loading />;
-    if (nav === "dashboard" && data) return <DashboardHome data={data as DashboardData} navigate={navigate} token={token} workspaceId={workspaceId} />;
-    if (nav === "mission") {
-      if (missionTab === "assistant") return <AssistantPanel token={token} workspaceId={workspaceId} />;
-      if (missionTab === "overview" && data) return <ExecutiveModeView data={data as ExecutiveMode} />;
-      if (missionTab === "timeline" && data) return <UniversalTimelineView data={data as ActivityFeed} />;
-      if (missionTab === "logs" && data) return <LiveLogsView initial={data as LiveLogs} token={token} workspaceId={workspaceId} />;
-      if (missionTab === "content" && data) return <ContentCommandView data={data as ContentCommand} />;
+
+    // Review Queue drives its own list off the shared review fetch and always
+    // renders (loading gate below only applies to data-backed views).
+    if (nav === "review") {
+      if (loading) return <Loading />;
+      return <ReviewQueue busy={reviewBusy} gates={awaitingReviews} onDecision={decide} workspaceName={currentWorkspace?.name ?? "Current workspace"} />;
     }
-    if (nav === "review") return <ReviewQueue busy={reviewBusy} gates={awaitingReviews} onDecision={decide} workspaceName={currentWorkspace?.name ?? "Current workspace"} />;
-    if (nav === "pipelines" && data) return <PipelinesView data={data as PipelineMonitor} />;
-    if (nav === "workers" && data) {
-      const workers = data as { monitor: WorkerMonitor; timeline: WorkerTimeline };
+
+    // The AI assistant manages its own request lifecycle and needs no view data.
+    if (nav === "mission" && missionTab === "assistant") {
+      return <AssistantPanel token={token} workspaceId={workspaceId} />;
+    }
+
+    // Every other view is data-backed: show the loading gate until the fetch
+    // for the *current* route resolves with a matching payload shape. This is
+    // what prevents stale-data crashes on navigation.
+    if (loading) return <Loading />;
+
+    if (nav === "dashboard") {
+      if (isDashboardData(data)) return <DashboardHome data={data} navigate={navigate} token={token} workspaceId={workspaceId} />;
+      return <Loading />;
+    }
+    if (nav === "mission") {
+      if (missionTab === "overview") return isExecutiveMode(data) ? <ExecutiveModeView data={data} /> : <Loading />;
+      if (missionTab === "timeline") return isActivityFeed(data) ? <UniversalTimelineView data={data} /> : <Loading />;
+      if (missionTab === "logs") return isLiveLogs(data) ? <LiveLogsView initial={data} token={token} workspaceId={workspaceId} /> : <Loading />;
+      if (missionTab === "content") return isContentCommand(data) ? <ContentCommandView data={data} /> : <Loading />;
+      return <Loading />;
+    }
+    if (nav === "pipelines") {
+      if (!isPipelineMonitor(data)) return <Loading />;
+      if (data.pipelines.length === 0) {
+        return (
+          <div className="stack">
+            <PipelinesView data={data} />
+            <EmptyState icon="pipelines" title="No active pipelines" message="Pipeline runs will appear here once content jobs start moving through the system." />
+          </div>
+        );
+      }
+      return <PipelinesView data={data} />;
+    }
+    if (nav === "workers") {
+      if (!isWorkersData(data)) return <Loading />;
+      if (data.monitor.workers.length === 0) {
+        return <EmptyState icon="workers" title="No workers registered" message="Connect a worker to this workspace to start processing jobs." />;
+      }
       return (
         <div className="stack">
-          <WorkersView data={workers.monitor} />
+          <WorkersView data={data.monitor} />
           <section className="surface">
             <SectionHeader title="Worker timeline" detail="Execution history, failures and retry performance" />
-            <WorkerTimelineView data={workers.timeline} />
+            <WorkerTimelineView data={data.timeline} />
           </section>
         </div>
       );
     }
-    if (nav === "customers" && data) return <CustomersView data={data as Customers} />;
-    if (nav === "leads" && data) return <LeadsView data={data as Leads} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
-    if (nav === "analytics" && data) {
-      const analytics = data as { insights: ExecutiveInsights; activity: ActivityFeed; github: GitHubOut };
+    if (nav === "customers") {
+      if (!isCustomers(data)) return <Loading />;
+      if (data.customers.length === 0) {
+        return <EmptyState icon="customers" title="No customers yet" message="Customer workspaces will appear here as they sign up and subscribe." />;
+      }
+      return <CustomersView data={data} />;
+    }
+    if (nav === "leads") {
+      if (!isLeads(data)) return <Loading />;
+      return <LeadsView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
+    }
+    if (nav === "analytics") {
+      if (!isAnalyticsData(data)) return <Loading />;
       return (
         <div className="stack">
-          <InsightsView data={analytics.insights} />
-          <section className="surface"><SectionHeader title="Activity stream" /><ActivityFeedView data={analytics.activity} /></section>
-          <GitHubSummary data={analytics.github} />
+          <InsightsView data={data.insights} />
+          <section className="surface"><SectionHeader title="Activity stream" /><ActivityFeedView data={data.activity} /></section>
+          <GitHubSummary data={data.github} />
         </div>
       );
     }
-    if (nav === "billing" && data) {
-      const billing = data as { spend: SpendDashboard; cost: CostControl };
-      return <BillingView cost={billing.cost} spend={billing.spend} />;
+    if (nav === "billing") {
+      if (!isBillingData(data)) return <Loading />;
+      return <BillingView cost={data.cost} spend={data.spend} />;
     }
-    if (nav === "settings" && data) {
-      const settings = data as { health: SystemHealth; executive: ExecutiveDashboard };
+    if (nav === "settings") {
+      if (!isSettingsData(data)) return <Loading />;
       return (
         <div className="settings-grid">
-          <section className="surface"><SectionHeader title="System health" detail="Environment and service readiness" /><SystemHealthView data={settings.health} /></section>
+          <section className="surface"><SectionHeader title="System health" detail="Environment and service readiness" /><SystemHealthView data={data.health} /></section>
           <section className="surface deployment-card">
             <SectionHeader title="Deployment" detail="Current release metadata" />
             <dl>
-              <div><dt>CI status</dt><dd><Status value={settings.executive.deployment.ci_status} /></dd></div>
-              <div><dt>Branch</dt><dd><code>{settings.executive.deployment.git_branch ?? "Unavailable"}</code></dd></div>
-              <div><dt>Commit</dt><dd><code>{settings.executive.deployment.commit_sha?.slice(0, 12) ?? "Unavailable"}</code></dd></div>
-              <div><dt>Deployed</dt><dd>{formatDate(settings.executive.deployment.deployed_at)}</dd></div>
+              <div><dt>CI status</dt><dd><Status value={data.executive.deployment.ci_status} /></dd></div>
+              <div><dt>Branch</dt><dd><code>{data.executive.deployment.git_branch ?? "Unavailable"}</code></dd></div>
+              <div><dt>Commit</dt><dd><code>{data.executive.deployment.commit_sha?.slice(0, 12) ?? "Unavailable"}</code></dd></div>
+              <div><dt>Deployed</dt><dd>{formatDate(data.executive.deployment.deployed_at)}</dd></div>
             </dl>
           </section>
         </div>
       );
     }
-    return null;
+    return <Loading />;
   };
 
   return (
@@ -811,9 +949,18 @@ export default function LumoraDashboard({
             </button>
           ))}
         </nav>
-        <div className="sidebar-foot">
-          <span className="status-orb" /><div><strong>All systems operational</strong><small>Updated just now</small></div>
-        </div>
+        <button
+          className="sidebar-foot"
+          onClick={() => navigate("settings")}
+          title="View system health"
+          type="button"
+        >
+          <span className={`status-orb status-orb--${HEALTH_COPY[healthLevel].orb}`} />
+          <div>
+            <strong>{HEALTH_COPY[healthLevel].label}</strong>
+            <small>{health ? `Updated ${relativeTime(health.generated_at)}` : "Live service status"}</small>
+          </div>
+        </button>
       </aside>
       {mobileOpen ? <button aria-label="Close navigation backdrop" className="mobile-backdrop" onClick={() => setMobileOpen(false)} type="button" /> : null}
 
@@ -826,11 +973,12 @@ export default function LumoraDashboard({
               {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
             </select>
           </label>
-          <div className="topbar-search">
+          <div className={mobileSearchOpen ? "topbar-search topbar-search--open" : "topbar-search"}>
             <Icon name="search" size={17} />
             <GlobalSearchBar
               onOpen={(type) => {
                 const mapping: Record<string, NavKey> = { customer: "customers", lead: "leads", pipeline: "pipelines", worker: "workers", review: "review", job: "pipelines", content: "mission", log: "mission" };
+                setMobileSearchOpen(false);
                 navigate(mapping[type] ?? "mission");
               }}
               token={token}
@@ -838,6 +986,15 @@ export default function LumoraDashboard({
             />
           </div>
           <div className="topbar-actions">
+            <button
+              aria-label="Search"
+              aria-expanded={mobileSearchOpen}
+              className="icon-button mobile-search-btn"
+              onClick={() => setMobileSearchOpen((value) => !value)}
+              type="button"
+            >
+              <Icon name={mobileSearchOpen ? "close" : "search"} />
+            </button>
             <div className="popover-anchor">
               <button aria-label="Notifications" className="icon-button" onClick={() => setNotificationOpen((value) => !value)} type="button">
                 <Icon name="bell" />
@@ -889,11 +1046,21 @@ export default function LumoraDashboard({
                 ["assistant", "AI assistant"],
                 ["content", "Content"],
               ] as Array<[MissionTab, string]>).map(([id, label]) => (
-                <button aria-selected={missionTab === id} key={id} onClick={() => setMissionTab(id)} role="tab" type="button">{label}</button>
+                <button aria-selected={missionTab === id} className={missionTab === id ? "view-tab view-tab--active" : "view-tab"} key={id} onClick={() => changeMissionTab(id)} role="tab" type="button">{label}</button>
               ))}
             </div>
           ) : null}
-          {renderView()}
+          <ErrorBoundary
+            resetKeys={[nav, missionTab, workspaceId]}
+            fallback={(boundaryError, reset) => (
+              <ErrorState
+                error={boundaryError.message || "This screen ran into a problem."}
+                retry={() => { reset(); void load(); }}
+              />
+            )}
+          >
+            {renderView()}
+          </ErrorBoundary>
         </main>
       </div>
     </div>

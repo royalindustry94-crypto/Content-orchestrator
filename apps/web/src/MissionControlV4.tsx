@@ -327,11 +327,16 @@ export function AssistantPanel({
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState<AssistantAnswer | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
+    setError(null);
     try {
       setAnswer(await askMissionAssistant(token, workspaceId, question));
+    } catch (cause) {
+      setAnswer(null);
+      setError(cause instanceof Error ? cause.message : "The assistant could not answer that question.");
     } finally {
       setBusy(false);
     }
@@ -347,6 +352,7 @@ export function AssistantPanel({
         />
         <button type="submit" disabled={busy}>{busy ? "Analyzing…" : "Ask live system"}</button>
       </form>
+      {error ? <p className="error" role="alert">{error}</p> : null}
       {answer ? (
         <section>
           <p className="eyebrow">{answer.intent}</p>

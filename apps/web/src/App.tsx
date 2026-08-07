@@ -29,6 +29,7 @@ function loadSession(): Session | null {
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(() => loadSession());
+  const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [workspaceName, setWorkspaceName] = useState("My Agency Desk");
@@ -104,11 +105,15 @@ export default function App() {
         </div>
       </section>
       <section className="auth-panel">
-        <form className="auth-form" onSubmit={(e) => void authenticate("login", e)}>
+        <form className="auth-form" onSubmit={(e) => void authenticate(mode, e)}>
           <header>
-            <p className="page-kicker">Welcome back</p>
-            <h2>Sign in to Lumora</h2>
-            <span>Enter your workspace credentials to continue.</span>
+            <p className="page-kicker">{mode === "login" ? "Welcome back" : "Get started"}</p>
+            <h2>{mode === "login" ? "Sign in to Lumora" : "Create your Lumora account"}</h2>
+            <span>
+              {mode === "login"
+                ? "Enter your credentials to continue."
+                : "Set up your account and first workspace."}
+            </span>
           </header>
           <label>
             Work email
@@ -128,28 +133,43 @@ export default function App() {
               onChange={(e) => setPassword(e.target.value)}
               required
               minLength={8}
-              autoComplete="current-password"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
             />
           </label>
-          <label className="auth-workspace">
-            Workspace name (used on first signup)
-            <input
-              value={workspaceName}
-              onChange={(e) => setWorkspaceName(e.target.value)}
-              maxLength={200}
-            />
-          </label>
+          {mode === "signup" ? (
+            <label className="auth-workspace">
+              Workspace name
+              <input
+                value={workspaceName}
+                onChange={(e) => setWorkspaceName(e.target.value)}
+                maxLength={200}
+                required
+                placeholder="e.g. Acme Content Team"
+              />
+            </label>
+          ) : null}
           <div className="auth-actions">
             <button className="button button--primary" type="submit" disabled={busy}>
-              {busy ? "Signing in…" : "Sign in"}
+              {busy
+                ? mode === "login"
+                  ? "Signing in…"
+                  : "Creating account…"
+                : mode === "login"
+                  ? "Sign in"
+                  : "Create account"}
             </button>
             <button
               className="auth-create"
               type="button"
               disabled={busy}
-              onClick={(e) => void authenticate("signup", e as unknown as FormEvent)}
+              onClick={() => {
+                setError(null);
+                setMode((current) => (current === "login" ? "signup" : "login"));
+              }}
             >
-              New to Lumora? Create an account
+              {mode === "login"
+                ? "New to Lumora? Create an account"
+                : "Already have an account? Sign in"}
             </button>
           </div>
           {error ? <p className="error" role="alert">{error}</p> : null}
