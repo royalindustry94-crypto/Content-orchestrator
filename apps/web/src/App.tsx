@@ -5,7 +5,7 @@ import {
   login,
   signup,
 } from "./api";
-import OperationsDashboard from "./OperationsDashboard";
+import LumoraDashboard from "./LumoraDashboard";
 
 type Session = {
   token: string;
@@ -13,7 +13,7 @@ type Session = {
   email: string;
 };
 
-const STORAGE_KEY = "co.reviewDesk.session";
+const STORAGE_KEY = "lumora.missionControl.session";
 
 function loadSession(): Session | null {
   try {
@@ -69,10 +69,15 @@ export default function App() {
 
   if (session) {
     return (
-      <OperationsDashboard
+      <LumoraDashboard
         token={session.token}
         workspaceId={session.workspaceId}
         email={session.email}
+        onWorkspaceChange={(workspaceId) => {
+          const next = { ...session, workspaceId };
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+          setSession(next);
+        }}
         onSignOut={() => {
           sessionStorage.removeItem(STORAGE_KEY);
           setSession(null);
@@ -82,19 +87,31 @@ export default function App() {
   }
 
   return (
-    <div className="desk">
-      <header className="desk__header">
-        <p className="desk__brand">Lumora</p>
-        <h1>Operations Dashboard</h1>
-        <p className="desk__lede">
-          Sign in with a workspace admin account to inspect live operations.
-        </p>
-      </header>
-
-      <form className="panel" onSubmit={(e) => void authenticate("login", e)}>
-          <h2>Sign in</h2>
+    <div className="auth-shell">
+      <section className="auth-brand">
+        <div className="auth-brand__logo"><span>L</span>Lumora</div>
+        <div>
+          <p className="page-kicker">Mission Control</p>
+          <h1>Run your content operation with clarity.</h1>
+          <p>
+            One calm, intelligent workspace for every pipeline, worker,
+            customer and Human Review Gate.
+          </p>
+        </div>
+        <div className="auth-signal">
+          <span><i /> Live operations</span>
+          <span>Secure workspace access</span>
+        </div>
+      </section>
+      <section className="auth-panel">
+        <form className="auth-form" onSubmit={(e) => void authenticate("login", e)}>
+          <header>
+            <p className="page-kicker">Welcome back</p>
+            <h2>Sign in to Lumora</h2>
+            <span>Enter your workspace credentials to continue.</span>
+          </header>
           <label>
-            Email
+            Work email
             <input
               type="email"
               value={email}
@@ -114,7 +131,7 @@ export default function App() {
               autoComplete="current-password"
             />
           </label>
-          <label>
+          <label className="auth-workspace">
             Workspace name (used on first signup)
             <input
               value={workspaceName}
@@ -122,21 +139,23 @@ export default function App() {
               maxLength={200}
             />
           </label>
-          <div className="queue__actions">
-            <button type="submit" disabled={busy}>
-              Log in
+          <div className="auth-actions">
+            <button className="button button--primary" type="submit" disabled={busy}>
+              {busy ? "Signing in…" : "Sign in"}
             </button>
             <button
+              className="auth-create"
               type="button"
               disabled={busy}
               onClick={(e) => void authenticate("signup", e as unknown as FormEvent)}
             >
-              Create account
+              New to Lumora? Create an account
             </button>
           </div>
-      </form>
-
-      {error ? <p className="error" role="alert">{error}</p> : null}
+          {error ? <p className="error" role="alert">{error}</p> : null}
+        </form>
+        <footer>Protected by workspace-scoped access controls.</footer>
+      </section>
     </div>
   );
 }
