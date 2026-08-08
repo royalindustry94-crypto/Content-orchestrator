@@ -28,6 +28,7 @@ DOMAIN_TABLES = [
     "assets", "publish_jobs", "review_decisions", "analytics_snapshots",
     "spend_logs", "spend_reservations", "provider_usage",
     "webhook_events", "dead_letter_jobs",
+    "leads", "worker_logs",
 ]
 
 IMMUTABLE_TABLES = [

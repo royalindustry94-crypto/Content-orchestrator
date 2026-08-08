@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import ForeignKey, Integer, String
+from sqlalchemy import ForeignKey, SmallInteger, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -22,5 +22,5 @@ class Workspace(Base, TimestampMixin):
     # WS4: base priority tier (0–10). Multiplied by config weight when
     # seeding assignment/job priority.
     priority_tier: Mapped[int] = mapped_column(
-        Integer, nullable=False, default=0, server_default="0"
+        SmallInteger, nullable=False, default=0, server_default="0"
     )

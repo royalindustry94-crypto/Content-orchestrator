@@ -68,3 +68,75 @@ async def test_rls_blocks_cross_workspace_membership_read():
             select(WorkspaceMembership).where(WorkspaceMembership.workspace_id == workspace_a)
         )
         assert result.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_rls_blocks_cross_workspace_leads_and_worker_logs():
+    user_a, workspace_a = await _create_user_and_workspace("Operations tenant A")
+    user_b, _workspace_b = await _create_user_and_workspace("Operations tenant B")
+    worker_id = uuid.uuid4()
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text(
+                """
+                INSERT INTO leads (workspace_id, name, email)
+                VALUES (:workspace_id, 'Private lead', 'private@example.com')
+                """
+            ),
+            {"workspace_id": str(workspace_a)},
+        )
+        await session.execute(
+            text(
+                """
+                INSERT INTO worker_registry (
+                    id, workspace_id, name, supported_stages, status,
+                    max_concurrency, current_load, health_score, instance_key
+                ) VALUES (
+                    :id, :workspace_id, 'private-worker', ARRAY['scripting'],
+                    'online'::worker_status, 1, 0, 100, :instance_key
+                )
+                """
+            ),
+            {
+                "id": str(worker_id),
+                "workspace_id": str(workspace_a),
+                "instance_key": f"private-{worker_id}",
+            },
+        )
+        await session.execute(
+            text(
+                """
+                INSERT INTO worker_logs (
+                    workspace_id, worker_id, severity, message
+                ) VALUES (
+                    :workspace_id, :worker_id, 'info', 'tenant-private log'
+                )
+                """
+            ),
+            {"workspace_id": str(workspace_a), "worker_id": str(worker_id)},
+        )
+        await session.commit()
+
+    # The owning admin can see both records through the runtime role.
+    async with rls_scoped_session(user_a) as session:
+        assert await session.scalar(
+            text("SELECT count(*) FROM leads WHERE workspace_id = :workspace_id"),
+            {"workspace_id": str(workspace_a)},
+        ) == 1
+        assert await session.scalar(
+            text("SELECT count(*) FROM worker_logs WHERE workspace_id = :workspace_id"),
+            {"workspace_id": str(workspace_a)},
+        ) == 1
+
+    # A different tenant sees no rows even when querying directly without
+    # FastAPI authorization guards.
+    async with rls_scoped_session(user_b) as session:
+        assert await session.scalar(
+            text("SELECT count(*) FROM leads WHERE workspace_id = :workspace_id"),
+            {"workspace_id": str(workspace_a)},
+        ) == 0
+        assert await session.scalar(
+            text("SELECT count(*) FROM worker_logs WHERE workspace_id = :workspace_id"),
+            {"workspace_id": str(workspace_a)},
+        ) == 0
