@@ -3,7 +3,7 @@
 // and decides only the gate it created; it never mutates seeded/customer data.
 const BASE = process.env.API_BASE || "http://127.0.0.1:5173/api";
 const runId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-const PASSWORD = "release-smoke-2026";
+const PASSWORD = process.env.SMOKE_PASSWORD || `${crypto.randomUUID()}Aa1!`;
 
 const post = async (path, token, body) =>
   fetch(`${BASE}${path}`, {
@@ -86,7 +86,7 @@ if (gates.length > 0) {
 
 // --- Workspace isolation ---
 const otherEmail = `release-isolation-${runId}@lumora.local`;
-const signup = await post("/auth/signup", null, { email: otherEmail, password: "isolation-probe-2026" });
+const signup = await post("/auth/signup", null, { email: otherEmail, password: PASSWORD });
 const other = await signup.json();
 const otherToken = other.access_token;
 
