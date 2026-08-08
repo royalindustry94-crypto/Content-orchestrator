@@ -30,6 +30,7 @@ High-severity defects found during this independent pass and fixed before approv
 1. **Late-response route race:** navigation invalidated stale data visually, but did not invalidate the in-flight request until the next effect. A narrowly timed old response could briefly update state. Fixed by invalidating the request synchronously, associating loaded data with an exact `workspaceId:nav:tab` key, and refusing to render data whose key does not match the current view.
 2. **Unhandled action/filter failures:** Live Logs filtering, lead create/update, and Human Review Gate decisions could reject without an inline error. Fixed with visible error states and no unhandled promise path.
 3. **Workspace health context:** a workspace switch could briefly retain the previous workspace's health footer. Fixed by associating health with its workspace and showing unavailable until current-workspace health resolves.
+4. **High-severity transitive dependency advisory:** CI detected `nanoid <3.3.17` through the test toolchain. The lockfile is patched; `npm audit --audit-level=high` now reports 0 vulnerabilities.
 
 ### Medium
 
@@ -98,6 +99,7 @@ Supplemental 390px mobile checks: Review Queue, Workers, Settings.
 - `eslint .`: **passed**
 - `tsc -b`: **passed**
 - `vite build`: **passed**
+- `npm audit --audit-level=high`: **0 vulnerabilities**
 - Headless Chrome navigation: **16/16 passed**
 - Supplemental mobile smoke: **3/3 passed**
 - Browser console: **0 errors/warnings**
