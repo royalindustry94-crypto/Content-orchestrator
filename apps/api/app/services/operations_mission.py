@@ -710,10 +710,12 @@ async def _workspace_workers(
             await session.execute(
                 select(WorkerRegistration).where(
                     WorkerRegistration.deregistered_at.is_(None),
-                    or_(
-                        WorkerRegistration.workspace_id == workspace_id,
-                        WorkerRegistration.workspace_id.is_(None),
-                    ),
+                    # Tenant quick actions may mutate only workers explicitly
+                    # pinned to that tenant. Global workers are shared
+                    # platform infrastructure and require service-operator
+                    # control; including them here lets one workspace admin
+                    # drain/revoke/reap work belonging to every tenant.
+                    WorkerRegistration.workspace_id == workspace_id,
                 )
             )
         ).scalars().all()

@@ -14,7 +14,13 @@ from pathlib import Path
 from alembic import op
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from migration_helpers import enable_rls, grant_runtime, policy_select_members  # noqa: E402
+from migration_helpers import (  # noqa: E402
+    attach_immutable_delete_trigger,
+    attach_immutable_trigger,
+    enable_rls,
+    grant_runtime,
+    policy_select_members,
+)
 
 revision: str = "0035"
 down_revision: str | None = "0034"
@@ -28,9 +34,9 @@ def upgrade() -> None:
         CREATE TABLE worker_logs (
             id              uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             workspace_id    uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
-            worker_id       uuid NOT NULL REFERENCES worker_registry(id) ON DELETE CASCADE,
-            pipeline_run_id uuid REFERENCES pipeline_runs(id) ON DELETE SET NULL,
-            assignment_id   uuid REFERENCES stage_assignments(id) ON DELETE SET NULL,
+            worker_id       uuid NOT NULL REFERENCES worker_registry(id) ON DELETE RESTRICT,
+            pipeline_run_id uuid REFERENCES pipeline_runs(id) ON DELETE RESTRICT,
+            assignment_id   uuid REFERENCES stage_assignments(id) ON DELETE RESTRICT,
             severity        text NOT NULL,
             message         text NOT NULL,
             context         jsonb NOT NULL DEFAULT '{}'::jsonb,
@@ -59,6 +65,10 @@ def upgrade() -> None:
         "ON worker_logs (assignment_id, occurred_at DESC) "
         "WHERE assignment_id IS NOT NULL;"
     )
+    # Worker logs are durable audit records. The owner/service role may insert
+    # them, but even owner sessions must not rewrite or delete history.
+    attach_immutable_trigger("worker_logs")
+    attach_immutable_delete_trigger("worker_logs")
     enable_rls("worker_logs")
     grant_runtime("worker_logs", insert=False, update=False, delete=False)
     policy_select_members("worker_logs", ["admin"])

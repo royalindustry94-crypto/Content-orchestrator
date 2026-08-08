@@ -86,6 +86,9 @@ export function ActivityFeedView({ data }: { data: ActivityFeed }) {
 }
 
 export function SystemHealthView({ data }: { data: SystemHealth }) {
+  if (data.indicators.length === 0) {
+    return <Empty>No health indicators are available.</Empty>;
+  }
   return (
     <div className="metrics-grid">
       {data.indicators.map((indicator) => (
@@ -222,18 +225,32 @@ export function WorkerTimelineView({ data }: { data: WorkerTimeline }) {
 }
 
 export function ContentCommandView({ data }: { data: ContentCommand }) {
+  const hasActivity = [
+    data.ideas,
+    data.scripts,
+    data.voiceovers,
+    data.videos_rendering,
+    data.ready_for_review,
+    data.waiting_for_approval,
+    data.publishing,
+    data.published,
+    data.failed,
+  ].some((value) => value > 0);
   return (
-    <div className="metrics-grid">
-      <MetricCard label="Ideas" value={data.ideas} />
-      <MetricCard label="Scripts" value={data.scripts} />
-      <MetricCard label="Voiceovers" value={data.voiceovers} />
-      <MetricCard label="Videos Rendering" value={data.videos_rendering} />
-      <MetricCard label="Ready For Review" value={data.ready_for_review} />
-      <MetricCard label="Waiting For Approval" value={data.waiting_for_approval} />
-      <MetricCard label="Publishing" value={data.publishing} />
-      <MetricCard label="Published" value={data.published} />
-      <MetricCard label="Failed" value={data.failed} />
-    </div>
+    <>
+      <div className="metrics-grid">
+        <MetricCard label="Ideas" value={data.ideas} />
+        <MetricCard label="Scripts" value={data.scripts} />
+        <MetricCard label="Voiceovers" value={data.voiceovers} />
+        <MetricCard label="Videos Rendering" value={data.videos_rendering} />
+        <MetricCard label="Ready For Review" value={data.ready_for_review} />
+        <MetricCard label="Waiting For Approval" value={data.waiting_for_approval} />
+        <MetricCard label="Publishing" value={data.publishing} />
+        <MetricCard label="Published" value={data.published} />
+        <MetricCard label="Failed" value={data.failed} />
+      </div>
+      {!hasActivity ? <Empty>No content activity has been recorded yet.</Empty> : null}
+    </>
   );
 }
 
@@ -253,11 +270,15 @@ export function InsightsView({ data }: { data: ExecutiveInsights }) {
       <div className="insight-grid">
         <section>
           <h3>Today&apos;s achievements</h3>
-          <ul>{data.todays_achievements.map((item) => <li key={item}>{item}</li>)}</ul>
+          {data.todays_achievements.length ? (
+            <ul>{data.todays_achievements.map((item) => <li key={item}>{item}</li>)}</ul>
+          ) : <Empty>No achievements recorded today.</Empty>}
         </section>
         <section>
           <h3>Today&apos;s failures</h3>
-          <ul>{data.todays_failures.map((item) => <li key={item}>{item}</li>)}</ul>
+          {data.todays_failures.length ? (
+            <ul>{data.todays_failures.map((item) => <li key={item}>{item}</li>)}</ul>
+          ) : <Empty>No failures recorded today.</Empty>}
         </section>
         <section>
           <h3>Suggested next action</h3>
@@ -280,8 +301,8 @@ export function QuickActionsView({
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<QuickActionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [workspaceName, setWorkspaceName] = useState("Mission Control Workspace");
-  const [pipelineTopic, setPipelineTopic] = useState("Mission Control pipeline");
+  const [workspaceName, setWorkspaceName] = useState("");
+  const [pipelineTopic, setPipelineTopic] = useState("");
 
   const run = async (action: string, fn: () => Promise<QuickActionResult | { message: string }>) => {
     setBusy(action);
@@ -321,7 +342,6 @@ export function QuickActionsView({
     await run("create_pipeline", async () => {
       const job = await createContentJob(token, workspaceId, {
         topic: pipelineTopic,
-        script_body: "Mission Control drafted script",
       });
       return {
         message: `Created pipeline ${job.pipeline_run_id} for ${job.topic}`,
@@ -370,6 +390,7 @@ export function QuickActionsView({
         <h3>Create Workspace</h3>
         <div className="ops-form__grid">
           <input
+            aria-label="Workspace name"
             required
             value={workspaceName}
             onChange={(e) => setWorkspaceName(e.target.value)}
@@ -385,6 +406,7 @@ export function QuickActionsView({
         <h3>Create Pipeline</h3>
         <div className="ops-form__grid">
           <input
+            aria-label="Pipeline topic"
             required
             value={pipelineTopic}
             onChange={(e) => setPipelineTopic(e.target.value)}

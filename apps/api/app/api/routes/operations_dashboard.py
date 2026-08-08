@@ -5,9 +5,10 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import require_workspace_admin
-from app.core.security import AuthenticatedUser, get_current_user
+from app.core.security import AuthenticatedUser, get_current_session, get_current_user
 from app.db.session import AsyncSessionLocal
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.operations_dashboard import (
@@ -106,15 +107,15 @@ async def list_leads(
     status_filter: str | None = Query(default=None, alias="status", max_length=32),
     source: str | None = Query(default=None, max_length=100),
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> LeadsOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_dashboard.list_leads(
-            session,
-            workspace_id,
-            search=search,
-            status=status_filter,
-            source=source,
-        )
+    return await operations_dashboard.list_leads(
+        db,
+        workspace_id,
+        search=search,
+        status=status_filter,
+        source=source,
+    )
 
 
 @router.post("/leads", response_model=LeadOut, status_code=status.HTTP_201_CREATED)
@@ -122,10 +123,10 @@ async def create_lead(
     workspace_id: uuid.UUID,
     payload: LeadCreate,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> LeadOut:
     try:
-        async with AsyncSessionLocal() as session:
-            return await operations_dashboard.create_lead(session, workspace_id, payload)
+        return await operations_dashboard.create_lead(db, workspace_id, payload)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
@@ -138,12 +139,12 @@ async def update_lead(
     lead_id: uuid.UUID,
     payload: LeadUpdate,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> LeadOut:
     try:
-        async with AsyncSessionLocal() as session:
-            lead = await operations_dashboard.update_lead(
-                session, workspace_id, lead_id, payload
-            )
+        lead = await operations_dashboard.update_lead(
+            db, workspace_id, lead_id, payload
+        )
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
@@ -325,14 +326,14 @@ async def global_search(
     q: str = Query(min_length=1, max_length=200),
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
 ) -> GlobalSearchOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_v4.global_search(
-            session,
-            workspace_id,
-            admin_user_id=uuid.UUID(user.id),
-            query=q,
-        )
+    return await operations_v4.global_search(
+        db,
+        workspace_id,
+        admin_user_id=uuid.UUID(user.id),
+        query=q,
+    )
 
 
 @router.get("/timeline", response_model=UniversalTimelineOut)
@@ -355,17 +356,17 @@ async def live_logs(
     ),
     limit: int = Query(default=200, ge=1, le=1000),
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> LiveLogsOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_v4.live_logs(
-            session,
-            workspace_id,
-            worker_id=worker_id,
-            pipeline_id=pipeline_id,
-            job_id=job_id,
-            severity=severity,
-            limit=limit,
-        )
+    return await operations_v4.live_logs(
+        db,
+        workspace_id,
+        worker_id=worker_id,
+        pipeline_id=pipeline_id,
+        job_id=job_id,
+        severity=severity,
+        limit=limit,
+    )
 
 
 def _automation_payload(request: Request) -> dict:

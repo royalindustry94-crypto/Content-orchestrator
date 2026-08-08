@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Text, false, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Text, false, func
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -28,8 +28,8 @@ class WorkspaceBilling(Base, TimestampMixin, VersionMixin):
     )
     stripe_customer_id: Mapped[str | None] = mapped_column(Text, unique=True, nullable=True)
     stripe_subscription_id: Mapped[str | None] = mapped_column(Text, unique=True, nullable=True)
-    plan: Mapped[str] = mapped_column(String, nullable=False, default="none")
-    status: Mapped[str] = mapped_column(String, nullable=False, default="inactive")
+    plan: Mapped[str] = mapped_column(Text, nullable=False, default="none")
+    status: Mapped[str] = mapped_column(Text, nullable=False, default="inactive")
     current_period_end: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )

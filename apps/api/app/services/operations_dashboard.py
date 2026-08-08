@@ -526,7 +526,11 @@ async def create_lead(
         follow_up_date=payload.follow_up_date,
     )
     session.add(lead)
-    await session.commit()
+    # The request-scoped RLS session owns the transaction and commits after
+    # the route returns. Committing here would clear transaction-local
+    # `request.jwt.claim.sub` before refresh, causing FORCE RLS to hide the
+    # row from the same caller.
+    await session.flush()
     await session.refresh(lead)
     return _lead_out(lead)
 
@@ -556,7 +560,7 @@ async def update_lead(
         data["source"] = str(data["source"]).strip()
     for key, value in data.items():
         setattr(lead, key, value)
-    await session.commit()
+    await session.flush()
     await session.refresh(lead)
     return _lead_out(lead)
 

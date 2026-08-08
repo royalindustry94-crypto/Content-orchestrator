@@ -27,6 +27,73 @@ settings = get_settings()
 _async_url = str(settings.database_url).replace("postgresql://", "postgresql+asyncpg://", 1)
 config.set_main_option("sqlalchemy.url", _async_url)
 
+# These indexes are intentionally defined with raw SQL in historical
+# migrations (partial predicates, expression ordering, or schema-only
+# covering indexes). They are part of the migration-managed schema but are
+# not represented by ORM table metadata. Ignore only this explicit allowlist
+# when autogenerate sees a reflected index with no metadata counterpart;
+# every other schema difference remains visible to `alembic check`.
+MIGRATION_MANAGED_INDEXES = frozenset(
+    {
+        "ix_assets_content_version_id",
+        "ix_assets_created_by",
+        "ix_assets_updated_by",
+        "ix_billing_webhook_events_workspace",
+        "ix_content_items_created_by",
+        "ix_content_items_current_pipeline_run_id",
+        "ix_content_items_current_version_id",
+        "ix_content_items_pillar_id",
+        "ix_content_items_updated_by",
+        "ix_content_lineage_created_by",
+        "ix_content_pillars_created_by",
+        "ix_content_pillars_updated_by",
+        "ix_content_versions_created_by",
+        "ix_pipeline_runs_definition_id",
+        "ix_pipeline_stage_runs_content_item_id",
+        "ix_provider_concurrency_budgets_ws",
+        "ix_provider_credentials_created_by",
+        "ix_provider_credentials_updated_by",
+        "ix_provider_usage_pipeline_stage_run_id",
+        "ix_publish_jobs_created_by",
+        "ix_publish_jobs_updated_by",
+        "ix_review_decisions_content_version_id",
+        "ix_review_decisions_reviewer_id",
+        "ix_review_gates_decided_by",
+        "ix_spend_caps_created_by",
+        "ix_spend_caps_updated_by",
+        "ix_spend_logs_content_item_id",
+        "ix_spend_reservations_content_item_id",
+        "ix_stage_assignments_claim_priority",
+        "ix_stage_assignments_claimed_by",
+        "ix_stage_assignments_provider_inflight",
+        "ix_stage_assignments_worker_active",
+        "ix_stage_claim_audit_assignment_id",
+        "ix_worker_credentials_worker_active",
+        "ix_worker_credentials_workspace_id",
+        "ix_worker_registry_live",
+        "ix_worker_registry_workspace_id",
+        "ix_workspace_memberships_user_id",
+        "ix_workflow_definitions_created_by",
+        "ix_workflow_stages_workspace_id",
+        "ix_workflow_transitions_workspace_id",
+        "ix_workspaces_created_by",
+        "uq_worker_registry_name_instance",
+        "ux_spend_reservations_open_run_stage",
+    }
+)
+
+
+def include_object(obj, name, type_, reflected, compare_to) -> bool:
+    del obj
+    if (
+        type_ == "index"
+        and reflected
+        and compare_to is None
+        and name in MIGRATION_MANAGED_INDEXES
+    ):
+        return False
+    return True
+
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
@@ -35,13 +102,18 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
     )
     with context.begin_transaction():
         context.run_migrations()
 
 
 def do_run_migrations(connection) -> None:
-    context.configure(connection=connection, target_metadata=target_metadata)
+    context.configure(
+        connection=connection,
+        target_metadata=target_metadata,
+        include_object=include_object,
+    )
     with context.begin_transaction():
         context.run_migrations()
 

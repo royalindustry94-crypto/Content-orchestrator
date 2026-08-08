@@ -30,6 +30,7 @@ async def test_mission_control_modules_and_actions(client, new_user):
     run_id = draft.json()["pipeline_run_id"]
     content_id = draft.json()["content_item_id"]
     worker_id = uuid.uuid4()
+    global_worker_id = uuid.uuid4()
     assignment_id = uuid.uuid4()
     dlq_id = uuid.uuid4()
     now = datetime.now(UTC)
@@ -55,6 +56,27 @@ async def test_mission_control_modules_and_actions(client, new_user):
                 "heartbeat": now,
                 "registered": now,
                 "instance_key": f"mission-{worker_id}",
+            },
+        )
+        await session.execute(
+            text(
+                """
+                INSERT INTO worker_registry (
+                    id, workspace_id, name, supported_stages, status,
+                    max_concurrency, current_load, health_score,
+                    last_heartbeat_at, registered_at, instance_key, drain
+                ) VALUES (
+                    :id, NULL, 'global-platform-worker', ARRAY['scripting'],
+                    'online'::worker_status, 2, 0, 99, :heartbeat, :registered,
+                    :instance_key, false
+                )
+                """
+            ),
+            {
+                "id": str(global_worker_id),
+                "heartbeat": now,
+                "registered": now,
+                "instance_key": f"global-{global_worker_id}",
             },
         )
         await session.execute(
@@ -229,7 +251,13 @@ async def test_mission_control_modules_and_actions(client, new_user):
         headers=headers,
     )
     assert pause.status_code == 200
-    assert pause.json()["affected"] >= 1
+    assert pause.json()["affected"] == 1
+    async with AsyncSessionLocal() as session:
+        global_drain = await session.scalar(
+            text("SELECT drain FROM worker_registry WHERE id = :id"),
+            {"id": str(global_worker_id)},
+        )
+    assert global_drain is False
 
     resume = await client.post(
         f"/workspaces/{workspace_id}/operations/actions/resume-workers",
@@ -256,6 +284,23 @@ async def test_mission_control_modules_and_actions(client, new_user):
     )
     assert sync.status_code == 200
     assert sync.json()["action"] == "sync_github"
+
+    emergency = await client.post(
+        f"/workspaces/{workspace_id}/operations/actions/emergency-stop",
+        headers=headers,
+    )
+    assert emergency.status_code == 200
+    async with AsyncSessionLocal() as session:
+        global_state = (
+            await session.execute(
+                text(
+                    "SELECT status::text, drain FROM worker_registry "
+                    "WHERE id = :id"
+                ),
+                {"id": str(global_worker_id)},
+            )
+        ).one()
+    assert global_state == ("online", False)
 
 
 @pytest.mark.asyncio
