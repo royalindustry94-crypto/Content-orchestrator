@@ -64,6 +64,7 @@ export function GlobalSearchBar({
   const [data, setData] = useState<GlobalSearch | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchRequest = useRef(0);
 
   useEffect(() => {
     const focus = () => inputRef.current?.focus();
@@ -72,16 +73,23 @@ export function GlobalSearchBar({
   }, []);
 
   useEffect(() => {
+    const request = searchRequest.current + 1;
+    searchRequest.current = request;
     if (query.trim().length < 2) {
       setData(null);
+      setError(null);
       return;
     }
     const timer = window.setTimeout(() => {
       void globalSearch(token, workspaceId, query)
-        .then(setData)
-        .catch((err: unknown) =>
-          setError(err instanceof Error ? err.message : "Search failed"),
-        );
+        .then((next) => {
+          if (searchRequest.current === request) setData(next);
+        })
+        .catch((err: unknown) => {
+          if (searchRequest.current === request) {
+            setError(err instanceof Error ? err.message : "Search failed");
+          }
+        });
     }, 250);
     return () => window.clearTimeout(timer);
   }, [query, token, workspaceId]);

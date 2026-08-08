@@ -100,7 +100,6 @@ export default function App() {
           </p>
         </div>
         <div className="auth-signal">
-          <span><i /> Live operations</span>
           <span>Secure workspace access</span>
         </div>
       </section>

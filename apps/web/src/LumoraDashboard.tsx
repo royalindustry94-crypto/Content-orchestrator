@@ -303,7 +303,7 @@ function DashboardHome({
     { label: "Workers Online", value: data.executive.workers_online, icon: "workers" as IconName, tone: "blue" },
     { label: "Spend Today", value: money(data.executive.spend_today_usd), icon: "billing" as IconName, tone: "pink" },
     { label: "Revenue", value: money(data.customers.revenue_mtd_usd), icon: "analytics" as IconName, tone: "green" },
-    { label: "Active Alerts", value: activeAlerts.length, icon: "alert" as IconName, tone: activeAlerts.length ? "red" : "green" },
+    { label: "Active Conditions", value: activeAlerts.length, icon: "alert" as IconName, tone: activeAlerts.length ? "red" : "green" },
   ];
   return (
     <div className="dashboard-home">
@@ -325,7 +325,7 @@ function DashboardHome({
               if (metric.label === "Reviews Waiting") navigate("review");
               else if (metric.label === "Workers Online") navigate("workers");
               else if (metric.label === "Spend Today" || metric.label === "Revenue") navigate("billing");
-              else if (metric.label === "Active Alerts") scrollToAlerts();
+              else if (metric.label === "Active Conditions") scrollToAlerts();
               else navigate("pipelines");
             }}
             type="button"
@@ -339,7 +339,7 @@ function DashboardHome({
       </div>
 
       <section className="surface alerts-surface" id="active-alerts">
-        <SectionHeader title="Active Alerts" detail={activeAlerts.length ? `${activeAlerts.length} condition${activeAlerts.length === 1 ? "" : "s"} need attention` : "Live operational alerts"} />
+        <SectionHeader title="Active Conditions" detail={activeAlerts.length ? `${activeAlerts.length} alert type${activeAlerts.length === 1 ? "" : "s"} need attention` : "Live operational conditions"} />
         {activeAlerts.length === 0 ? (
           <EmptyState icon="check" title="No active alerts" message="Every monitored condition is currently healthy." />
         ) : (
@@ -724,6 +724,14 @@ export default function LumoraDashboard({
     void listReviewGates(token, workspaceId)
       .then((gates) => { if (active) setReviewCount(gates.length); })
       .catch(() => { if (active) setReviewCount(0); });
+    return () => { active = false; };
+  }, [token, workspaceId]);
+
+  useEffect(() => {
+    // Dashboard and Settings already fetch health as part of their atomic page
+    // load. Other routes fetch it here for the persistent shell footer.
+    if (nav === "dashboard" || nav === "settings") return;
+    let active = true;
     void getSystemHealth(token, workspaceId)
       .then((value) => {
         if (active) {
@@ -738,7 +746,7 @@ export default function LumoraDashboard({
         }
       });
     return () => { active = false; };
-  }, [token, workspaceId]);
+  }, [nav, token, workspaceId]);
 
   const load = useCallback(async () => {
     const currentRequest = requestId.current + 1;
@@ -834,6 +842,17 @@ export default function LumoraDashboard({
       setLoading(true);
       setMissionTab(next);
     }
+  };
+
+  const navigateToMissionTab = (next: MissionTab) => {
+    requestId.current += 1;
+    setData(null);
+    setLoadedKey(null);
+    setError(null);
+    setLoading(next !== "assistant");
+    setNav("mission");
+    setMissionTab(next);
+    setMobileOpen(false);
   };
 
   const title = NAV.find((item) => item.id === nav)?.label ?? "Dashboard";
@@ -967,7 +986,21 @@ export default function LumoraDashboard({
   return (
     <div className="lumora-shell">
       <CommandPalette navigate={(target) => {
-        const mapping: Record<string, NavKey> = { executive: "dashboard", pipelines: "pipelines", workers: "workers", customers: "customers", leads: "leads", spend: "billing", alerts: "mission" };
+        if (target === "logs") {
+          navigateToMissionTab("logs");
+          return;
+        }
+        const mapping: Record<string, NavKey> = {
+          actions: "dashboard",
+          executive: "dashboard",
+          pipelines: "pipelines",
+          workers: "workers",
+          "worker-timeline": "workers",
+          customers: "customers",
+          leads: "leads",
+          spend: "billing",
+          alerts: "mission",
+        };
         navigate(mapping[target] ?? "mission");
       }} token={token} workspaceId={workspaceId} />
       <aside
@@ -1032,8 +1065,16 @@ export default function LumoraDashboard({
             <Icon name="search" size={17} />
             <GlobalSearchBar
               onOpen={(type) => {
-                const mapping: Record<string, NavKey> = { customer: "customers", lead: "leads", pipeline: "pipelines", worker: "workers", review: "review", job: "pipelines", content: "mission", log: "mission" };
                 setMobileSearchOpen(false);
+                if (type === "log") {
+                  navigateToMissionTab("logs");
+                  return;
+                }
+                if (type === "content") {
+                  navigateToMissionTab("content");
+                  return;
+                }
+                const mapping: Record<string, NavKey> = { customer: "customers", lead: "leads", pipeline: "pipelines", worker: "workers", review: "review", job: "pipelines" };
                 navigate(mapping[type] ?? "mission");
               }}
               token={token}
@@ -1069,9 +1110,9 @@ export default function LumoraDashboard({
               ) : null}
             </div>
             <div className="popover-anchor">
-              <button className="profile-button" onClick={() => setProfileOpen((value) => !value)} type="button">
+              <button aria-label={`Open profile menu for ${email}`} className="profile-button" onClick={() => setProfileOpen((value) => !value)} type="button">
                 <span>{email.slice(0, 1).toUpperCase()}</span>
-                <div><strong>{email.split("@")[0]}</strong><small>Workspace admin</small></div>
+                <div><strong>{email.split("@")[0]}</strong><small>{email}</small></div>
                 <Icon name="chevron" size={14} />
               </button>
               {profileOpen ? (
@@ -1101,21 +1142,38 @@ export default function LumoraDashboard({
                 ["assistant", "AI assistant"],
                 ["content", "Content"],
               ] as Array<[MissionTab, string]>).map(([id, label]) => (
-                <button aria-selected={missionTab === id} className={missionTab === id ? "view-tab view-tab--active" : "view-tab"} key={id} onClick={() => changeMissionTab(id)} role="tab" type="button">{label}</button>
+                <button
+                  aria-controls={`mission-panel-${id}`}
+                  aria-selected={missionTab === id}
+                  className={missionTab === id ? "view-tab view-tab--active" : "view-tab"}
+                  id={`mission-tab-${id}`}
+                  key={id}
+                  onClick={() => changeMissionTab(id)}
+                  role="tab"
+                  type="button"
+                >
+                  {label}
+                </button>
               ))}
             </div>
           ) : null}
-          <ErrorBoundary
-            resetKeys={[nav, missionTab, workspaceId]}
-            fallback={(boundaryError, reset) => (
-              <ErrorState
-                error={boundaryError.message || "This screen ran into a problem."}
-                retry={() => { reset(); void load(); }}
-              />
-            )}
+          <div
+            aria-labelledby={nav === "mission" ? `mission-tab-${missionTab}` : undefined}
+            id={nav === "mission" ? `mission-panel-${missionTab}` : undefined}
+            role={nav === "mission" ? "tabpanel" : undefined}
           >
-            {renderView()}
-          </ErrorBoundary>
+            <ErrorBoundary
+              resetKeys={[nav, missionTab, workspaceId]}
+              fallback={(boundaryError, reset) => (
+                <ErrorState
+                  error={boundaryError.message || "This screen ran into a problem."}
+                  retry={() => { reset(); void load(); }}
+                />
+              )}
+            >
+              {renderView()}
+            </ErrorBoundary>
+          </div>
         </main>
       </div>
     </div>

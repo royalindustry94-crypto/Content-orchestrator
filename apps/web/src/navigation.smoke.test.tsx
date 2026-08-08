@@ -177,9 +177,43 @@ describe("dashboard navigation smoke test", () => {
     renderShell();
     await screen.findByText(/Operations overview/i);
     // Metric label + active alerts section header are driven by the same source.
-    expect((await screen.findAllByText("Active Alerts")).length).toBeGreaterThanOrEqual(1);
+    expect((await screen.findAllByText("Active Conditions")).length).toBeGreaterThanOrEqual(1);
     expect(await screen.findByText("Worker Offline")).toBeDefined();
     expect(await screen.findByText("Review Waiting")).toBeDefined();
+  });
+
+  it("keeps the newest global-search response when an older request resolves late", async () => {
+    const api = await import("./api");
+    let resolveOld!: (value: unknown) => void;
+    const oldRequest = new Promise((resolve) => { resolveOld = resolve; });
+    (api.globalSearch as unknown as ReturnType<typeof vi.fn>).mockImplementation(
+      (_token: string, _workspace: string, query: string) => query === "ab"
+        ? oldRequest
+        : Promise.resolve({
+            query,
+            total: 1,
+            generated_at: "",
+            results: [{ type: "lead", id: "new", title: "Newest result", subtitle: null, status: null, occurred_at: null, url: null }],
+          }),
+    );
+    renderShell();
+    await screen.findByText(/Operations overview/i);
+    const input = screen.getByRole("textbox", { name: /global search/i });
+
+    fireEvent.change(input, { target: { value: "ab" } });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    fireEvent.change(input, { target: { value: "abc" } });
+    expect(await screen.findByText("Newest result")).toBeDefined();
+
+    resolveOld({
+      query: "ab",
+      total: 1,
+      generated_at: "",
+      results: [{ type: "lead", id: "old", title: "Stale result", subtitle: null, status: null, occurred_at: null, url: null }],
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByText("Stale result")).toBeNull();
+    expect(screen.getByText("Newest result")).toBeDefined();
   });
 
   it("opens the keyboard command palette and closes it with Escape", async () => {
@@ -189,6 +223,37 @@ describe("dashboard navigation smoke test", () => {
     expect(await screen.findByRole("dialog", { name: /command palette/i })).toBeDefined();
     fireEvent.keyDown(document, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /command palette/i })).toBeNull());
+  });
+
+  it("routes command palette deep links to the intended destination", async () => {
+    renderShell();
+    await screen.findByText(/Operations overview/i);
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    const palette = await screen.findByRole("dialog", { name: /command palette/i });
+    fireEvent.click(within(palette).getByRole("button", { name: /open logs/i }));
+    expect(await screen.findByRole("tabpanel", { name: /live logs/i })).toBeDefined();
+    expect(await screen.findByText(/No worker logs match/i)).toBeDefined();
+  });
+
+  it("loads every Mission Control tab safely", async () => {
+    renderShell();
+    await screen.findByText(/Operations overview/i);
+    const nav = screen.getByRole("navigation", { name: /primary navigation/i });
+    fireEvent.click(within(nav).getByRole("button", { name: /^Mission Control$/i }));
+    await screen.findByText(/Today's summary/i);
+
+    const tabs: Array<[string, RegExp]> = [
+      ["Timeline", /No timeline events recorded/i],
+      ["Live logs", /No worker logs match/i],
+      ["AI assistant", /Ask live system/i],
+      ["Content", /No content activity has been recorded/i],
+      ["Overview", /Today's summary/i],
+    ];
+    for (const [label, expected] of tabs) {
+      fireEvent.click(screen.getByRole("tab", { name: label }));
+      expect(await screen.findByText(expected)).toBeDefined();
+      expect(screen.queryByText(/Lumora hit an unexpected error/i)).toBeNull();
+    }
   });
 
   it("navigates across every route without a blank-screen crash", async () => {
@@ -201,6 +266,7 @@ describe("dashboard navigation smoke test", () => {
       ["Customers", /No customers yet/i],
       ["Leads", /No leads yet/i],
       ["Mission Control", /Today's summary/i],
+      ["Analytics", /Engineering delivery/i],
       ["Billing", /Cost control/i],
       ["Settings", /Deployment/i],
       ["Review Queue", /keeps every publish decision/i],

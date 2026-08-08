@@ -34,7 +34,7 @@ High-severity defects found during this independent pass and fixed before approv
 
 ### Medium
 
-**Open: 0**
+**Open: 2 non-blocking**
 
 Medium defects found during this independent pass and fixed:
 
@@ -47,6 +47,16 @@ Medium defects found during this independent pass and fixed:
    - primary text on app background: **18.16:1**
    - danger text on panel: **8.03:1**
    - warning text on panel: **11.19:1**
+6. Corrected command-palette and global-search deep links to Workers, Dashboard actions, Live Logs, and Content.
+7. Added Mission-tab ARIA relationships, global `:focus-visible`, and a profile-menu accessible name.
+8. Sequenced global-search responses and removed the duplicate shell/page health request race.
+9. Added empty guidance for zero-activity Content and Analytics insight sections.
+10. Renamed the dashboard count to **Active Conditions** (alert types), distinguishing it from Mission Control’s **Critical Alerts** incident total.
+
+Accepted non-blocking residuals:
+
+1. Dashboard and Mission Control Overview intentionally overlap some executive KPIs, but only one dashboard implementation exists and alert semantics are now explicitly distinguished.
+2. Login defaults to the first returned workspace when several exist; the persistent workspace switcher remains available immediately after authentication.
 
 ## Surface navigation
 
@@ -95,7 +105,7 @@ Supplemental 390px mobile checks: Review Queue, Workers, Settings.
 
 ## Tests
 
-- `vitest run`: **20/20 passed** across 4 files
+- `vitest run`: **23/23 passed** across 4 files
 - `eslint .`: **passed**
 - `tsc -b`: **passed**
 - `vite build`: **passed**

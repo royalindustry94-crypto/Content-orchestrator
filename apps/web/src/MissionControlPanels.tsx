@@ -225,18 +225,32 @@ export function WorkerTimelineView({ data }: { data: WorkerTimeline }) {
 }
 
 export function ContentCommandView({ data }: { data: ContentCommand }) {
+  const hasActivity = [
+    data.ideas,
+    data.scripts,
+    data.voiceovers,
+    data.videos_rendering,
+    data.ready_for_review,
+    data.waiting_for_approval,
+    data.publishing,
+    data.published,
+    data.failed,
+  ].some((value) => value > 0);
   return (
-    <div className="metrics-grid">
-      <MetricCard label="Ideas" value={data.ideas} />
-      <MetricCard label="Scripts" value={data.scripts} />
-      <MetricCard label="Voiceovers" value={data.voiceovers} />
-      <MetricCard label="Videos Rendering" value={data.videos_rendering} />
-      <MetricCard label="Ready For Review" value={data.ready_for_review} />
-      <MetricCard label="Waiting For Approval" value={data.waiting_for_approval} />
-      <MetricCard label="Publishing" value={data.publishing} />
-      <MetricCard label="Published" value={data.published} />
-      <MetricCard label="Failed" value={data.failed} />
-    </div>
+    <>
+      <div className="metrics-grid">
+        <MetricCard label="Ideas" value={data.ideas} />
+        <MetricCard label="Scripts" value={data.scripts} />
+        <MetricCard label="Voiceovers" value={data.voiceovers} />
+        <MetricCard label="Videos Rendering" value={data.videos_rendering} />
+        <MetricCard label="Ready For Review" value={data.ready_for_review} />
+        <MetricCard label="Waiting For Approval" value={data.waiting_for_approval} />
+        <MetricCard label="Publishing" value={data.publishing} />
+        <MetricCard label="Published" value={data.published} />
+        <MetricCard label="Failed" value={data.failed} />
+      </div>
+      {!hasActivity ? <Empty>No content activity has been recorded yet.</Empty> : null}
+    </>
   );
 }
 
@@ -256,11 +270,15 @@ export function InsightsView({ data }: { data: ExecutiveInsights }) {
       <div className="insight-grid">
         <section>
           <h3>Today&apos;s achievements</h3>
-          <ul>{data.todays_achievements.map((item) => <li key={item}>{item}</li>)}</ul>
+          {data.todays_achievements.length ? (
+            <ul>{data.todays_achievements.map((item) => <li key={item}>{item}</li>)}</ul>
+          ) : <Empty>No achievements recorded today.</Empty>}
         </section>
         <section>
           <h3>Today&apos;s failures</h3>
-          <ul>{data.todays_failures.map((item) => <li key={item}>{item}</li>)}</ul>
+          {data.todays_failures.length ? (
+            <ul>{data.todays_failures.map((item) => <li key={item}>{item}</li>)}</ul>
+          ) : <Empty>No failures recorded today.</Empty>}
         </section>
         <section>
           <h3>Suggested next action</h3>

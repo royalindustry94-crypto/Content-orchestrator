@@ -1034,8 +1034,8 @@ button.side-link--active {
 
 .page-kicker {
   margin: 0;
-  color: #8f7be2;
-  font-size: 0.62rem;
+  color: var(--accent-bright);
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.13em;
   text-transform: uppercase;
@@ -1932,21 +1932,14 @@ button.side-link--active {
 .auth-signal {
   display: flex;
   gap: 1.5rem;
-  color: #737b8e;
-  font-size: 0.65rem;
+  color: var(--muted);
+  font-size: 0.72rem;
 }
 
 .auth-signal span {
   display: flex;
   gap: 0.45rem;
   align-items: center;
-}
-
-.auth-signal i {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--success);
 }
 
 .auth-panel {
@@ -2628,4 +2621,9 @@ button.side-link--active {
     transition-duration: 0.001ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+:where(button, a, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent-bright);
+  outline-offset: 2px;
 }

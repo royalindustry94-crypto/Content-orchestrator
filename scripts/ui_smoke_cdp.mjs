@@ -90,6 +90,11 @@ async function report() {
     footer: (document.querySelector('.sidebar-foot strong')||{}).innerText || null,
     heading: (document.querySelector('main h1, main h2')||{}).innerText || null,
     horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth,
+    conditionMetric: (() => {
+      const card = [...document.querySelectorAll('.saas-metric')].find(el => /Active Conditions/i.test(el.textContent || ''));
+      return card ? Number((card.querySelector('strong') || {}).textContent) : null;
+    })(),
+    conditionRows: document.querySelectorAll('#active-alerts .alert-row').length,
     unlabeledControls: [...document.querySelectorAll('input, select, textarea')].filter(el =>
       !el.getAttribute('aria-label') &&
       !el.getAttribute('aria-labelledby') &&
@@ -135,6 +140,21 @@ if (!loginInfo.ok) { console.log("LOGIN FAILED"); process.exit(2); }
 
 await navigate(BASE);
 await sleep(1200);
+const backendTruth = await evaluate(`(async () => {
+  const session = JSON.parse(sessionStorage.getItem('lumora.missionControl.session'));
+  const headers = { Authorization: 'Bearer ' + session.token };
+  const [health, alerts] = await Promise.all([
+    fetch('/api/workspaces/' + session.workspaceId + '/operations/health', { headers }).then(r => r.json()),
+    fetch('/api/workspaces/' + session.workspaceId + '/operations/alerts', { headers }).then(r => r.json()),
+  ]);
+  const statuses = health.indicators.map(item => String(item.status).toLowerCase());
+  const bad = statuses.some(status => ['red','critical','offline','failed','down','error'].includes(status));
+  const warn = statuses.some(status => ['amber','warn','warning','yellow','degraded'].includes(status));
+  return {
+    alertTypes: alerts.alerts.length,
+    expectedFooter: bad ? 'Service disruption detected' : warn ? 'Degraded performance' : 'All systems operational',
+  };
+})()`);
 
 const routes = ["Dashboard", "Mission Control", "Review Queue", "Pipelines", "Workers", "Customers", "Leads", "Analytics", "Billing", "Settings"];
 const missionTabs = ["Overview", "Timeline", "Live logs", "AI assistant", "Content"];
@@ -235,6 +255,10 @@ writeFileSync(`${OUT}/results.json`, JSON.stringify({ results, mobileResults, lo
 const crashes = results.filter((r) => r.crash || r.textLen === 0);
 const accessibilityFailures = results.filter((r) => r.unlabeledControls > 0);
 const mobileFailures = mobileResults.filter((r) => r.crash || r.textLen === 0 || r.horizontalOverflow || r.unlabeledControls > 0);
+const footerFailures = results.filter((r) => r.footer !== backendTruth.expectedFooter);
+const dashboardResult = results.find((r) => r.label === "Dashboard");
+const alertParityWorks = dashboardResult?.conditionMetric === backendTruth.alertTypes &&
+  dashboardResult?.conditionRows === backendTruth.alertTypes;
 console.log("ROUTES:", results.length);
 console.log("BLANK/CRASH:", crashes.length);
 console.log("SEARCH:", JSON.stringify(searchResult));
@@ -242,6 +266,9 @@ console.log("CONSOLE ERRORS/WARNINGS:", consoleProblems.length);
 console.log("UNCAUGHT EXCEPTIONS:", uncaughtExceptions.length);
 console.log("UNLABELED CONTROLS:", accessibilityFailures.length);
 console.log("MOBILE SUPPLEMENTAL:", mobileResults.length, "failures:", mobileFailures.length);
+console.log("BACKEND TRUTH:", JSON.stringify(backendTruth));
+console.log("FOOTER MISMATCHES:", footerFailures.length);
+console.log("ALERT TYPE PARITY:", alertParityWorks);
 for (const r of results) {
   console.log(`  ${r.crash ? "CRASH" : r.textLen === 0 ? "BLANK" : "ok   "} | ${r.label} | textLen=${r.textLen} | footer=${r.footer ?? "-"} | unlabeled=${r.unlabeledControls}`);
 }
@@ -253,6 +280,8 @@ process.exit(
   crashes.length === 0 &&
   accessibilityFailures.length === 0 &&
   mobileFailures.length === 0 &&
+  footerFailures.length === 0 &&
+  alertParityWorks &&
   consoleProblems.length === 0 &&
   uncaughtExceptions.length === 0 &&
   searchWorks &&

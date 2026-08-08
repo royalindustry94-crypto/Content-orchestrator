@@ -4,6 +4,7 @@ import {
   aggregateHealth,
   healthStatusToLevel,
   isActivityFeed,
+  isAnalyticsData,
   isBillingData,
   isContentCommand,
   isCustomers,
@@ -74,6 +75,7 @@ const workersPayload = { monitor: { workers: [] }, timeline: { workers: [] } };
 const customersPayload = { customers: [] };
 const leadsPayload = { leads: [], total: 0 };
 const billingPayload = { spend: {}, cost: {} };
+const analyticsPayload = { insights: {}, activity: { items: [] }, github: {} };
 const settingsPayload = { health: { indicators: [] }, executive: { deployment: {} } };
 
 describe("route type guards — prevent stale-data crashes on navigation", () => {
@@ -84,6 +86,7 @@ describe("route type guards — prevent stale-data crashes on navigation", () =>
     expect(isWorkersData(workersPayload)).toBe(true);
     expect(isCustomers(customersPayload)).toBe(true);
     expect(isLeads(leadsPayload)).toBe(true);
+    expect(isAnalyticsData(analyticsPayload)).toBe(true);
     expect(isBillingData(billingPayload)).toBe(true);
     expect(isSettingsData(settingsPayload)).toBe(true);
   });
@@ -112,6 +115,7 @@ describe("route type guards — prevent stale-data crashes on navigation", () =>
       isWorkersData,
       isCustomers,
       isLeads,
+      isAnalyticsData,
       isBillingData,
       isSettingsData,
     ]) {
