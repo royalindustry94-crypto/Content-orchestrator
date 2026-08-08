@@ -36,17 +36,17 @@ class WorkerLog(Base, WorkspaceScopedMixin):
     )
     worker_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("worker_registry.id", ondelete="CASCADE"),
+        ForeignKey("worker_registry.id", ondelete="RESTRICT"),
         nullable=False,
     )
     pipeline_run_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("pipeline_runs.id", ondelete="SET NULL"),
+        ForeignKey("pipeline_runs.id", ondelete="RESTRICT"),
         nullable=True,
     )
     assignment_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("stage_assignments.id", ondelete="SET NULL"),
+        ForeignKey("stage_assignments.id", ondelete="RESTRICT"),
         nullable=True,
     )
     severity: Mapped[str] = mapped_column(Text, nullable=False)

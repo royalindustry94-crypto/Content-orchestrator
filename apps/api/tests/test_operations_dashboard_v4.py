@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
+from sqlalchemy import text
+
+from app.db.session import AsyncSessionLocal
 
 
 @pytest.mark.asyncio
@@ -138,6 +141,110 @@ async def test_mission_control_v4_integrated_modules(client, new_user):
 
 
 @pytest.mark.asyncio
+async def test_worker_log_ingest_rejects_foreign_references_and_oversized_context(
+    client, new_user
+):
+    _user_id, _token, headers = new_user
+    workspace_a = (
+        await client.post("/workspaces", headers=headers, json={"name": "Logs tenant A"})
+    ).json()["id"]
+    workspace_b = (
+        await client.post("/workspaces", headers=headers, json={"name": "Logs tenant B"})
+    ).json()["id"]
+    content_b = await client.post(
+        f"/workspaces/{workspace_b}/content-jobs",
+        headers=headers,
+        json={"topic": "Foreign pipeline", "script_body": "Private"},
+    )
+    assert content_b.status_code == 201
+    pipeline_b = content_b.json()["pipeline_run_id"]
+
+    worker_a = (
+        await client.post(
+            f"/workspaces/{workspace_a}/workers",
+            headers=headers,
+            json={"name": "logs-worker-a", "supported_stages": ["scripting"]},
+        )
+    ).json()
+    worker_b = (
+        await client.post(
+            f"/workspaces/{workspace_b}/workers",
+            headers=headers,
+            json={"name": "logs-worker-b", "supported_stages": ["scripting"]},
+        )
+    ).json()
+    assignment_b = uuid.uuid4()
+    now = datetime.now(UTC)
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text(
+                """
+                INSERT INTO stage_assignments (
+                    id, workspace_id, pipeline_run_id, stage, attempt_number,
+                    worker_id, status, idempotency_key, lease_expires_at,
+                    dispatched_at, priority
+                ) VALUES (
+                    :id, :workspace_id, :pipeline_run_id,
+                    'scripting'::content_stage, 1, :worker_id,
+                    'acknowledged'::stage_assignment_status, :idempotency_key,
+                    :lease_expires_at, :dispatched_at, 0
+                )
+                """
+            ),
+            {
+                "id": str(assignment_b),
+                "workspace_id": workspace_b,
+                "pipeline_run_id": pipeline_b,
+                "worker_id": worker_b["worker_id"],
+                "idempotency_key": f"foreign-log-{assignment_b}",
+                "lease_expires_at": now + timedelta(minutes=5),
+                "dispatched_at": now,
+            },
+        )
+        await session.commit()
+
+    worker_a_headers = {"Authorization": f"Bearer {worker_a['worker_secret']}"}
+    unauthenticated = await client.post(
+        "/workers/logs",
+        json={"severity": "info", "message": "must authenticate"},
+    )
+    assert unauthenticated.status_code == 401
+
+    foreign_pipeline = await client.post(
+        "/workers/logs",
+        headers=worker_a_headers,
+        json={
+            "severity": "warning",
+            "message": "foreign pipeline reference",
+            "pipeline_run_id": pipeline_b,
+        },
+    )
+    assert foreign_pipeline.status_code == 422
+
+    foreign_assignment = await client.post(
+        "/workers/logs",
+        headers=worker_a_headers,
+        json={
+            "severity": "warning",
+            "message": "foreign assignment reference",
+            "assignment_id": str(assignment_b),
+        },
+    )
+    assert foreign_assignment.status_code == 422
+
+    oversized_context = await client.post(
+        "/workers/logs",
+        headers=worker_a_headers,
+        json={
+            "severity": "info",
+            "message": "oversized context",
+            "context": {"payload": "x" * (16 * 1024)},
+        },
+    )
+    assert oversized_context.status_code == 422
+
+
+@pytest.mark.asyncio
 async def test_v4_endpoints_require_admin(client, new_user):
     _owner_id, _token, owner_headers = new_user
     workspace = await client.post(
@@ -160,3 +267,10 @@ async def test_v4_endpoints_require_admin(client, new_user):
             headers=outsider_headers,
         )
         assert response.status_code == 403
+
+    assistant = await client.post(
+        f"/workspaces/{workspace_id}/operations/assistant",
+        headers=outsider_headers,
+        json={"question": "Show private spend"},
+    )
+    assert assistant.status_code == 403

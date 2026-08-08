@@ -9,10 +9,11 @@ response. A worker sending an unsupported version is rejected loudly
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.models.enums import StageAssignmentStatus, WorkerStatus
 
@@ -90,6 +91,26 @@ class WorkerLogIn(BaseModel):
     assignment_id: uuid.UUID | None = None
     occurred_at: datetime | None = None
     context: dict = Field(default_factory=dict)
+
+    @field_validator("context")
+    @classmethod
+    def context_must_be_bounded(cls, value: dict) -> dict:
+        if len(value) > 64:
+            raise ValueError("context may contain at most 64 top-level keys")
+        encoded = json.dumps(value, separators=(",", ":"), ensure_ascii=False).encode()
+        if len(encoded) > 16 * 1024:
+            raise ValueError("context must not exceed 16 KiB")
+
+        def depth(item: object, level: int = 0) -> int:
+            if isinstance(item, dict):
+                return max((depth(child, level + 1) for child in item.values()), default=level)
+            if isinstance(item, list):
+                return max((depth(child, level + 1) for child in item), default=level)
+            return level
+
+        if depth(value) > 8:
+            raise ValueError("context nesting must not exceed 8 levels")
+        return value
 
 
 class WorkerLogAccepted(BaseModel):

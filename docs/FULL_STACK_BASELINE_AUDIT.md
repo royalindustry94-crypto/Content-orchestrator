@@ -75,6 +75,12 @@ The RLS defense-in-depth gap for new tenant tables was closed:
 - Direct RLS tests prove a second tenant cannot read `leads` or `worker_logs`
   even when bypassing FastAPI authorization guards.
 - Schema tests include both new tables in FORCE RLS assertions.
+- Worker logs are DB-enforced append-only and use restrictive references to
+  workers, runs, and assignments.
+- Worker-log context is bounded to 64 top-level keys, 16 KiB, and eight nesting
+  levels.
+- Negative tests cover foreign pipeline/assignment references, unauthenticated
+  ingest, oversized context, and assistant authorization.
 
 Non-blocking architecture note: some operations projections still use the owner
 session because they aggregate service-only tables or perform worker
@@ -122,6 +128,10 @@ Final result: **No new upgrade operations detected.**
 | `leads` | enabled | enabled | SELECT members; INSERT/UPDATE admin+editor; DELETE admin | present |
 | `worker_logs` | enabled | enabled | SELECT admin; no runtime write grant | present |
 
+`worker_logs` also has owner-level immutable UPDATE/DELETE triggers. References
+to workers, pipeline runs, and assignments use `ON DELETE RESTRICT`, preventing
+infrastructure cleanup from silently deleting or rewriting durable log history.
+
 ## Backend/API audit
 
 Verified:
@@ -130,6 +140,8 @@ Verified:
 - Leads list/create/update are workspace-scoped and RLS-enforced.
 - Worker-log ingest derives workspace from worker credentials and validates
   optional assignment/pipeline ownership before insert.
+- Foreign references, unauthenticated ingest, and oversized context are
+  rejected by regression tests.
 - Worker-log reads are admin-only and RLS-enforced.
 - Search is bounded and uses SQLAlchemy-bound expressions.
 - Human Review Gate decisions remain in the existing reviewer-authorized path.
@@ -210,7 +222,7 @@ Result: **PASS**
 | Gate | Result |
 |---|---|
 | API Ruff | PASS |
-| API pytest + 75% coverage gate | 201 passed; 77.31% |
+| API pytest + 75% coverage gate | 203 passed; 77.73% |
 | Worker Ruff | PASS |
 | Worker pytest | 4 passed |
 | Frontend Vitest | 23 passed |

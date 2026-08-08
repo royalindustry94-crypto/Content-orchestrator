@@ -188,7 +188,18 @@ async def test_operations_dashboard_requires_admin(client, new_user):
 
 
 @pytest.mark.asyncio
-async def test_operations_dashboard_empty_state_is_real_zeroes(client, new_user):
+async def test_operations_dashboard_empty_state_is_real_zeroes(
+    client, new_user, monkeypatch
+):
+    for variable in (
+        "DEPLOYMENT_CI_STATUS",
+        "DEPLOYMENT_CI_URL",
+        "DEPLOYMENT_GIT_BRANCH",
+        "DEPLOYMENT_COMMIT_SHA",
+        "DEPLOYMENT_AT",
+    ):
+        monkeypatch.delenv(variable, raising=False)
+    get_settings.cache_clear()
     _user_id, _token, headers = new_user
     workspace = await client.post(
         "/workspaces", headers=headers, json={"name": "Empty Operations"}
@@ -203,3 +214,4 @@ async def test_operations_dashboard_empty_state_is_real_zeroes(client, new_user)
     assert body["jobs_queued"] == 0
     assert body["spend_today_usd"] == "0"
     assert body["deployment"]["ci_status"] == "unavailable"
+    get_settings.cache_clear()

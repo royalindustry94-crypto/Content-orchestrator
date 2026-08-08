@@ -34,6 +34,7 @@ DOMAIN_TABLES = [
 IMMUTABLE_TABLES = [
     "content_versions", "pipeline_stage_runs", "review_decisions",
     "analytics_snapshots", "spend_logs", "provider_usage",
+    "worker_logs",
 ]
 
 
@@ -95,6 +96,77 @@ async def test_immutable_tables_reject_update():
             )
             await s.commit()
         assert "immutable" in str(exc.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_worker_logs_reject_update_and_delete():
+    import uuid
+
+    user_id = str(uuid.uuid4())
+    workspace_id = str(uuid.uuid4())
+    worker_id = str(uuid.uuid4())
+    log_id = str(uuid.uuid4())
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("INSERT INTO auth.users (id, email) VALUES (:id, :email)"),
+            {"id": user_id, "email": f"{user_id}@example.com"},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO workspaces (id, name, created_by) "
+                "VALUES (:id, 'worker-log-audit', :user_id)"
+            ),
+            {"id": workspace_id, "user_id": user_id},
+        )
+        await session.execute(
+            text(
+                """
+                INSERT INTO worker_registry (
+                    id, workspace_id, name, supported_stages, status,
+                    max_concurrency, current_load, health_score, instance_key
+                ) VALUES (
+                    :id, :workspace_id, 'audit-worker', ARRAY['scripting'],
+                    'online'::worker_status, 1, 0, 100, :instance_key
+                )
+                """
+            ),
+            {
+                "id": worker_id,
+                "workspace_id": workspace_id,
+                "instance_key": f"audit-{worker_id}",
+            },
+        )
+        await session.execute(
+            text(
+                """
+                INSERT INTO worker_logs (
+                    id, workspace_id, worker_id, severity, message
+                ) VALUES (:id, :workspace_id, :worker_id, 'info', 'immutable')
+                """
+            ),
+            {
+                "id": log_id,
+                "workspace_id": workspace_id,
+                "worker_id": worker_id,
+            },
+        )
+        await session.commit()
+
+        with pytest.raises(Exception) as update_exc:
+            await session.execute(
+                text("UPDATE worker_logs SET message = 'rewritten' WHERE id = :id"),
+                {"id": log_id},
+            )
+        assert "immutable" in str(update_exc.value).lower()
+        await session.rollback()
+
+        with pytest.raises(Exception) as delete_exc:
+            await session.execute(
+                text("DELETE FROM worker_logs WHERE id = :id"),
+                {"id": log_id},
+            )
+        assert "immutable" in str(delete_exc.value).lower()
+        await session.rollback()
 
 
 @pytest.mark.asyncio
