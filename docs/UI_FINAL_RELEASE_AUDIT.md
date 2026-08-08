@@ -3,7 +3,7 @@
 **Audit date:** 2026-08-08  
 **Branch:** `cursor/p0-reliability-sprint-b52d`  
 **Scope:** Final independent release gate; no feature work  
-**Decision:** APPROVED FOR UI MERGE (pending successful CI on the audit-fix commit)
+**Decision:** APPROVED FOR UI MERGE
 
 ## Release score
 
@@ -105,7 +105,7 @@ Supplemental 390px mobile checks: Review Queue, Workers, Settings.
 - Browser console: **0 errors/warnings**
 - Uncaught browser exceptions: **0**
 - Unlabeled controls: **0**
-- CI: pending audit-fix commit push
+- CI: **5/5 successful** (`api`, `worker`, `web`, `security`, `docker-build`)
 
 ## Remaining blockers
 
