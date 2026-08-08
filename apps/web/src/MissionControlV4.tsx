@@ -17,6 +17,7 @@ import {
   type LiveLogs,
   type QuickActionResult,
 } from "./api";
+import { useDialogFocus } from "./useDialogFocus";
 
 function money(value: string): string {
   return new Intl.NumberFormat(undefined, {
@@ -145,6 +146,7 @@ export function CommandPalette({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [result, setResult] = useState<QuickActionResult | null>(null);
+  const paletteRef = useDialogFocus<HTMLElement>(open, () => setOpen(false));
 
   useEffect(() => {
     const listener = (event: KeyboardEvent) => {
@@ -196,8 +198,11 @@ export function CommandPalette({
         aria-modal="true"
         aria-label="Command palette"
         onClick={(event) => event.stopPropagation()}
+        ref={paletteRef}
+        tabIndex={-1}
       >
         <input
+          aria-label="Command palette search"
           autoFocus
           value={query}
           onChange={(event) => setQuery(event.target.value)}
@@ -276,29 +281,40 @@ export function LiveLogsView({
   initial: LiveLogs;
 }) {
   const [data, setData] = useState(initial);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     worker_id: "",
     pipeline_id: "",
     job_id: "",
     severity: "",
   });
-  const submit = (event: FormEvent) => {
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
-    void getLiveLogs(token, workspaceId, filters).then(setData);
+    setBusy(true);
+    setError(null);
+    try {
+      setData(await getLiveLogs(token, workspaceId, filters));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to filter worker logs.");
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <>
-      <form className="ops-toolbar log-filters" onSubmit={submit}>
+      <form className="ops-toolbar log-filters" onSubmit={(event) => void submit(event)}>
         <input aria-label="Workspace filter" value={workspaceId} disabled />
-        <input placeholder="Worker UUID" value={filters.worker_id} onChange={(e) => setFilters({ ...filters, worker_id: e.target.value })} />
-        <input placeholder="Pipeline UUID" value={filters.pipeline_id} onChange={(e) => setFilters({ ...filters, pipeline_id: e.target.value })} />
-        <input placeholder="Job UUID" value={filters.job_id} onChange={(e) => setFilters({ ...filters, job_id: e.target.value })} />
-        <select value={filters.severity} onChange={(e) => setFilters({ ...filters, severity: e.target.value })}>
+        <input aria-label="Worker UUID filter" placeholder="Worker UUID" value={filters.worker_id} onChange={(e) => setFilters({ ...filters, worker_id: e.target.value })} />
+        <input aria-label="Pipeline UUID filter" placeholder="Pipeline UUID" value={filters.pipeline_id} onChange={(e) => setFilters({ ...filters, pipeline_id: e.target.value })} />
+        <input aria-label="Job UUID filter" placeholder="Job UUID" value={filters.job_id} onChange={(e) => setFilters({ ...filters, job_id: e.target.value })} />
+        <select aria-label="Log severity filter" value={filters.severity} onChange={(e) => setFilters({ ...filters, severity: e.target.value })}>
           <option value="">All severities</option>
           {["debug", "info", "warning", "error", "critical"].map((value) => <option key={value}>{value}</option>)}
         </select>
-        <button type="submit">Filter logs</button>
+        <button disabled={busy} type="submit">{busy ? "Filtering…" : "Filter logs"}</button>
       </form>
+      {error ? <p className="error" role="alert">{error}</p> : null}
       {data.logs.length === 0 ? (
         <div className="empty">No worker logs match these filters.</div>
       ) : (
@@ -345,6 +361,7 @@ export function AssistantPanel({
     <div className="assistant-panel">
       <form onSubmit={(event) => void submit(event)}>
         <textarea
+          aria-label="Question for the live system"
           required
           value={question}
           onChange={(event) => setQuestion(event.target.value)}

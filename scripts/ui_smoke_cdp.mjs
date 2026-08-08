@@ -16,6 +16,8 @@ const ws = new WebSocket(wsUrl);
 let nextId = 1;
 const pending = new Map();
 const sessions = {};
+const consoleProblems = [];
+const uncaughtExceptions = [];
 
 function send(method, params = {}, sessionId) {
   const id = nextId++;
@@ -33,6 +35,15 @@ ws.onmessage = (ev) => {
     pending.delete(data.id);
     if (data.error) reject(new Error(JSON.stringify(data.error)));
     else resolve(data.result);
+  }
+  if (data.method === "Runtime.exceptionThrown") {
+    uncaughtExceptions.push(data.params.exceptionDetails?.exception?.description || data.params.exceptionDetails?.text || "Unknown exception");
+  }
+  if (data.method === "Runtime.consoleAPICalled" && ["error", "warning"].includes(data.params.type)) {
+    const text = data.params.args
+      .map((arg) => arg.value ?? arg.description ?? "")
+      .join(" ");
+    consoleProblems.push({ type: data.params.type, text });
   }
 };
 
@@ -78,6 +89,13 @@ async function report() {
     errorState: !!document.querySelector('.error-state'),
     footer: (document.querySelector('.sidebar-foot strong')||{}).innerText || null,
     heading: (document.querySelector('main h1, main h2')||{}).innerText || null,
+    horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth,
+    unlabeledControls: [...document.querySelectorAll('input, select, textarea')].filter(el =>
+      !el.getAttribute('aria-label') &&
+      !el.getAttribute('aria-labelledby') &&
+      !el.closest('label') &&
+      !el.getAttribute('title')
+    ).length,
   }))()`);
 }
 
@@ -88,6 +106,21 @@ await send(
   { width: 1440, height: 900, deviceScaleFactor: 1, mobile: false },
   sessionId,
 );
+const loginUxInitial = await evaluate(`(() => {
+  const signInHeading = [...document.querySelectorAll('h1,h2')].some(el => /sign in to lumora/i.test(el.textContent || ''));
+  const loginWorkspaceField = [...document.querySelectorAll('label')].some(el => /^workspace name/i.test((el.textContent || '').trim()));
+  const createButton = [...document.querySelectorAll('button')].find(el => /create an account/i.test(el.textContent || ''));
+  if (createButton) createButton.click();
+  return { signInHeading, loginWorkspaceField };
+})()`);
+await sleep(100);
+const signupWorkspaceField = await evaluate(`(() => {
+  const found = [...document.querySelectorAll('label')].some(el => /^workspace name/i.test((el.textContent || '').trim()));
+  const backButton = [...document.querySelectorAll('button')].find(el => /already have an account/i.test(el.textContent || ''));
+  if (backButton) backButton.click();
+  return found;
+})()`);
+const loginUx = { ...loginUxInitial, signupWorkspaceField };
 const loginInfo = await evaluate(`(async () => {
   const r = await fetch('/api/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email:${JSON.stringify(EMAIL)}, password:${JSON.stringify(PASSWORD)}})});
   if (!r.ok) return { ok:false, status:r.status, body: await r.text() };
@@ -97,6 +130,7 @@ const loginInfo = await evaluate(`(async () => {
   return { ok:true, workspaces: ws.length };
 })()`);
 console.log("login:", JSON.stringify(loginInfo));
+console.log("LOGIN UX:", JSON.stringify(loginUx));
 if (!loginInfo.ok) { console.log("LOGIN FAILED"); process.exit(2); }
 
 await navigate(BASE);
@@ -107,6 +141,30 @@ const missionTabs = ["Overview", "Timeline", "Live logs", "AI assistant", "Conte
 
 const results = [];
 let index = 0;
+
+// Exercise the real global-search input and backend before navigation.
+const searchInputReady = await evaluate(`(() => {
+  const input = document.querySelector('.topbar-search input[aria-label="Global search"]');
+  if (!input) return false;
+  input.focus();
+  return true;
+})()`);
+if (searchInputReady) {
+  await send("Input.insertText", { text: "Ops" }, sessionId);
+  await sleep(800);
+}
+const searchResult = await evaluate(`(() => ({
+  query: (document.querySelector('.topbar-search input[aria-label="Global search"]')||{}).value || '',
+  rendered: !!document.querySelector('.search-results'),
+  text: (document.querySelector('.search-results')||{}).innerText || '',
+}))()`);
+await evaluate(`(() => {
+  const input = document.querySelector('.topbar-search input[aria-label="Global search"]');
+  if (!input) return;
+  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+  setter.call(input, '');
+  input.dispatchEvent(new Event('input', { bubbles: true }));
+})()`);
 for (const label of routes) {
   const clicked = await evaluate(`(() => {
     const nav = document.querySelector('nav[aria-label="Primary navigation"]');
@@ -154,11 +212,51 @@ await shot("90-mobile-nav-open");
 const mrep = await report();
 results.push({ label: "mobile-dashboard", ...mrep });
 
-writeFileSync(`${OUT}/results.json`, JSON.stringify(results, null, 2));
+const mobileResults = [];
+for (const label of ["Review Queue", "Workers", "Settings"]) {
+  await evaluate(`(() => {
+    const open = [...document.querySelectorAll('button')].find(x => /open navigation/i.test(x.getAttribute('aria-label') || ''));
+    if (open) open.click();
+  })()`);
+  await sleep(100);
+  await evaluate(`(() => {
+    const nav = document.querySelector('nav[aria-label="Primary navigation"]');
+    const btn = nav && [...nav.querySelectorAll('button')].find(b => b.innerText.trim().startsWith(${JSON.stringify(label)}));
+    if (btn) btn.click();
+    return !!btn;
+  })()`);
+  await sleep(900);
+  const mobileReport = await report();
+  mobileResults.push({ label, ...mobileReport });
+  await shot(`9${mobileResults.length}-${label.replace(/\s+/g, "-").toLowerCase()}`);
+}
+
+writeFileSync(`${OUT}/results.json`, JSON.stringify({ results, mobileResults, loginUx, searchResult, consoleProblems, uncaughtExceptions }, null, 2));
 const crashes = results.filter((r) => r.crash || r.textLen === 0);
+const accessibilityFailures = results.filter((r) => r.unlabeledControls > 0);
+const mobileFailures = mobileResults.filter((r) => r.crash || r.textLen === 0 || r.horizontalOverflow || r.unlabeledControls > 0);
 console.log("ROUTES:", results.length);
 console.log("BLANK/CRASH:", crashes.length);
+console.log("SEARCH:", JSON.stringify(searchResult));
+console.log("CONSOLE ERRORS/WARNINGS:", consoleProblems.length);
+console.log("UNCAUGHT EXCEPTIONS:", uncaughtExceptions.length);
+console.log("UNLABELED CONTROLS:", accessibilityFailures.length);
+console.log("MOBILE SUPPLEMENTAL:", mobileResults.length, "failures:", mobileFailures.length);
 for (const r of results) {
-  console.log(`  ${r.crash ? "CRASH" : r.textLen === 0 ? "BLANK" : "ok   "} | ${r.label} | textLen=${r.textLen} | footer=${r.footer ?? "-"}`);
+  console.log(`  ${r.crash ? "CRASH" : r.textLen === 0 ? "BLANK" : "ok   "} | ${r.label} | textLen=${r.textLen} | footer=${r.footer ?? "-"} | unlabeled=${r.unlabeledControls}`);
 }
-process.exit(crashes.length === 0 ? 0 : 1);
+if (consoleProblems.length) console.log("CONSOLE DETAILS:", JSON.stringify(consoleProblems, null, 2));
+if (uncaughtExceptions.length) console.log("EXCEPTION DETAILS:", JSON.stringify(uncaughtExceptions, null, 2));
+const searchWorks = searchResult.query === "Ops" && searchResult.rendered;
+const loginUxWorks = loginUx.signInHeading && !loginUx.loginWorkspaceField && loginUx.signupWorkspaceField;
+process.exit(
+  crashes.length === 0 &&
+  accessibilityFailures.length === 0 &&
+  mobileFailures.length === 0 &&
+  consoleProblems.length === 0 &&
+  uncaughtExceptions.length === 0 &&
+  searchWorks &&
+  loginUxWorks
+    ? 0
+    : 1,
+);

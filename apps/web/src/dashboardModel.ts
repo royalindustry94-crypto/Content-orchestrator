@@ -58,7 +58,7 @@ export const HEALTH_COPY: Record<HealthLevel, { label: string; orb: string }> = 
   operational: { label: "All systems operational", orb: "good" },
   degraded: { label: "Degraded performance", orb: "warn" },
   down: { label: "Service disruption detected", orb: "bad" },
-  unknown: { label: "Checking system status…", orb: "unknown" },
+  unknown: { label: "System status unavailable", orb: "unknown" },
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {

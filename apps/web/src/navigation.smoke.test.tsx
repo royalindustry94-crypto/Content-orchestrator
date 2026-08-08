@@ -182,6 +182,15 @@ describe("dashboard navigation smoke test", () => {
     expect(await screen.findByText("Review Waiting")).toBeDefined();
   });
 
+  it("opens the keyboard command palette and closes it with Escape", async () => {
+    renderShell();
+    await screen.findByText(/Operations overview/i);
+    fireEvent.keyDown(window, { key: "k", ctrlKey: true });
+    expect(await screen.findByRole("dialog", { name: /command palette/i })).toBeDefined();
+    fireEvent.keyDown(document, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: /command palette/i })).toBeNull());
+  });
+
   it("navigates across every route without a blank-screen crash", async () => {
     renderShell();
     await screen.findByText(/Operations overview/i);
@@ -221,6 +230,30 @@ describe("dashboard navigation smoke test", () => {
     expect(await screen.findByText(/We couldn’t load this view|We couldn't load this view/i)).toBeDefined();
     // Shell still intact.
     expect(screen.getByText("Lumora")).toBeDefined();
+  });
+
+  it("ignores a late response from a route that is no longer active", async () => {
+    const api = await import("./api");
+    renderShell();
+    await screen.findByText(/Operations overview/i);
+
+    let resolvePipeline!: (value: typeof pipelines) => void;
+    const delayedPipeline = new Promise<typeof pipelines>((resolve) => {
+      resolvePipeline = resolve;
+    });
+    (api.getPipelineMonitor as unknown as ReturnType<typeof vi.fn>)
+      .mockImplementationOnce(() => delayedPipeline);
+
+    const nav = screen.getByRole("navigation", { name: /primary navigation/i });
+
+    fireEvent.click(within(nav).getByRole("button", { name: /^Pipelines$/i }));
+    fireEvent.click(within(nav).getByRole("button", { name: /^Workers$/i }));
+    expect(await screen.findByText(/No workers registered/i)).toBeDefined();
+
+    resolvePipeline(pipelines);
+    await waitFor(() => expect(screen.getByText(/No workers registered/i)).toBeDefined());
+    expect(screen.queryByText(/No active pipelines/i)).toBeNull();
+    expect(screen.queryByText(/Lumora hit an unexpected error/i)).toBeNull();
   });
 });
 

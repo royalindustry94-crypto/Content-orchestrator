@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import ErrorBoundary from "./ErrorBoundary";
+import { useDialogFocus } from "./useDialogFocus";
 import {
   createLead,
   decideReviewGate,
@@ -400,6 +401,7 @@ function ReviewQueue({
   onDecision: (gate: ReviewGate, approved: boolean) => Promise<void>;
 }) {
   const [selected, setSelected] = useState<ReviewGate | null>(null);
+  const drawerRef = useDialogFocus<HTMLElement>(selected !== null, () => setSelected(null));
   useEffect(() => {
     if (selected) {
       const fresh = gates.find((gate) => gate.id === selected.id);
@@ -447,7 +449,7 @@ function ReviewQueue({
       )}
       {selected ? (
         <div className="drawer-backdrop" onMouseDown={() => setSelected(null)} role="presentation">
-          <aside aria-label="Review details" aria-modal="true" className="review-drawer" onMouseDown={(event) => event.stopPropagation()} role="dialog">
+          <aside aria-label="Review details" aria-modal="true" className="review-drawer" onMouseDown={(event) => event.stopPropagation()} ref={drawerRef} role="dialog" tabIndex={-1}>
             <header className="drawer-header">
               <div><p>Human Review Gate</p><h2>{selected.topic}</h2></div>
               <button aria-label="Close review details" onClick={() => setSelected(null)} type="button"><Icon name="close" /></button>
@@ -562,15 +564,19 @@ function LeadsView({
 }) {
   const [showForm, setShowForm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [form, setForm] = useState({ name: "", company: "", email: "", source: "manual" });
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
+    setActionError(null);
     try {
       await createLead(token, workspaceId, form);
       setShowForm(false);
       setForm({ name: "", company: "", email: "", source: "manual" });
       refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to create the lead.");
     } finally {
       setBusy(false);
     }
@@ -590,6 +596,7 @@ function LeadsView({
           <button className="button button--primary" disabled={busy} type="submit">{busy ? "Saving…" : "Save lead"}</button>
         </form>
       ) : null}
+      {actionError ? <p className="error" role="alert">{actionError}</p> : null}
       {data.leads.length === 0 ? (
         <EmptyState icon="leads" title="No leads yet" message="Add your first lead or connect a source to start tracking your pipeline." />
       ) : (
@@ -603,7 +610,14 @@ function LeadsView({
             <span>
               <select
                 aria-label={`Status for ${lead.name}`}
-                onChange={(event) => void updateLead(token, workspaceId, lead.id, { status: event.target.value }).then(refresh)}
+                onChange={(event) => {
+                  setActionError(null);
+                  void updateLead(token, workspaceId, lead.id, { status: event.target.value })
+                    .then(refresh)
+                    .catch((cause: unknown) => {
+                      setActionError(cause instanceof Error ? cause.message : "Unable to update the lead.");
+                    });
+                }}
                 value={lead.status}
               >
                 {LEAD_STATUSES.map((status) => <option key={status} value={status}>{status}</option>)}
@@ -674,10 +688,12 @@ export default function LumoraDashboard({
   const [nav, setNav] = useState<NavKey>("dashboard");
   const [missionTab, setMissionTab] = useState<MissionTab>("overview");
   const [data, setData] = useState<ViewData>(null);
+  const [loadedKey, setLoadedKey] = useState<string | null>(null);
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [notifications, setNotifications] = useState<Notifications | null>(null);
   const [reviewCount, setReviewCount] = useState(0);
   const [health, setHealth] = useState<SystemHealth | null>(null);
+  const [healthWorkspaceId, setHealthWorkspaceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -685,9 +701,12 @@ export default function LumoraDashboard({
   const [notificationOpen, setNotificationOpen] = useState(false);
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [reviewBusy, setReviewBusy] = useState<string | null>(null);
+  const [reviewActionError, setReviewActionError] = useState<string | null>(null);
   const requestId = useRef(0);
+  const mobileNavRef = useDialogFocus<HTMLElement>(mobileOpen, () => setMobileOpen(false));
 
   const currentWorkspace = workspaces.find((workspace) => workspace.id === workspaceId);
+  const viewKey = `${workspaceId}:${nav}:${missionTab}`;
 
   useEffect(() => {
     let active = true;
@@ -706,13 +725,24 @@ export default function LumoraDashboard({
       .then((gates) => { if (active) setReviewCount(gates.length); })
       .catch(() => { if (active) setReviewCount(0); });
     void getSystemHealth(token, workspaceId)
-      .then((value) => { if (active) setHealth(value); })
-      .catch(() => { if (active) setHealth(null); });
+      .then((value) => {
+        if (active) {
+          setHealth(value);
+          setHealthWorkspaceId(workspaceId);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setHealth(null);
+          setHealthWorkspaceId(workspaceId);
+        }
+      });
     return () => { active = false; };
   }, [token, workspaceId]);
 
   const load = useCallback(async () => {
     const currentRequest = requestId.current + 1;
+    const currentViewKey = `${workspaceId}:${nav}:${missionTab}`;
     requestId.current = currentRequest;
     const isCurrent = () => requestId.current === currentRequest;
     setLoading(true);
@@ -762,14 +792,18 @@ export default function LumoraDashboard({
       }
       if (!isCurrent()) return;
       setData(next);
+      setLoadedKey(currentViewKey);
       if (nav === "dashboard" && next && "health" in next) {
         setHealth((next as DashboardData).health);
+        setHealthWorkspaceId(workspaceId);
       } else if (nav === "settings" && next && "health" in next) {
         setHealth((next as { health: SystemHealth }).health);
+        setHealthWorkspaceId(workspaceId);
       }
     } catch (cause) {
       if (!isCurrent()) return;
       setData(null);
+      setLoadedKey(currentViewKey);
       setError(cause instanceof Error ? cause.message : "Unable to load this view");
     } finally {
       if (isCurrent()) setLoading(false);
@@ -780,7 +814,9 @@ export default function LumoraDashboard({
 
   const navigate = (next: NavKey) => {
     if (next !== nav) {
+      requestId.current += 1;
       setData(null);
+      setLoadedKey(null);
       setError(null);
       setLoading(true);
       setMissionTab("overview");
@@ -791,7 +827,9 @@ export default function LumoraDashboard({
 
   const changeMissionTab = (next: MissionTab) => {
     if (next !== missionTab) {
+      requestId.current += 1;
       setData(null);
+      setLoadedKey(null);
       setError(null);
       setLoading(true);
       setMissionTab(next);
@@ -801,13 +839,17 @@ export default function LumoraDashboard({
   const title = NAV.find((item) => item.id === nav)?.label ?? "Dashboard";
   const awaitingReviews = Array.isArray(data) ? data.filter((gate) => gate.status === "awaiting") : [];
   const notificationCount = notifications?.notifications.length ?? 0;
-  const healthLevel = aggregateHealth(health);
+  const displayedHealth = healthWorkspaceId === workspaceId ? health : null;
+  const healthLevel = aggregateHealth(displayedHealth);
 
   const decide = async (gate: ReviewGate, approved: boolean) => {
     setReviewBusy(gate.id);
+    setReviewActionError(null);
     try {
       await decideReviewGate(token, workspaceId, gate.id, approved);
       await load();
+    } catch (cause) {
+      setReviewActionError(cause instanceof Error ? cause.message : "Unable to save the review decision.");
     } finally {
       setReviewBusy(null);
     }
@@ -819,8 +861,13 @@ export default function LumoraDashboard({
     // Review Queue drives its own list off the shared review fetch and always
     // renders (loading gate below only applies to data-backed views).
     if (nav === "review") {
-      if (loading) return <Loading />;
-      return <ReviewQueue busy={reviewBusy} gates={awaitingReviews} onDecision={decide} workspaceName={currentWorkspace?.name ?? "Current workspace"} />;
+      if (loading || loadedKey !== viewKey) return <Loading />;
+      return (
+        <>
+          {reviewActionError ? <p className="error" role="alert">{reviewActionError}</p> : null}
+          <ReviewQueue busy={reviewBusy} gates={awaitingReviews} onDecision={decide} workspaceName={currentWorkspace?.name ?? "Current workspace"} />
+        </>
+      );
     }
 
     // The AI assistant manages its own request lifecycle and needs no view data.
@@ -832,6 +879,7 @@ export default function LumoraDashboard({
     // for the *current* route resolves with a matching payload shape. This is
     // what prevents stale-data crashes on navigation.
     if (loading) return <Loading />;
+    if (loadedKey !== viewKey) return <Loading />;
 
     if (nav === "dashboard") {
       if (isDashboardData(data)) return <DashboardHome data={data} navigate={navigate} token={token} workspaceId={workspaceId} />;
@@ -922,7 +970,14 @@ export default function LumoraDashboard({
         const mapping: Record<string, NavKey> = { executive: "dashboard", pipelines: "pipelines", workers: "workers", customers: "customers", leads: "leads", spend: "billing", alerts: "mission" };
         navigate(mapping[target] ?? "mission");
       }} token={token} workspaceId={workspaceId} />
-      <aside className={mobileOpen ? "lumora-sidebar lumora-sidebar--open" : "lumora-sidebar"}>
+      <aside
+        aria-label={mobileOpen ? "Mobile navigation" : undefined}
+        aria-modal={mobileOpen ? "true" : undefined}
+        className={mobileOpen ? "lumora-sidebar lumora-sidebar--open" : "lumora-sidebar"}
+        ref={mobileNavRef}
+        role={mobileOpen ? "dialog" : undefined}
+        tabIndex={-1}
+      >
         <div className="brand">
           <span className="brand-mark">L</span>
           <div><strong>Lumora</strong><small>Mission Control</small></div>
@@ -958,7 +1013,7 @@ export default function LumoraDashboard({
           <span className={`status-orb status-orb--${HEALTH_COPY[healthLevel].orb}`} />
           <div>
             <strong>{HEALTH_COPY[healthLevel].label}</strong>
-            <small>{health ? `Updated ${relativeTime(health.generated_at)}` : "Live service status"}</small>
+            <small>{displayedHealth ? `Updated ${relativeTime(displayedHealth.generated_at)}` : "Live service status"}</small>
           </div>
         </button>
       </aside>
