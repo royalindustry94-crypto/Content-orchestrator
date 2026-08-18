@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
@@ -238,3 +239,34 @@ async def test_idempotent_content_job_returns_same_gate(client, new_user):
             .all()
         )
         assert len(gates) == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_review_decisions_are_serialized(client, new_user):
+    _user_id, _token, headers = new_user
+    workspace_id = await _create_workspace(client, headers)
+    created = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=headers,
+        json={"topic": "Concurrent decision", "script_body": "Body"},
+    )
+    assert created.status_code == 201, created.text
+    gate_id = created.json()["review_gate_id"]
+
+    approve, reject = await asyncio.gather(
+        client.post(
+            f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
+            headers=headers,
+            json={"approved": True, "notes": "approve race"},
+        ),
+        client.post(
+            f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
+            headers=headers,
+            json={"approved": False, "notes": "reject race"},
+        ),
+    )
+
+    assert sorted((approve.status_code, reject.status_code)) == [200, 409]
+    decided = approve if approve.status_code == 200 else reject
+    assert decided.json()["status"] in {"approved", "rejected"}
+    assert decided.json()["decided_at"] is not None

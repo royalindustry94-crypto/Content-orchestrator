@@ -14,6 +14,10 @@ set -a
 source .env
 set +a
 
+: "${OPS_PREVIEW_EMAIL:?Set OPS_PREVIEW_EMAIL in .env for the local preview}"
+: "${OPS_PREVIEW_PASSWORD:?Set OPS_PREVIEW_PASSWORD in .env for the local preview}"
+export OPS_PREVIEW_EMAIL OPS_PREVIEW_PASSWORD
+
 export ENVIRONMENT="${ENVIRONMENT:-development}"
 export AUTH_MODE="${AUTH_MODE:-local}"
 WEB_PORT="${PORT:-5000}"
@@ -69,5 +73,5 @@ done
 echo "==> Seeding demo data"
 API_BASE_URL=http://127.0.0.1:8000 python3 scripts/seed_ops_preview.py || true
 
-echo "Replit preview on port ${WEB_PORT} (login founder@lumora.local / lumora-demo-2026)"
+echo "Replit preview on port ${WEB_PORT}; preview credentials are supplied through OPS_PREVIEW_ environment variables and are not echoed"
 wait

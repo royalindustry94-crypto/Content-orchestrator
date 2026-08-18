@@ -16,6 +16,10 @@ set -a
 source .env
 set +a
 
+: "${OPS_PREVIEW_EMAIL:?Set OPS_PREVIEW_EMAIL in .env for the local preview}"
+: "${OPS_PREVIEW_PASSWORD:?Set OPS_PREVIEW_PASSWORD in .env for the local preview}"
+export OPS_PREVIEW_EMAIL OPS_PREVIEW_PASSWORD
+
 export ENVIRONMENT="${ENVIRONMENT:-development}"
 export AUTH_MODE="${AUTH_MODE:-local}"
 if [[ -z "${CORS_ALLOW_ORIGINS:-}" ]] || ! python3 -c 'import json,os,sys; json.loads(os.environ["CORS_ALLOW_ORIGINS"])' 2>/dev/null; then
@@ -54,8 +58,7 @@ cat <<EOF
 Preview ready
   Preview URL:      http://localhost:5173/
   Admin login URL:  http://localhost:5173/
-  Username:         founder@lumora.local
-  Password:         lumora-demo-2026
+  Credentials:      supplied through OPS_PREVIEW_EMAIL and OPS_PREVIEW_PASSWORD; not echoed
 
 Staging compose (on a host with working Docker Engine):
   docker compose -f docker-compose.staging.yml up --build

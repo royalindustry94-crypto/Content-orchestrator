@@ -381,10 +381,12 @@ async def decide_review_gate(
 ) -> dict:
     gate = (
         await session.execute(
-            select(ReviewGate).where(
+            select(ReviewGate)
+            .where(
                 ReviewGate.workspace_id == workspace_id,
                 ReviewGate.id == gate_id,
             )
+            .with_for_update()
         )
     ).scalar_one_or_none()
     if gate is None:

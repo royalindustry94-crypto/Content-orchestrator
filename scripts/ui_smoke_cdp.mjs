@@ -6,8 +6,11 @@ const BASE = "http://127.0.0.1:5173";
 const OUT = "/tmp/cursor/artifacts/p0-verify";
 mkdirSync(OUT, { recursive: true });
 
-const EMAIL = process.env.DEMO_EMAIL || "founder@lumora.local";
-const PASSWORD = process.env.DEMO_PASSWORD || "lumora-demo-2026";
+const EMAIL = process.env.DEMO_EMAIL;
+const PASSWORD = process.env.DEMO_PASSWORD;
+if (!EMAIL || !PASSWORD) {
+  throw new Error("DEMO_EMAIL and DEMO_PASSWORD are required for UI smoke credentials");
+}
 
 const version = await (await fetch("http://127.0.0.1:9222/json/version")).json();
 const wsUrl = version.webSocketDebuggerUrl;

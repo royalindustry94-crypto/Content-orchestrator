@@ -15,8 +15,8 @@ from datetime import UTC, datetime, timedelta
 from urllib import error, request
 
 API = os.environ.get("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
-EMAIL = os.environ.get("OPS_PREVIEW_EMAIL", "founder@lumora.local")
-PASSWORD = os.environ.get("OPS_PREVIEW_PASSWORD", "lumora-demo-2026")
+EMAIL = os.environ["OPS_PREVIEW_EMAIL"]
+PASSWORD = os.environ["OPS_PREVIEW_PASSWORD"]
 WORKSPACE_NAME = os.environ.get("OPS_PREVIEW_WORKSPACE", "Lumora HQ")
 
 
