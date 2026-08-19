@@ -58,9 +58,11 @@ access to GitHub. Authenticated retrieval resolved all three.
 | E-32 | Post-fix dependency audit | `pip-audit` on compiled API and worker requirements | No known vulnerabilities for both graphs | VERIFIED | Point-in-time advisory data. |
 | E-33 | Publication eligibility control | `tests/test_publication_policy_closure.py` | 15 passed, including fail-closed per missing attestation, duplicate-fingerprint refusal, and RLS attestation authority | VERIFIED | No publishing executor exists yet to gate. |
 | E-34 | Data export and deletion control | `tests/test_data_governance_closure.py` | 10 passed, including cross-tenant refusal, credential exclusion, confirmation mismatch, retention of financial records, and the soft-delete visibility contract | VERIFIED | Retention automation and legal notification remain out of scope. |
+| E-35 | Repository-fix audit commit hosted CI | [Run 32273905572][4] for `efdeb1d6d9b7ed9a988923cb0ae22e1108e9673a` | **api, web, worker, security and docker-build all success** | VERIFIED | This is the full hosted CI result for the repository-fix commit. A subsequent documentation-only commit requires its own CI result. |
 
 ## References
 
 [1]: https://github.com/royalindustry94-crypto/Content-orchestrator/commit/c91d9d3a3530b944801c50ad8f2be77879101e49/checks
 [2]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/31251558524
 [3]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/32159036719
+[4]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/32273905572

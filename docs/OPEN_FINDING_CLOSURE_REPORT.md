@@ -137,6 +137,7 @@ or denied list fails the suite.
 | Web lint, production build, tests, `npm audit --audit-level=high` | Passed; **23 passed**; 0 vulnerabilities |
 | `pip-audit` (API and worker requirement sets) | No known vulnerabilities found |
 | Tracked-file credential literal scan | No hardcoded credential literals in non-test application or script code |
+| Hosted PR CI for `efdeb1d` | [Run 32273905572][3]: API, web, worker, security and Docker build all succeeded |
 
 New test files added on this branch: `test_open_finding_closure.py`,
 `test_billing_webhook_ordering.py`, `test_security_controls_closure.py`,
@@ -171,3 +172,4 @@ their named owners before a production launch claim.
 
 [1]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/31251558524
 [2]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/32159036719
+[3]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/32273905572
