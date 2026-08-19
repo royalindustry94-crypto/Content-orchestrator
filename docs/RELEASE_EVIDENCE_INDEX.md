@@ -34,3 +34,33 @@
 ## Evidence artifacts
 
 Audit-run logs and temporary backup artifacts are retained only in the isolated local audit workspace and are intentionally not committed. The repository records the reproducible commands, target SHA, results, and limitations above; it does not commit customer, token, or database data.
+
+## Sprint 2 evidence (open-finding closure, audit branch)
+
+**Audit branch:** `audit/closure-evidence-0035`
+**Evidence date:** 2026-08-19 GMT+8
+
+These entries supersede E-16, E-17 and E-18, which were limited by unauthenticated
+access to GitHub. Authenticated retrieval resolved all three.
+
+| ID | Requirement / check | Exact command or subject | Result | Evidence state | Limit |
+|---|---|---|---|---|---|
+| E-22 | Candidate CI, complete conclusions | `gh api` run/job lookup for `c91d9d3…` | [Run 31251558524][2] conclusion **success**; jobs web, docker-build, worker, api, security all success | VERIFIED | SHA-specific; does not transfer to any other commit. |
+| E-23 | Audit-branch CI, complete conclusions | `gh api` run/job lookup for `5039fe0…` | [Run 32159036719][3] conclusion **success**; all five jobs success | VERIFIED | Covers the commit pushed before this sprint's further changes. |
+| E-24 | Secret scan and dependency audit in CI | `security` job step conclusions | Gitleaks **success**; pip-audit (API) **success**; pip-audit (worker) **success** | VERIFIED | Supersedes E-18's REPORTED state. |
+| E-25 | Docker image build | `docker-build` job conclusion | success on both runs | VERIFIED | Supersedes E-17's REPORTED state. |
+| E-26 | NO_WORKER budget-leak reproduction | Direct orchestration tests before the fix | Reproduced: reservation held with no worker and no lease while the job was retired | VERIFIED | Local isolated database. |
+| E-27 | Metrics fail-open reproduction | Environment-matrix authorisation tests | Reproduced: staging/preview/demo/beta/unknown served telemetry with no token | VERIFIED | Code-level; hosted configuration remains unverified. |
+| E-28 | Local-auth brute-force reproduction | Repeated-login and timing tests | Reproduced: unlimited attempts and an unknown-versus-known timing difference | VERIFIED | Local isolated database. |
+| E-29 | Soft-delete RLS reproduction | Runtime-role tombstone probe vs. control update | `deleted_at` write refused; ordinary column write accepted; removing only the SELECT predicate made the identical write succeed | VERIFIED | Root cause isolated by rolled-back experiment. |
+| E-30 | Post-fix API gate | `alembic downgrade base && alembic upgrade head && ruff check . && pytest --cov=app --cov-fail-under=75` | Migration cycle clean; lint clean; **262 passed**; coverage **77.92%** | VERIFIED | Local isolated database. |
+| E-31 | Post-fix worker and web gates | `ruff check . && pytest`; `npm run lint && npm run build && npx vitest run && npm audit --audit-level=high` | 4 passed; build succeeded; 23 passed; 0 vulnerabilities | VERIFIED | Local only. |
+| E-32 | Post-fix dependency audit | `pip-audit` on compiled API and worker requirements | No known vulnerabilities for both graphs | VERIFIED | Point-in-time advisory data. |
+| E-33 | Publication eligibility control | `tests/test_publication_policy_closure.py` | 15 passed, including fail-closed per missing attestation, duplicate-fingerprint refusal, and RLS attestation authority | VERIFIED | No publishing executor exists yet to gate. |
+| E-34 | Data export and deletion control | `tests/test_data_governance_closure.py` | 10 passed, including cross-tenant refusal, credential exclusion, confirmation mismatch, retention of financial records, and the soft-delete visibility contract | VERIFIED | Retention automation and legal notification remain out of scope. |
+
+## References
+
+[1]: https://github.com/royalindustry94-crypto/Content-orchestrator/commit/c91d9d3a3530b944801c50ad8f2be77879101e49/checks
+[2]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/31251558524
+[3]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/32159036719

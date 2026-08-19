@@ -15,6 +15,7 @@ from app.api.routes.auth import router as auth_router
 from app.api.routes.billing import router as billing_router
 from app.api.routes.concurrency import router as concurrency_router
 from app.api.routes.content_jobs import router as content_jobs_router
+from app.api.routes.data_governance import router as data_governance_router
 from app.api.routes.health import router as health_router
 from app.api.routes.memberships import router as memberships_router
 from app.api.routes.metrics import router as metrics_router
@@ -211,3 +212,4 @@ app.include_router(billing_router)
 app.include_router(concurrency_router)
 app.include_router(workers_machine_router)
 app.include_router(workers_admin_router)
+app.include_router(data_governance_router)

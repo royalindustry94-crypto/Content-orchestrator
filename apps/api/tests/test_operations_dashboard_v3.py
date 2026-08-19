@@ -312,7 +312,7 @@ async def test_mission_control_requires_admin(client, new_user):
     workspace_id = workspace.json()["id"]
     outsider = await client.post(
         "/auth/signup",
-        json={"email": f"{uuid.uuid4()}@example.com", "password": "securepass1"},
+        json={"email": f"{uuid.uuid4()}@example.com", "password": "securepass1-beta"},
     )
     outsider_headers = {
         "Authorization": f"Bearer {outsider.json()['access_token']}"

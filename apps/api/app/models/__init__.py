@@ -22,6 +22,7 @@ from app.models.operations import DeadLetterJob, WebhookEvent  # noqa: F401
 from app.models.pipeline import PipelineRun, PipelineStageRun  # noqa: F401
 from app.models.profile import Profile  # noqa: F401
 from app.models.provider_effects import ProviderEffectKey  # noqa: F401
+from app.models.publication_policy import PublicationEligibility  # noqa: F401
 from app.models.recovery_audit import StageRecoveryAudit  # noqa: F401
 from app.models.review_gate import ReviewGate  # noqa: F401
 from app.models.scheduling import JobSchedule, WorkspaceConcurrencyLimit  # noqa: F401
@@ -55,4 +56,5 @@ __all__ = [
     "BillingWebhookEvent",
     "WorkspaceBilling",
     "WorkerLog",
+    "PublicationEligibility",
 ]

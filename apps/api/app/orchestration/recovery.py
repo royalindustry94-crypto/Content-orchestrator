@@ -34,6 +34,22 @@ from app.orchestration.events.types import STAGE_REASSIGNED
 from app.orchestration.outbox import emit
 from app.orchestration.retry import route_to_dead_letter
 
+# --- attempt-consumption rule (M-C) ---------------------------------------
+#
+# A crashed or lease-expired attempt DOES consume one execution attempt.
+# Rationale, from the existing architecture rather than a new invention:
+#   * the attempt is the unit that reserves budget and reserves a provider
+#     effect key (workers.py ack), so an attempt that reached a worker may
+#     already have produced a billable, non-idempotent side effect;
+#   * treating a crash as free would let a worker that reliably dies after
+#     starting provider work loop without bound while spending money;
+#   * ``max_attempts`` is therefore an upper bound on *starts*, not on
+#     clean completions.
+# Consequence enforced below and by regression tests: recovery increments
+# attempt_number monotonically, and the (previous_attempt + 1) > max_attempts
+# comparison means a stage can never start more than max_attempts times.
+ATTEMPT_CONSUMED_ON_RECOVERY = True
+
 
 class RecoveryResultKind(str, Enum):
     REQUEUED = "requeued"
@@ -211,6 +227,29 @@ async def recover_assignment(
         return RecoveryResult(
             assignment, RecoveryResultKind.DEAD_LETTERED, previous_attempt, None
         )
+
+    # Requeue for another attempt. The recovered row is unowned again, so it
+    # must not keep holding workspace budget (H-3): the claim path reserves
+    # afresh when a worker takes ownership.
+    run_for_release = await session.get(PipelineRun, assignment.pipeline_run_id)
+    if run_for_release is not None:
+        from app.models.enums import ReservationStatus as _ReservationStatus
+        from app.models.spend import SpendReservation as _SpendReservation
+        from app.orchestration import controller as _controller
+
+        stale = (
+            await session.execute(
+                select(_SpendReservation).where(
+                    _SpendReservation.pipeline_run_id == assignment.pipeline_run_id,
+                    _SpendReservation.stage == assignment.stage,
+                    _SpendReservation.status == _ReservationStatus.RESERVED,
+                )
+            )
+        ).scalars().all()
+        for row in stale:
+            await _controller.release_spend(
+                session, run=run_for_release, reservation=row
+            )
 
     assignment.status = StageAssignmentStatus.PENDING
     assignment.attempt_number = next_attempt

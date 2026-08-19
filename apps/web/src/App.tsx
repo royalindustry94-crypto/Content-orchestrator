@@ -131,7 +131,7 @@ export default function App() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={8}
+              minLength={mode === "signup" ? 12 : 1}
               autoComplete={mode === "login" ? "current-password" : "new-password"}
             />
           </label>

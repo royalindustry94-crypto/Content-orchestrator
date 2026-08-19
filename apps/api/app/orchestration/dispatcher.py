@@ -258,8 +258,15 @@ async def dispatch_stage(
 
     # Spend reservation before creating work — Draft Desk uses a small
     # default estimate so monthly/daily caps are enforced on the hot path.
+    #
+    # H-3/NO_WORKER: only reserve when a worker is actually being assigned.
+    # A PENDING (unassigned) row performs no provider work, so reserving here
+    # would hold workspace budget open with nothing to release it — the
+    # scheduler retires the job as DONE (H-2), and neither submit_result nor
+    # the lease reaper ever sees the row. The claim path reserves instead,
+    # at the moment a worker takes ownership.
     effective_provider = provider or "draft_desk"
-    if run_for_spend is not None:
+    if run_for_spend is not None and worker is not None:
         estimate = Decimal(str(get_settings().default_stage_estimate_usd))
         reservation = await controller.reserve_spend(
             session,

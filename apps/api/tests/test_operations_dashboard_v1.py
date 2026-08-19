@@ -174,7 +174,7 @@ async def test_operations_dashboard_requires_admin(client, new_user):
 
     email = f"{uuid.uuid4()}@example.com"
     outsider = await client.post(
-        "/auth/signup", json={"email": email, "password": "securepass1"}
+        "/auth/signup", json={"email": email, "password": "securepass1-beta"}
     )
     outsider_headers = {
         "Authorization": f"Bearer {outsider.json()['access_token']}"

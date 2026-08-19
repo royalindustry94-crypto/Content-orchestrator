@@ -255,7 +255,7 @@ async def test_v4_endpoints_require_admin(client, new_user):
         "/auth/signup",
         json={
             "email": f"{uuid.uuid4()}@example.com",
-            "password": "securepass1",
+            "password": "securepass1-beta",
         },
     )
     outsider_headers = {
