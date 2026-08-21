@@ -267,45 +267,60 @@ async def executive_insights(
 async def action_pause_workers(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> QuickActionResult:
     async with AsyncSessionLocal() as session:
-        return await operations_mission.pause_workers(session, workspace_id)
+        return await operations_mission.pause_workers(
+            session, workspace_id, actor_id=uuid.UUID(user.id)
+        )
 
 
 @router.post("/actions/resume-workers", response_model=QuickActionResult)
 async def action_resume_workers(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> QuickActionResult:
     async with AsyncSessionLocal() as session:
-        return await operations_mission.resume_workers(session, workspace_id)
+        return await operations_mission.resume_workers(
+            session, workspace_id, actor_id=uuid.UUID(user.id)
+        )
 
 
 @router.post("/actions/emergency-stop", response_model=QuickActionResult)
 async def action_emergency_stop(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> QuickActionResult:
     async with AsyncSessionLocal() as session:
-        return await operations_mission.emergency_stop(session, workspace_id)
+        return await operations_mission.emergency_stop(
+            session, workspace_id, actor_id=uuid.UUID(user.id)
+        )
 
 
 @router.post("/actions/retry-failed-jobs", response_model=QuickActionResult)
 async def action_retry_failed_jobs(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> QuickActionResult:
     async with AsyncSessionLocal() as session:
-        return await operations_mission.retry_failed_jobs(session, workspace_id)
+        return await operations_mission.retry_failed_jobs(
+            session, workspace_id, actor_id=uuid.UUID(user.id)
+        )
 
 
 @router.post("/actions/clear-dead-letter", response_model=QuickActionResult)
 async def action_clear_dead_letter(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    user: AuthenticatedUser = Depends(get_current_user),
 ) -> QuickActionResult:
     async with AsyncSessionLocal() as session:
-        return await operations_mission.clear_dead_letter_queue(session, workspace_id)
+        return await operations_mission.clear_dead_letter_queue(
+            session, workspace_id, actor_id=uuid.UUID(user.id)
+        )
 
 
 @router.post("/actions/sync-github", response_model=QuickActionResult)

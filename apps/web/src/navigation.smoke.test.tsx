@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import LumoraDashboard from "./LumoraDashboard";
+import { QuickActionsView } from "./MissionControlPanels";
 
 /**
  * Navigation + mobile smoke tests.
@@ -157,11 +158,42 @@ function renderShell() {
 }
 
 beforeEach(() => {
+  vi.clearAllMocks();
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 
 afterEach(() => {
   cleanup();
+});
+
+describe("Mission Control destructive-action interlock", () => {
+  it("requires a second explicit click before discarding dead-letter evidence", async () => {
+    render(<QuickActionsView token="t" workspaceId="ws-1" />);
+    const api = await import("./api");
+    const clear = screen.getByRole("button", { name: "Clear Dead Letter Queue" });
+
+    fireEvent.click(clear);
+    expect(api.postMissionAction).not.toHaveBeenCalled();
+    expect(screen.getByRole("button", { name: "Confirm Clear Dead Letter Queue" })).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Clear Dead Letter Queue" }));
+    await waitFor(() =>
+      expect(api.postMissionAction).toHaveBeenCalledWith("t", "ws-1", "clear-dead-letter"),
+    );
+  });
+
+  it("requires a second explicit click before emergency stop", async () => {
+    render(<QuickActionsView token="t" workspaceId="ws-1" />);
+    const api = await import("./api");
+    const stop = screen.getByRole("button", { name: "Emergency Stop" });
+
+    fireEvent.click(stop);
+    expect(api.postMissionAction).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm Emergency Stop" }));
+    await waitFor(() =>
+      expect(api.postMissionAction).toHaveBeenCalledWith("t", "ws-1", "emergency-stop"),
+    );
+  });
 });
 
 describe("dashboard navigation smoke test", () => {

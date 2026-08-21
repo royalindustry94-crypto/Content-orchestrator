@@ -24,12 +24,18 @@ class ReviewGate(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):
             postgresql_where=text("status = 'awaiting'::review_gate_status"),
         ),
         Index("ix_review_gates_run", "pipeline_run_id", unique=False),
+        Index("ix_review_gates_content_version", "content_version_id", unique=False),
         Index("ix_review_gates_workspace_status", "workspace_id", "status", unique=False),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     pipeline_run_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=False
+    )
+    # Immutable version reviewed when the gate was opened.  Historical gates
+    # may be null after migration; publication treats that as fail-closed.
+    content_version_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("content_versions.id"), nullable=True
     )
     stage: Mapped[ContentStage] = mapped_column(
         SAEnum(ContentStage, name="content_stage", native_enum=True,

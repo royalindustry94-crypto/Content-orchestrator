@@ -47,6 +47,7 @@ from app.models.spend import SpendLog
 from app.models.workers import WorkerCredential, WorkerRegistration
 from app.models.workspace_membership import WorkspaceMembership
 from app.orchestration.events import types as event_types
+from app.orchestration.outbox import emit
 from app.orchestration.recovery import reap_worker_assignments
 from app.schemas.operations_mission import (
     ActivityFeedOut,
@@ -76,6 +77,7 @@ _EVENT_LABELS = {
     event_types.PUBLISH_COMPLETED: ("Publish completed", "info"),
     event_types.PIPELINE_FAILED: ("Pipeline failed", "critical"),
     event_types.PIPELINE_SUCCEEDED: ("Pipeline succeeded", "info"),
+    "operations.action.executed": ("Mission Control action executed", "warning"),
 }
 
 
@@ -702,6 +704,35 @@ async def content_command_center(
     )
 
 
+async def _record_quick_action(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    action: str,
+    affected: int,
+    details: dict[str, int] | None = None,
+) -> None:
+    """Persist a mutable Mission Control action in the append-only outbox."""
+    payload: dict[str, object] = {
+        "action": action,
+        "actor_id": str(actor_id),
+        "affected": affected,
+    }
+    if details:
+        payload.update(details)
+    await emit(
+        session,
+        event_type="operations.action.executed",
+        workspace_id=workspace_id,
+        aggregate_type="workspace",
+        aggregate_id=workspace_id,
+        correlation_id=uuid.uuid4(),
+        payload=payload,
+        produced_by="mission_control",
+    )
+
+
 async def _workspace_workers(
     session: AsyncSession, workspace_id: uuid.UUID
 ) -> list[WorkerRegistration]:
@@ -722,10 +753,19 @@ async def _workspace_workers(
     )
 
 
-async def pause_workers(session: AsyncSession, workspace_id: uuid.UUID) -> QuickActionResult:
+async def pause_workers(
+    session: AsyncSession, workspace_id: uuid.UUID, *, actor_id: uuid.UUID
+) -> QuickActionResult:
     workers = await _workspace_workers(session, workspace_id)
     for worker in workers:
         worker.drain = True
+    await _record_quick_action(
+        session,
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        action="pause_workers",
+        affected=len(workers),
+    )
     await session.commit()
     return QuickActionResult(
         action="pause_workers",
@@ -735,10 +775,19 @@ async def pause_workers(session: AsyncSession, workspace_id: uuid.UUID) -> Quick
     )
 
 
-async def resume_workers(session: AsyncSession, workspace_id: uuid.UUID) -> QuickActionResult:
+async def resume_workers(
+    session: AsyncSession, workspace_id: uuid.UUID, *, actor_id: uuid.UUID
+) -> QuickActionResult:
     workers = await _workspace_workers(session, workspace_id)
     for worker in workers:
         worker.drain = False
+    await _record_quick_action(
+        session,
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        action="resume_workers",
+        affected=len(workers),
+    )
     await session.commit()
     return QuickActionResult(
         action="resume_workers",
@@ -748,7 +797,9 @@ async def resume_workers(session: AsyncSession, workspace_id: uuid.UUID) -> Quic
     )
 
 
-async def emergency_stop(session: AsyncSession, workspace_id: uuid.UUID) -> QuickActionResult:
+async def emergency_stop(
+    session: AsyncSession, workspace_id: uuid.UUID, *, actor_id: uuid.UUID
+) -> QuickActionResult:
     workers = await _workspace_workers(session, workspace_id)
     revoked = 0
     for worker in workers:
@@ -770,6 +821,14 @@ async def emergency_stop(session: AsyncSession, workspace_id: uuid.UUID) -> Quic
         worker.status = WorkerStatus.OFFLINE
         worker.current_load = 0
         worker.drain = True
+    await _record_quick_action(
+        session,
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        action="emergency_stop",
+        affected=revoked,
+        details={"workers": len(workers)},
+    )
     await session.commit()
     return QuickActionResult(
         action="emergency_stop",
@@ -781,7 +840,7 @@ async def emergency_stop(session: AsyncSession, workspace_id: uuid.UUID) -> Quic
 
 
 async def retry_failed_jobs(
-    session: AsyncSession, workspace_id: uuid.UUID
+    session: AsyncSession, workspace_id: uuid.UUID, *, actor_id: uuid.UUID
 ) -> QuickActionResult:
     now = datetime.now(UTC)
     dlq = (
@@ -873,6 +932,13 @@ async def retry_failed_jobs(
         )
         enqueued += 1
 
+    await _record_quick_action(
+        session,
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        action="retry_failed_jobs",
+        affected=enqueued,
+    )
     await session.commit()
     return QuickActionResult(
         action="retry_failed_jobs",
@@ -883,7 +949,7 @@ async def retry_failed_jobs(
 
 
 async def clear_dead_letter_queue(
-    session: AsyncSession, workspace_id: uuid.UUID
+    session: AsyncSession, workspace_id: uuid.UUID, *, actor_id: uuid.UUID
 ) -> QuickActionResult:
     pending = (
         await session.execute(
@@ -895,6 +961,13 @@ async def clear_dead_letter_queue(
     ).scalars().all()
     for entry in pending:
         entry.status = DeadLetterStatus.DISCARDED
+    await _record_quick_action(
+        session,
+        workspace_id=workspace_id,
+        actor_id=actor_id,
+        action="clear_dead_letter_queue",
+        affected=len(pending),
+    )
     await session.commit()
     return QuickActionResult(
         action="clear_dead_letter_queue",

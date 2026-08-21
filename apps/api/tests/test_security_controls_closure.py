@@ -19,7 +19,7 @@ from app.api.routes.metrics import (
     _authorize_metrics_scrape,
 )
 from app.core.config import get_settings
-from app.db.session import AsyncSessionLocal
+from app.db.session import AsyncSessionLocal, RuntimeSessionLocal
 from app.models.local_auth import LocalAuthCredential
 from app.services import local_auth
 
@@ -248,6 +248,28 @@ async def test_mf_local_auth_routes_are_absent_when_mode_is_supabase(client, mon
     finally:
         monkeypatch.delenv("AUTH_MODE", raising=False)
         get_settings.cache_clear()
+
+
+# --- M-F2: runtime role must not read pre-auth credential hashes ------------
+
+
+@pytest.mark.asyncio
+async def test_mf_runtime_role_cannot_read_local_auth_credentials():
+    """The RLS-bound product role has no legitimate pre-auth credential use."""
+    async with AsyncSessionLocal() as owner_session:
+        granted = await owner_session.scalar(
+            text(
+                "SELECT has_table_privilege("
+                "'app_runtime', 'public.local_auth_credentials', 'SELECT')"
+            )
+        )
+    assert granted is False
+
+    async with RuntimeSessionLocal() as runtime_session:
+        with pytest.raises(Exception, match="permission denied"):
+            await runtime_session.execute(
+                text("SELECT user_id, password_hash FROM local_auth_credentials LIMIT 1")
+            )
 
 
 # --- M-H: owner/service-role routes must still be tenant-scoped -----------

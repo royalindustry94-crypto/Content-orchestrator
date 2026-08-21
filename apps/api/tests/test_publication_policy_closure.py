@@ -17,7 +17,7 @@ import pytest
 from sqlalchemy import text
 
 from app.db.session import AsyncSessionLocal, RuntimeSessionLocal
-from app.models.content import ContentItem
+from app.models.content import ContentItem, ContentVersion
 from app.models.enums import (
     ContentStage,
     ContentStatus,
@@ -74,6 +74,18 @@ async def _seed_item_and_gate(
 
     gate = None
     if gate_status is not None:
+        reviewed_version = ContentVersion(
+            id=uuid.uuid4(),
+            workspace_id=ws.id,
+            content_item_id=item.id,
+            created_by=user_id,
+            script_hook="reviewed hook",
+            script_body="reviewed body",
+            script_cta="reviewed cta",
+        )
+        session.add(reviewed_version)
+        await session.flush()
+        item.current_version_id = reviewed_version.id
         run = PipelineRun(
             id=uuid.uuid4(),
             workspace_id=ws.id,
@@ -87,6 +99,7 @@ async def _seed_item_and_gate(
             id=uuid.uuid4(),
             workspace_id=ws.id,
             pipeline_run_id=run.id,
+            content_version_id=reviewed_version.id,
             stage=ContentStage.SCRIPTING,
             status=gate_status,
             requested_at=datetime.now(UTC),
@@ -98,6 +111,67 @@ async def _seed_item_and_gate(
 
 def _fingerprint(seed: str) -> str:
     return publication_policy.fingerprint_script(f"hook {seed}", f"body {seed}", "cta")
+
+
+@pytest.mark.asyncio
+async def test_approved_gate_cannot_authorize_a_changed_content_version():
+    """Editing an item after review must invalidate its old approval."""
+    async with AsyncSessionLocal() as session:
+        ws, user_id = await _seed_workspace(session)
+        item, gate = await _seed_item_and_gate(
+            session, ws, user_id, gate_status=ReviewGateStatus.APPROVED
+        )
+        reviewed_version = ContentVersion(
+            id=uuid.uuid4(),
+            workspace_id=ws.id,
+            content_item_id=item.id,
+            created_by=user_id,
+            script_hook="reviewed hook",
+            script_body="reviewed body",
+            script_cta="reviewed cta",
+        )
+        session.add(reviewed_version)
+        await session.flush()
+        item.current_version_id = reviewed_version.id
+        session.add(
+            PublicationEligibility(
+                id=uuid.uuid4(),
+                workspace_id=ws.id,
+                content_item_id=item.id,
+                platform="youtube",
+                generated_by="lumora-pipeline",
+                synthetic_media_disclosed=True,
+                rights_confirmed_by=user_id,
+                rights_confirmed_at=datetime.now(UTC),
+                originality_fingerprint=_fingerprint(str(item.id)),
+                review_gate_id=gate.id,
+            )
+        )
+        await session.flush()
+
+        changed_version = ContentVersion(
+            id=uuid.uuid4(),
+            workspace_id=ws.id,
+            content_item_id=item.id,
+            created_by=user_id,
+            script_hook="changed hook",
+            script_body="changed body",
+            script_cta="changed cta",
+        )
+        session.add(changed_version)
+        await session.flush()
+        item.current_version_id = changed_version.id
+        await session.flush()
+
+        with pytest.raises(PublicationBlocked) as exc:
+            await assert_publishable(
+                session,
+                workspace_id=ws.id,
+                content_item_id=item.id,
+                platform="youtube",
+            )
+        assert exc.value.code == "review_gate_content_version_mismatch"
+        await session.rollback()
 
 
 # --- fail-closed behaviour -------------------------------------------------

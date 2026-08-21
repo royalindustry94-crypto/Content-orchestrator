@@ -41,6 +41,10 @@ class ReviewGateNotFoundError(Exception):
     """Review gate missing for the given workspace (not a SQLAlchemy LookupError)."""
 
 
+class ReviewGateDeliveryError(Exception):
+    """The decision event did not advance its gate in the caller transaction."""
+
+
 class SpendBudgetExceededError(Exception):
     """Workspace daily/monthly spend cap would be exceeded by this job."""
 
@@ -394,18 +398,22 @@ async def decide_review_gate(
     if gate.status != ReviewGateStatus.AWAITING:
         raise ValueError("review gate is not awaiting a decision")
 
-    await controller.submit_review_decision(
+    event = await controller.submit_review_decision(
         session,
         gate=gate,
         reviewer_id=reviewer_id,
         approved=approved,
         notes=notes,
     )
-    # Ensure bus consumers are registered, then deliver in-process so the
-    # HTTP caller sees the advanced run without waiting for the background tick.
+    # Deliver the exact event just emitted, rather than an arbitrary pending
+    # backlog batch.  The route may report success only when this gate is no
+    # longer awaiting; otherwise its transaction is rolled back and callers
+    # receive an explicit transient failure instead of stale approval state.
     consumers.register_all()
-    await relay.poll_and_dispatch(session)
+    await relay.dispatch_one(session, event)
     await session.flush()
+    if gate.status == ReviewGateStatus.AWAITING:
+        raise ReviewGateDeliveryError("review decision could not be applied")
 
     detail = await get_review_gate(session, workspace_id=workspace_id, gate_id=gate_id)
     if detail is None:

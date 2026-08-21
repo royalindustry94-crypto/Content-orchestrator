@@ -301,6 +301,7 @@ export function QuickActionsView({
   const [busy, setBusy] = useState<string | null>(null);
   const [result, setResult] = useState<QuickActionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmationAction, setConfirmationAction] = useState<string | null>(null);
   const [workspaceName, setWorkspaceName] = useState("");
   const [pipelineTopic, setPipelineTopic] = useState("");
 
@@ -326,6 +327,27 @@ export function QuickActionsView({
     } finally {
       setBusy(null);
     }
+  };
+
+  const triggerMissionAction = (
+    action:
+      | "pause-workers"
+      | "resume-workers"
+      | "emergency-stop"
+      | "retry-failed-jobs"
+      | "clear-dead-letter"
+      | "sync-github",
+    label: string,
+  ) => {
+    const destructive = ["emergency-stop", "retry-failed-jobs", "clear-dead-letter"].includes(action);
+    if (destructive && confirmationAction !== action) {
+      setConfirmationAction(action);
+      setResult(null);
+      setError(`Confirm ${label} by clicking the same control again. Verify the affected workspace first.`);
+      return;
+    }
+    setConfirmationAction(null);
+    void run(action, () => postMissionAction(token, workspaceId, action));
   };
 
   const createWs = async (event: FormEvent) => {
@@ -363,25 +385,33 @@ export function QuickActionsView({
           <button
             key={action}
             type="button"
-            className={action === "emergency-stop" ? "action-btn action-btn--danger" : "action-btn"}
+            className={
+              action === "emergency-stop" || action === "clear-dead-letter"
+                ? "action-btn action-btn--danger"
+                : "action-btn"
+            }
             disabled={busy !== null}
+            aria-label={
+              confirmationAction === action ? `Confirm ${label}` : label
+            }
             onClick={() =>
-              void run(action, () =>
-                postMissionAction(
-                  token,
-                  workspaceId,
-                  action as
-                    | "pause-workers"
-                    | "resume-workers"
-                    | "emergency-stop"
-                    | "retry-failed-jobs"
-                    | "clear-dead-letter"
-                    | "sync-github",
-                ),
+              triggerMissionAction(
+                action as
+                  | "pause-workers"
+                  | "resume-workers"
+                  | "emergency-stop"
+                  | "retry-failed-jobs"
+                  | "clear-dead-letter"
+                  | "sync-github",
+                label,
               )
             }
           >
-            {busy === action ? "Working…" : label}
+            {busy === action
+              ? "Working…"
+              : confirmationAction === action
+                ? `Confirm ${label}`
+                : label}
           </button>
         ))}
       </div>

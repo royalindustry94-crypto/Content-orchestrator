@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import select, text
 
 from app.db.session import AsyncSessionLocal
+from app.models.content import ContentItem
 from app.models.pipeline import PipelineRun
 from app.models.review_gate import ReviewGate
 from app.models.workspace_membership import WorkspaceRole
@@ -67,6 +68,13 @@ async def test_content_job_lands_in_review_gate(client, new_user):
     assert gates[0]["id"] == body["review_gate_id"]
     assert gates[0]["script_body"] == "Draft body for human review."
     assert gates[0]["status"] == "awaiting"
+
+    async with AsyncSessionLocal() as session:
+        gate = await session.get(ReviewGate, uuid.UUID(body["review_gate_id"]))
+        item = await session.get(ContentItem, uuid.UUID(body["content_item_id"]))
+        assert gate is not None and item is not None
+        assert gate.content_version_id == item.current_version_id
+        assert gate.content_version_id is not None
 
 
 @pytest.mark.asyncio

@@ -30,6 +30,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.content import ContentItem
 from app.models.enums import ReviewGateStatus
 from app.models.pipeline import PipelineRun
 from app.models.publication_policy import SUPPORTED_PLATFORMS, PublicationEligibility
@@ -131,6 +132,22 @@ async def assert_publishable(
         raise PublicationBlocked(
             "review_gate_content_item_mismatch",
             "the approved review gate belongs to a different content item",
+        )
+
+    item = await session.get(ContentItem, content_item_id)
+    if item is None or item.workspace_id != workspace_id:
+        raise PublicationBlocked(
+            "content_item_missing",
+            "the requested content item does not exist in this workspace",
+        )
+    if (
+        gate.content_version_id is None
+        or item.current_version_id is None
+        or gate.content_version_id != item.current_version_id
+    ):
+        raise PublicationBlocked(
+            "review_gate_content_version_mismatch",
+            "the approved review gate does not bind to the current content version",
         )
 
     if not row.synthetic_media_disclosed:

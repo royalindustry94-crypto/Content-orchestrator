@@ -302,6 +302,27 @@ async def test_mission_control_modules_and_actions(client, new_user):
         ).one()
     assert global_state == ("online", False)
 
+    async with AsyncSessionLocal() as session:
+        audit_rows = (
+            await session.execute(
+                text(
+                    "SELECT payload->>'action', payload->>'actor_id' "
+                    "FROM outbox_events "
+                    "WHERE workspace_id = :ws "
+                    "AND event_type = 'operations.action.executed'"
+                ),
+                {"ws": workspace_id},
+            )
+        ).all()
+    assert {row[0] for row in audit_rows} >= {
+        "pause_workers",
+        "resume_workers",
+        "retry_failed_jobs",
+        "clear_dead_letter_queue",
+        "emergency_stop",
+    }
+    assert {row[1] for row in audit_rows} == {user_id}
+
 
 @pytest.mark.asyncio
 async def test_mission_control_requires_admin(client, new_user):

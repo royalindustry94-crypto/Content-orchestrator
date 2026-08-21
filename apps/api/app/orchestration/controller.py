@@ -17,6 +17,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.config import SpendCap
+from app.models.content import ContentItem
 from app.models.enums import (
     JobType,
     PauseReason,
@@ -26,6 +27,7 @@ from app.models.enums import (
     StageAssignmentStatus,
     WorkflowTransitionTrigger,
 )
+from app.models.events import OutboxEvent
 from app.models.pipeline import PipelineRun, PipelineStageRun
 from app.models.review_gate import ReviewGate
 from app.models.scheduling import JobSchedule
@@ -519,6 +521,10 @@ async def pause_for_review(
         )
         return existing_awaiting
 
+    item = await session.get(ContentItem, run.content_item_id)
+    if item is None:
+        raise ValueError(f"pipeline run {run.id} has no content item")
+
     run.status = PipelineRunStatus.PAUSED
     run.pause_reason = PauseReason.REVIEW_GATE.value
     timeout_at = datetime.now(UTC) + timedelta(seconds=timeout_seconds)
@@ -526,6 +532,7 @@ async def pause_for_review(
         id=uuid.uuid4(),
         workspace_id=run.workspace_id,
         pipeline_run_id=run.id,
+        content_version_id=item.current_version_id,
         stage=stage_key,
         requested_at=datetime.now(UTC),
         timeout_at=timeout_at,
@@ -950,7 +957,7 @@ async def submit_review_decision(
     reviewer_id: uuid.UUID,
     approved: bool,
     notes: str | None = None,
-) -> None:
+) -> OutboxEvent:
     """The orchestration hook a future review API calls: records the M3
     review_decisions row and emits review.approved/review.rejected in the
     SAME transaction, then commits are the caller's. This is the write
@@ -981,7 +988,7 @@ async def submit_review_decision(
     await session.flush()
 
     trace_id, span_id = child_span(run.trace_id if run else None)
-    await emit(
+    return await emit(
         session,
         event_type=REVIEW_APPROVED if approved else REVIEW_REJECTED,
         workspace_id=gate.workspace_id,
