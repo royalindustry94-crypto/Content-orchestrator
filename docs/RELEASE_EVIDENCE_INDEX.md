@@ -59,6 +59,7 @@ access to GitHub. Authenticated retrieval resolved all three.
 | E-33 | Publication eligibility control | `tests/test_publication_policy_closure.py` | 15 passed, including fail-closed per missing attestation, duplicate-fingerprint refusal, and RLS attestation authority | VERIFIED | No publishing executor exists yet to gate. |
 | E-34 | Data export and deletion control | `tests/test_data_governance_closure.py` | 10 passed, including cross-tenant refusal, credential exclusion, confirmation mismatch, retention of financial records, and the soft-delete visibility contract | VERIFIED | Retention automation and legal notification remain out of scope. |
 | E-35 | Repository-fix audit commit hosted CI | [Run 32273905572][4] for `efdeb1d6d9b7ed9a988923cb0ae22e1108e9673a` | **api, web, worker, security and docker-build all success** | VERIFIED | This is the full hosted CI result for the repository-fix commit. A subsequent documentation-only commit requires its own CI result. |
+| E-36 | Independent adversarial-review audit commit hosted CI | [Run 32489120577][5] for `b6757c9ae4138d706a274341e2552116b3d4dd73` | **api, web, worker, security and docker-build all success** | VERIFIED | Covers the exact commit that closes HRG approval reuse and locked-account timing. A later documentation-only commit does not alter the release code SHA. |
 
 ## References
 
@@ -66,3 +67,4 @@ access to GitHub. Authenticated retrieval resolved all three.
 [2]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/31251558524
 [3]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/32159036719
 [4]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/32273905572
+[5]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/32489120577
