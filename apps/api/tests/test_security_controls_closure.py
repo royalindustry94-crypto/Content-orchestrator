@@ -9,6 +9,7 @@ surface with a second tenant present.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import select, text
@@ -356,3 +357,38 @@ async def test_mh_content_job_creation_requires_membership(client):
         json={"workspace_id": victim["workspace_id"], "topic": "cross tenant probe"},
     )
     assert res.status_code in (403, 404), res.text
+
+
+@pytest.mark.asyncio
+async def test_mf_locked_account_keeps_password_work_timing_equalized(
+    local_auth_on, monkeypatch
+):
+    """A locked known account must not return before the PBKDF work that an
+    unknown account performs; otherwise lockout status becomes an account
+    existence timing oracle.
+    """
+    email = f"locked-timing-{uuid.uuid4().hex[:10]}@example.com"
+    async with AsyncSessionLocal() as session:
+        token = await local_auth.signup(
+            session, email=email, password=STRONG_PASSWORD
+        )
+        row = await session.get(LocalAuthCredential, token.user_id)
+        assert row is not None
+        row.locked_until = datetime.now(UTC) + timedelta(minutes=5)
+        await session.commit()
+
+    checked_hashes: list[str] = []
+
+    def _verify(password: str, password_hash: str) -> bool:
+        checked_hashes.append(password_hash)
+        return False
+
+    monkeypatch.setattr(local_auth, "verify_password", _verify)
+    async with AsyncSessionLocal() as session:
+        with pytest.raises(local_auth.AuthError) as exc:
+            await local_auth.login(
+                session, email=email, password="wrong-password-value"
+            )
+        assert exc.value.code == "invalid_credentials"
+
+    assert checked_hashes, "locked account must perform password work before failing"

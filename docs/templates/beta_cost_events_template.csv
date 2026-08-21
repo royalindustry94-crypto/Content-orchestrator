@@ -1,0 +1,1 @@
+event_id,occurred_at_utc,workspace_id,content_item_id,pipeline_run_id,pipeline_stage_run_id,provider,operation,cost_bucket,cost_usd,units,unit_type,outcome,source_record_type,source_record_id,reconciliation_status,provider_request_id,notes

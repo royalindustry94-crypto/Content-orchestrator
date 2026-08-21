@@ -459,3 +459,44 @@ async def test_reviewer_can_write_and_other_tenant_cannot_read():
         ).scalar_one()
         assert visible == 0, "attestations must not be readable across tenants"
         assert outsider_ws.id != ws.id
+
+
+@pytest.mark.asyncio
+async def test_approved_gate_for_a_different_item_cannot_authorize_publication():
+    """An approval is scoped to its PipelineRun/content item, not reusable
+    workspace-wide. Reusing item A's approved HRG for item B must fail closed.
+    """
+    async with AsyncSessionLocal() as session:
+        ws, user_id = await _seed_workspace(session)
+        _approved_item, approved_gate = await _seed_item_and_gate(
+            session, ws, user_id, gate_status=ReviewGateStatus.APPROVED
+        )
+        target_item, _ = await _seed_item_and_gate(
+            session, ws, user_id, gate_status=None
+        )
+        session.add(
+            PublicationEligibility(
+                id=uuid.uuid4(),
+                workspace_id=ws.id,
+                content_item_id=target_item.id,
+                platform="youtube",
+                generated_by="lumora-pipeline",
+                synthetic_media_disclosed=True,
+                rights_confirmed_by=user_id,
+                rights_confirmed_at=datetime.now(UTC),
+                originality_fingerprint=_fingerprint(str(target_item.id)),
+                # Deliberately wrong: this approved gate belongs to another item.
+                review_gate_id=approved_gate.id,
+            )
+        )
+        await session.flush()
+
+        with pytest.raises(PublicationBlocked) as exc:
+            await assert_publishable(
+                session,
+                workspace_id=ws.id,
+                content_item_id=target_item.id,
+                platform="youtube",
+            )
+        assert exc.value.code == "review_gate_content_item_mismatch"
+        await session.rollback()

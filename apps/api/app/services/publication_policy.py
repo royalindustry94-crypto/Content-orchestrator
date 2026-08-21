@@ -31,6 +31,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.enums import ReviewGateStatus
+from app.models.pipeline import PipelineRun
 from app.models.publication_policy import SUPPORTED_PLATFORMS, PublicationEligibility
 from app.models.review_gate import ReviewGate
 
@@ -114,6 +115,22 @@ async def assert_publishable(
         raise PublicationBlocked(
             "review_gate_not_approved",
             f"review gate status is {gate.status.value!r}; publication requires 'approved'",
+        )
+
+    # Approval is not a workspace-wide capability. The gate was opened for one
+    # PipelineRun, and the run is bound to one ContentItem. Without this check,
+    # an approved gate for item A can be referenced by item B's eligibility row
+    # and silently bypass B's Human Review Gate.
+    run = await session.get(PipelineRun, gate.pipeline_run_id)
+    if run is None or run.workspace_id != workspace_id:
+        raise PublicationBlocked(
+            "review_gate_missing",
+            "the referenced review gate has no pipeline run in this workspace",
+        )
+    if run.content_item_id != content_item_id:
+        raise PublicationBlocked(
+            "review_gate_content_item_mismatch",
+            "the approved review gate belongs to a different content item",
         )
 
     if not row.synthetic_media_disclosed:

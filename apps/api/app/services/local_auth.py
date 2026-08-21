@@ -171,6 +171,10 @@ async def login(session: AsyncSession, *, email: str, password: str) -> AuthToke
         raise AuthError("invalid_credentials", "invalid email or password")
 
     if row.locked_until is not None and row.locked_until > now:
+        # Equalize against both unknown-account and ordinary wrong-password
+        # failures. Returning before PBKDF work would turn a locked known
+        # address into a measurable account-existence timing oracle.
+        verify_password(password, row.password_hash)
         # Generic message: never disclose whether the account exists or why.
         raise AuthError(
             "invalid_credentials",
