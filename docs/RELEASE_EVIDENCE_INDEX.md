@@ -1,9 +1,10 @@
 # Release Evidence Index
 
-**Candidate SHA:** `c91d9d3a3530b944801c50ad8f2be77879101e49`
-**Audit branch base:** `c91d9d3a3530b944801c50ad8f2be77879101e49`
+**Final executable release SHA:** `c4c501b61dea23f036560d6473c85cd848f4aadc`
+**Actual PR #44 evidence head at synchronization:** `27151ee4bbe715794a65b3a6cd52ac2726810f45` — documentation-only descendant of the final executable release SHA
+**Historical cumulative candidate:** `c91d9d3a3530b944801c50ad8f2be77879101e49`
 **Local validation host:** isolated PostgreSQL 16.14 and Python 3.12.3 environment
-**Evidence date:** 2026-08-18 GMT+8
+**Synchronization evidence date:** 2026-08-21 GMT+8
 
 > **Status vocabulary:** **VERIFIED** means directly executed against the named candidate before audit-branch documentation/remediation commits. **REPORTED** means an external page or historic document asserts a result but it was not independently reproduced. **BLOCKED** means a required hosted resource, credential, or authority was unavailable.
 
@@ -61,6 +62,16 @@ access to GitHub. Authenticated retrieval resolved all three.
 | E-35 | Repository-fix audit commit hosted CI | [Run 32273905572][4] for `efdeb1d6d9b7ed9a988923cb0ae22e1108e9673a` | **api, web, worker, security and docker-build all success** | VERIFIED | This is the full hosted CI result for the repository-fix commit. A subsequent documentation-only commit requires its own CI result. |
 | E-36 | Independent adversarial-review audit commit hosted CI | [Run 32489120577][5] for `b6757c9ae4138d706a274341e2552116b3d4dd73` | **api, web, worker, security and docker-build all success** | VERIFIED | Covers the exact commit that closes HRG approval reuse and locked-account timing. A later documentation-only commit does not alter the release code SHA. |
 
+## Final SHA synchronization
+
+| ID | Requirement / check | Exact candidate / command | Result | Evidence state | Limit |
+|---|---|---|---|---|---|
+| E-37 | Final executable SHA vs. live PR head | `git merge-base --is-ancestor c4c501b… 27151ee…`; `git diff --name-status c4c501b… 27151ee…` | Live PR head `27151ee…` is a descendant of final executable SHA `c4c501b…`; its only changed file is `docs/FINAL_END_TO_END_AUDIT.md`. | VERIFIED | The live head is a documentation-only evidence commit, not a different executable release candidate. |
+| E-38 | Targeted synchronization validation | `git diff --quiet c4c501b… 27151ee… -- apps/api apps/worker apps/web infra docker-compose*.yml`; `git diff --quiet … -- apps/api/alembic`; `git diff --check` | No executable, infrastructure, or Alembic changes; documentation diff is whitespace-clean. | VERIFIED | No code or migration gate rerun was necessary because the diff contains no corresponding change. |
+| E-39 | Current PR head CI | [Run 32512226232][6] for `27151ee4bbe715794a65b3a6cd52ac2726810f45` | API, worker, web, security, and Docker all success. | VERIFIED | SHA-specific. |
+
+**One exact final executable release SHA:** `c4c501b61dea23f036560d6473c85cd848f4aadc`. The current PR evidence head is recorded solely to prove that the descendant documentation commit did not alter release code.
+
 ## References
 
 [1]: https://github.com/royalindustry94-crypto/Content-orchestrator/commit/c91d9d3a3530b944801c50ad8f2be77879101e49/checks
@@ -68,3 +79,4 @@ access to GitHub. Authenticated retrieval resolved all three.
 [3]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/32159036719
 [4]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/32273905572
 [5]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/32489120577
+[6]: https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/32512226232
