@@ -2,8 +2,8 @@
 // every route renders without a blank-screen crash against the live preview.
 import { writeFileSync, mkdirSync } from "node:fs";
 
-const BASE = "http://127.0.0.1:5173";
-const OUT = "/tmp/cursor/artifacts/p0-verify";
+const BASE = process.env.UI_SMOKE_BASE ?? "http://127.0.0.1:5173";
+const OUT = process.env.UI_SMOKE_OUT ?? "/tmp/cursor/artifacts/p0-verify";
 mkdirSync(OUT, { recursive: true });
 
 const EMAIL = process.env.DEMO_EMAIL;
@@ -93,10 +93,6 @@ async function report() {
     footer: (document.querySelector('.sidebar-foot strong')||{}).innerText || null,
     heading: (document.querySelector('main h1, main h2')||{}).innerText || null,
     horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth,
-    conditionMetric: (() => {
-      const card = [...document.querySelectorAll('.saas-metric')].find(el => /Active Conditions/i.test(el.textContent || ''));
-      return card ? Number((card.querySelector('strong') || {}).textContent) : null;
-    })(),
     conditionRows: document.querySelectorAll('#active-alerts .alert-row').length,
     unlabeledControls: [...document.querySelectorAll('input, select, textarea')].filter(el =>
       !el.getAttribute('aria-label') &&
@@ -159,7 +155,7 @@ const backendTruth = await evaluate(`(async () => {
   };
 })()`);
 
-const routes = ["Dashboard", "Mission Control", "Review Queue", "Pipelines", "Workers", "Customers", "Leads", "Analytics", "Billing", "Settings"];
+const routes = ["Command Center", "AI Workers", "Content Pipeline", "Human Review", "Opportunities", "Analytics", "Spend & Usage", "Audience", "Integrations", "Settings"];
 const missionTabs = ["Overview", "Timeline", "Live logs", "AI assistant", "Content"];
 
 const results = [];
@@ -203,7 +199,7 @@ for (const label of routes) {
   results.push({ label, clicked, ...rep });
   index++;
 
-  if (label === "Mission Control") {
+  if (label === "Integrations") {
     for (const tab of missionTabs) {
       await evaluate(`(() => {
         const tabs = document.querySelector('.view-tabs');
@@ -215,7 +211,7 @@ for (const label of routes) {
       await sleep(1200);
       const trep = await report();
       await shot(`${String(index).padStart(2, "0")}-mission-${tab.replace(/\s+/g, "-").toLowerCase()}`);
-      results.push({ label: `Mission/${tab}`, ...trep });
+      results.push({ label: `Integrations/${tab}`, ...trep });
       index++;
     }
   }
@@ -236,7 +232,7 @@ const mrep = await report();
 results.push({ label: "mobile-dashboard", ...mrep });
 
 const mobileResults = [];
-for (const label of ["Review Queue", "Workers", "Settings"]) {
+for (const label of ["Human Review", "AI Workers", "Settings"]) {
   await evaluate(`(() => {
     const open = [...document.querySelectorAll('button')].find(x => /open navigation/i.test(x.getAttribute('aria-label') || ''));
     if (open) open.click();
@@ -259,9 +255,8 @@ const crashes = results.filter((r) => r.crash || r.textLen === 0);
 const accessibilityFailures = results.filter((r) => r.unlabeledControls > 0);
 const mobileFailures = mobileResults.filter((r) => r.crash || r.textLen === 0 || r.horizontalOverflow || r.unlabeledControls > 0);
 const footerFailures = results.filter((r) => r.footer !== backendTruth.expectedFooter);
-const dashboardResult = results.find((r) => r.label === "Dashboard");
-const alertParityWorks = dashboardResult?.conditionMetric === backendTruth.alertTypes &&
-  dashboardResult?.conditionRows === backendTruth.alertTypes;
+const dashboardResult = results.find((r) => r.label === "Command Center");
+const alertParityWorks = dashboardResult?.conditionRows === backendTruth.alertTypes;
 console.log("ROUTES:", results.length);
 console.log("BLANK/CRASH:", crashes.length);
 console.log("SEARCH:", JSON.stringify(searchResult));
@@ -271,7 +266,7 @@ console.log("UNLABELED CONTROLS:", accessibilityFailures.length);
 console.log("MOBILE SUPPLEMENTAL:", mobileResults.length, "failures:", mobileFailures.length);
 console.log("BACKEND TRUTH:", JSON.stringify(backendTruth));
 console.log("FOOTER MISMATCHES:", footerFailures.length);
-console.log("ALERT TYPE PARITY:", alertParityWorks);
+console.log("ALERT ROW PARITY:", alertParityWorks);
 for (const r of results) {
   console.log(`  ${r.crash ? "CRASH" : r.textLen === 0 ? "BLANK" : "ok   "} | ${r.label} | textLen=${r.textLen} | footer=${r.footer ?? "-"} | unlabeled=${r.unlabeledControls}`);
 }

@@ -173,15 +173,15 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
 }
 
 const NAV: Array<{ id: NavKey; label: string; icon: IconName }> = [
-  { id: "dashboard", label: "Dashboard", icon: "dashboard" },
-  { id: "mission", label: "Mission Control", icon: "mission" },
-  { id: "review", label: "Review Queue", icon: "review" },
-  { id: "pipelines", label: "Pipelines", icon: "pipelines" },
-  { id: "workers", label: "Workers", icon: "workers" },
-  { id: "customers", label: "Customers", icon: "customers" },
-  { id: "leads", label: "Leads", icon: "leads" },
+  { id: "dashboard", label: "Command Center", icon: "dashboard" },
+  { id: "workers", label: "AI Workers", icon: "workers" },
+  { id: "pipelines", label: "Content Pipeline", icon: "pipelines" },
+  { id: "review", label: "Human Review", icon: "review" },
+  { id: "leads", label: "Opportunities", icon: "leads" },
   { id: "analytics", label: "Analytics", icon: "analytics" },
-  { id: "billing", label: "Billing", icon: "billing" },
+  { id: "billing", label: "Spend & Usage", icon: "billing" },
+  { id: "customers", label: "Audience", icon: "customers" },
+  { id: "mission", label: "Integrations", icon: "mission" },
   { id: "settings", label: "Settings", icon: "settings" },
 ];
 
@@ -297,51 +297,71 @@ function DashboardHome({
     document.getElementById("active-alerts")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const metrics = [
-    { label: "Jobs Running", value: data.executive.jobs_running, icon: "activity" as IconName, tone: "violet" },
-    { label: "Jobs Completed Today", value: data.pipelines.jobs_completed, icon: "check" as IconName, tone: "green" },
-    { label: "Reviews Waiting", value: data.executive.human_reviews_waiting, icon: "review" as IconName, tone: "amber" },
-    { label: "Workers Online", value: data.executive.workers_online, icon: "workers" as IconName, tone: "blue" },
-    { label: "Spend Today", value: money(data.executive.spend_today_usd), icon: "billing" as IconName, tone: "pink" },
-    { label: "Revenue", value: money(data.customers.revenue_mtd_usd), icon: "analytics" as IconName, tone: "green" },
-    { label: "Active Conditions", value: activeAlerts.length, icon: "alert" as IconName, tone: activeAlerts.length ? "red" : "green" },
+    { label: "Active content jobs", value: data.executive.jobs_running, icon: "activity" as IconName, tone: "blue", target: "pipelines" as NavKey },
+    { label: "Awaiting Human Review", value: data.executive.human_reviews_waiting, icon: "review" as IconName, tone: "amber", target: "review" as NavKey },
+    { label: "Publish-ready content", value: data.pipelines.publish_queue, icon: "check" as IconName, tone: "violet", target: "pipelines" as NavKey },
+    { label: "Active workers", value: data.executive.workers_online, icon: "workers" as IconName, tone: "blue", target: "workers" as NavKey },
+    { label: "Failed jobs", value: data.executive.jobs_failed, icon: "alert" as IconName, tone: data.executive.jobs_failed ? "red" : "green", target: "pipelines" as NavKey },
+    { label: "Spend today", value: money(data.executive.spend_today_usd), icon: "billing" as IconName, tone: "violet", target: "billing" as NavKey },
+  ];
+  const flow = [
+    { label: "Queued", value: data.pipelines.jobs_waiting, tone: "muted" },
+    { label: "In progress", value: data.executive.jobs_running, tone: "blue" },
+    { label: "Human review", value: data.executive.human_reviews_waiting, tone: "amber" },
+    { label: "Publish-ready", value: data.pipelines.publish_queue, tone: "violet" },
   ];
   return (
-    <div className="dashboard-home">
-      <section className="hero-row">
+    <div className="dashboard-home command-center-home">
+      <section className="hero-row command-center-hero">
         <div>
-          <p className="page-kicker">Operations overview</p>
-          <h2>Good {new Date().getHours() < 12 ? "morning" : new Date().getHours() < 18 ? "afternoon" : "evening"}.</h2>
-          <p>Here&apos;s what&apos;s happening across your workspace today.</p>
+          <p className="page-kicker">Workspace operations</p>
+          <h2>Command Center</h2>
+          <p>Real-time workflow health, review controls, and operational signals for this workspace.</p>
         </div>
-        <span className="live-indicator"><i /> Live data</span>
+        <span className="live-indicator"><i /> Live backend data</span>
       </section>
 
-      <div className="saas-metrics">
+      <div className="saas-metrics command-center-metrics">
         {metrics.map((metric) => (
           <button
             className={`saas-metric saas-metric--${metric.tone}`}
             key={metric.label}
-            onClick={() => {
-              if (metric.label === "Reviews Waiting") navigate("review");
-              else if (metric.label === "Workers Online") navigate("workers");
-              else if (metric.label === "Spend Today" || metric.label === "Revenue") navigate("billing");
-              else if (metric.label === "Active Conditions") scrollToAlerts();
-              else navigate("pipelines");
-            }}
+            onClick={() => navigate(metric.target)}
             type="button"
           >
             <span className="metric-icon"><Icon name={metric.icon} /></span>
             <span>{metric.label}</span>
             <strong>{metric.value}</strong>
-            <small>View details <Icon name="arrow" size={13} /></small>
+            <small>Open view <Icon name="arrow" size={13} /></small>
           </button>
         ))}
       </div>
 
+      <section className="surface command-flow-surface">
+        <SectionHeader
+          title="Content flow"
+          detail={`${data.pipelines.queue_depth} item${data.pipelines.queue_depth === 1 ? "" : "s"} currently in the workspace queue`}
+          action={<button className="text-button" onClick={() => navigate("pipelines")} type="button">Open Content Pipeline</button>}
+        />
+        <div className="command-flow">
+          {flow.map((step, index) => (
+            <div className={`flow-step flow-step--${step.tone}`} key={step.label}>
+              <span className="flow-index">{String(index + 1).padStart(2, "0")}</span>
+              <strong>{step.value}</strong>
+              <small>{step.label}</small>
+            </div>
+          ))}
+        </div>
+      </section>
+
       <section className="surface alerts-surface" id="active-alerts">
-        <SectionHeader title="Active Conditions" detail={activeAlerts.length ? `${activeAlerts.length} alert type${activeAlerts.length === 1 ? "" : "s"} need attention` : "Live operational conditions"} />
+        <SectionHeader
+          title="Operational attention"
+          detail={activeAlerts.length ? `${activeAlerts.length} active condition${activeAlerts.length === 1 ? "" : "s"} require attention` : "No active conditions reported by the backend"}
+          action={activeAlerts.length ? <button className="text-button" onClick={scrollToAlerts} type="button">Review alerts</button> : undefined}
+        />
         {activeAlerts.length === 0 ? (
-          <EmptyState icon="check" title="No active alerts" message="Every monitored condition is currently healthy." />
+          <EmptyState icon="check" title="No active alerts" message="The currently reported workspace conditions are healthy." />
         ) : (
           <ul className="alerts-list">
             {activeAlerts.map((alert) => (
@@ -361,14 +381,14 @@ function DashboardHome({
       <div className="dashboard-columns">
         <section className="surface activity-surface">
           <SectionHeader
-            title="Recent Activity"
-            detail="Latest changes across your operations"
-            action={<button className="text-button" onClick={() => navigate("analytics")} type="button">View all</button>}
+            title="Recent activity"
+            detail="Backend-recorded events in this workspace"
+            action={<button className="text-button" onClick={() => navigate("analytics")} type="button">Open Analytics</button>}
           />
           <ActivityFeedView data={{ ...data.activity, items: data.activity.items.slice(0, 6) }} />
         </section>
         <section className="surface health-surface">
-          <SectionHeader title="System Health" detail="Live service status" />
+          <SectionHeader title="System health" detail="Current service indicators" />
           <div className="health-list">
             {data.health.indicators.map((indicator) => (
               <div className="health-row" key={indicator.key}>
@@ -382,7 +402,7 @@ function DashboardHome({
       </div>
 
       <section className="surface quick-surface">
-        <SectionHeader title="Quick Actions" detail="Common operational controls" />
+        <SectionHeader title="Operator controls" detail="Destructive actions require explicit confirmation and are audit-recorded." />
         <QuickActionsView token={token} workspaceId={workspaceId} />
       </section>
     </div>
@@ -1013,24 +1033,24 @@ export default function LumoraDashboard({
       >
         <div className="brand">
           <span className="brand-mark">L</span>
-          <div><strong>Lumora</strong><small>Mission Control</small></div>
+          <div><strong>Lumora</strong><small>Command Center</small></div>
           <button aria-label="Close navigation" className="mobile-close" onClick={() => setMobileOpen(false)} type="button"><Icon name="close" /></button>
         </div>
         <nav aria-label="Primary navigation">
-          <p>Workspace</p>
-          {NAV.slice(0, 5).map((item) => (
+          <p>Command</p>
+          {NAV.slice(0, 4).map((item) => (
             <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
               <Icon name={item.icon} /><span>{item.label}</span>
               {item.id === "review" && reviewCount > 0 ? <b>{reviewCount}</b> : null}
             </button>
           ))}
-          <p>Business</p>
-          {NAV.slice(5, 9).map((item) => (
+          <p>Operations</p>
+          {NAV.slice(4, 9).map((item) => (
             <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
               <Icon name={item.icon} /><span>{item.label}</span>
             </button>
           ))}
-          <p>System</p>
+          <p>Workspace</p>
           {NAV.slice(9).map((item) => (
             <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
               <Icon name={item.icon} /><span>{item.label}</span>
