@@ -13,6 +13,7 @@ import secrets
 import time
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from jwt import encode as jwt_encode
 from sqlalchemy import select, text
@@ -20,6 +21,23 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.models.local_auth import LocalAuthCredential
+
+# M-F brute-force controls. Local auth has no external identity provider in
+# front of it, so the API is the only throttle. State is persisted on the
+# credential row (migration 0036) rather than in process memory so the limit
+# holds across replicas and restarts.
+MAX_FAILED_ATTEMPTS = 10
+LOCKOUT_SECONDS = 900
+FAILURE_WINDOW_SECONDS = 900
+MIN_PASSWORD_LENGTH = 12
+# A dummy hash of the same shape/cost as a real one. Verified when the email is
+# unknown so a failed login costs the same time either way and does not leak
+# account existence through response latency.
+_TIMING_EQUALIZER_HASH = (
+    "pbkdf2_sha256$200000$"
+    "0000000000000000000000000000000000000000000000000000000000000000$"
+    "0000000000000000000000000000000000000000000000000000000000000000"
+)
 
 
 class AuthError(Exception):
@@ -88,8 +106,11 @@ async def signup(
     if settings.auth_mode != "local":
         raise AuthError("auth_disabled", "local signup is disabled when AUTH_MODE!=local")
     normalized = email.strip().lower()
-    if len(password) < 8:
-        raise AuthError("weak_password", "password must be at least 8 characters")
+    if len(password) < MIN_PASSWORD_LENGTH:
+        raise AuthError(
+            "weak_password",
+            f"password must be at least {MIN_PASSWORD_LENGTH} characters",
+        )
 
     existing = (
         await session.execute(
@@ -134,13 +155,49 @@ async def login(session: AsyncSession, *, email: str, password: str) -> AuthToke
     if settings.auth_mode != "local":
         raise AuthError("auth_disabled", "local login is disabled when AUTH_MODE!=local")
     normalized = email.strip().lower()
+    now = datetime.now(UTC)
+    # Lock the credential row so concurrent guesses cannot race the counter.
     row = (
         await session.execute(
-            select(LocalAuthCredential).where(LocalAuthCredential.email == normalized)
+            select(LocalAuthCredential)
+            .where(LocalAuthCredential.email == normalized)
+            .with_for_update()
         )
     ).scalar_one_or_none()
-    if row is None or not verify_password(password, row.password_hash):
+
+    if row is None:
+        # Equalize timing against the known-account path; same generic error.
+        verify_password(password, _TIMING_EQUALIZER_HASH)
         raise AuthError("invalid_credentials", "invalid email or password")
+
+    if row.locked_until is not None and row.locked_until > now:
+        # Equalize against both unknown-account and ordinary wrong-password
+        # failures. Returning before PBKDF work would turn a locked known
+        # address into a measurable account-existence timing oracle.
+        verify_password(password, row.password_hash)
+        # Generic message: never disclose whether the account exists or why.
+        raise AuthError(
+            "invalid_credentials",
+            "invalid email or password",
+        )
+
+    if not verify_password(password, row.password_hash):
+        stale = (
+            row.last_failed_at is None
+            or (now - row.last_failed_at) > timedelta(seconds=FAILURE_WINDOW_SECONDS)
+        )
+        row.failed_attempts = 1 if stale else (row.failed_attempts or 0) + 1
+        row.last_failed_at = now
+        if row.failed_attempts >= MAX_FAILED_ATTEMPTS:
+            row.locked_until = now + timedelta(seconds=LOCKOUT_SECONDS)
+        await session.flush()
+        raise AuthError("invalid_credentials", "invalid email or password")
+
+    # Success clears the counter and any expired lock.
+    row.failed_attempts = 0
+    row.last_failed_at = None
+    row.locked_until = None
+    await session.flush()
     token = mint_access_token(user_id=row.user_id, email=row.email)
     return AuthToken(
         access_token=token,

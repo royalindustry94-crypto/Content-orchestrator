@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 
 import pytest
 from sqlalchemy import select, text
 
 from app.db.session import AsyncSessionLocal
+from app.models.content import ContentItem
 from app.models.pipeline import PipelineRun
 from app.models.review_gate import ReviewGate
 from app.models.workspace_membership import WorkspaceRole
@@ -66,6 +68,13 @@ async def test_content_job_lands_in_review_gate(client, new_user):
     assert gates[0]["id"] == body["review_gate_id"]
     assert gates[0]["script_body"] == "Draft body for human review."
     assert gates[0]["status"] == "awaiting"
+
+    async with AsyncSessionLocal() as session:
+        gate = await session.get(ReviewGate, uuid.UUID(body["review_gate_id"]))
+        item = await session.get(ContentItem, uuid.UUID(body["content_item_id"]))
+        assert gate is not None and item is not None
+        assert gate.content_version_id == item.current_version_id
+        assert gate.content_version_id is not None
 
 
 @pytest.mark.asyncio
@@ -238,3 +247,34 @@ async def test_idempotent_content_job_returns_same_gate(client, new_user):
             .all()
         )
         assert len(gates) == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_review_decisions_are_serialized(client, new_user):
+    _user_id, _token, headers = new_user
+    workspace_id = await _create_workspace(client, headers)
+    created = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=headers,
+        json={"topic": "Concurrent decision", "script_body": "Body"},
+    )
+    assert created.status_code == 201, created.text
+    gate_id = created.json()["review_gate_id"]
+
+    approve, reject = await asyncio.gather(
+        client.post(
+            f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
+            headers=headers,
+            json={"approved": True, "notes": "approve race"},
+        ),
+        client.post(
+            f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
+            headers=headers,
+            json={"approved": False, "notes": "reject race"},
+        ),
+    )
+
+    assert sorted((approve.status_code, reject.status_code)) == [200, 409]
+    decided = approve if approve.status_code == 200 else reject
+    assert decided.json()["status"] in {"approved", "rejected"}
+    assert decided.json()["decided_at"] is not None

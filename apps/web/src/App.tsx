@@ -1,14 +1,11 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useState, type FormEvent } from "react";
 import {
-  createContentJob,
   createWorkspace,
-  decideReviewGate,
-  listReviewGates,
   listWorkspaces,
   login,
   signup,
-  type ReviewGate,
 } from "./api";
+import LumoraDashboard from "./LumoraDashboard";
 
 type Session = {
   token: string;
@@ -16,7 +13,7 @@ type Session = {
   email: string;
 };
 
-const STORAGE_KEY = "co.reviewDesk.session";
+const STORAGE_KEY = "lumora.missionControl.session";
 
 function loadSession(): Session | null {
   try {
@@ -32,35 +29,12 @@ function loadSession(): Session | null {
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(() => loadSession());
+  const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [workspaceName, setWorkspaceName] = useState("My Agency Desk");
-  const [gates, setGates] = useState<ReviewGate[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [topic, setTopic] = useState("");
-  const [scriptBody, setScriptBody] = useState("");
-  const [notes, setNotes] = useState<Record<string, string>>({});
-
-  const refresh = useCallback(async (active: Session) => {
-    setBusy(true);
-    setError(null);
-    try {
-      const rows = await listReviewGates(active.token, active.workspaceId, "awaiting");
-      setGates(rows);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load review queue");
-      setGates([]);
-    } finally {
-      setBusy(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (session) {
-      void refresh(session);
-    }
-  }, [session, refresh]);
 
   async function authenticate(mode: "login" | "signup", event: FormEvent) {
     event.preventDefault();
@@ -94,65 +68,54 @@ export default function App() {
     }
   }
 
-  async function submitDraft(event: FormEvent) {
-    event.preventDefault();
-    if (!session) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const payload: { topic: string; script_body?: string } = {
-        topic: topic.trim(),
-      };
-      const body = scriptBody.trim();
-      if (body) {
-        payload.script_body = body;
-      }
-      await createContentJob(session.token, session.workspaceId, payload);
-      setTopic("");
-      setScriptBody("");
-      await refresh(session);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create content job");
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function decide(gateId: string, approved: boolean) {
-    if (!session) return;
-    setBusy(true);
-    setError(null);
-    try {
-      await decideReviewGate(
-        session.token,
-        session.workspaceId,
-        gateId,
-        approved,
-        notes[gateId]?.trim() || undefined,
-      );
-      await refresh(session);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Decision failed");
-    } finally {
-      setBusy(false);
-    }
+  if (session) {
+    return (
+      <LumoraDashboard
+        token={session.token}
+        workspaceId={session.workspaceId}
+        email={session.email}
+        onWorkspaceChange={(workspaceId) => {
+          const next = { ...session, workspaceId };
+          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+          setSession(next);
+        }}
+        onSignOut={() => {
+          sessionStorage.removeItem(STORAGE_KEY);
+          setSession(null);
+        }}
+      />
+    );
   }
 
   return (
-    <div className="desk">
-      <header className="desk__header">
-        <p className="desk__brand">Content Orchestrator</p>
-        <h1>Review Desk</h1>
-        <p className="desk__lede">
-          Private Beta — every draft stops at the Human Review Gate before publish.
-        </p>
-      </header>
-
-      {!session ? (
-        <form className="panel" onSubmit={(e) => void authenticate("login", e)}>
-          <h2>Sign in</h2>
+    <div className="auth-shell">
+      <section className="auth-brand">
+        <div className="auth-brand__logo"><span>L</span>Lumora</div>
+        <div>
+          <p className="page-kicker">Mission Control</p>
+          <h1>Run your content operation with clarity.</h1>
+          <p>
+            One calm, intelligent workspace for every pipeline, worker,
+            customer and Human Review Gate.
+          </p>
+        </div>
+        <div className="auth-signal">
+          <span>Secure workspace access</span>
+        </div>
+      </section>
+      <section className="auth-panel">
+        <form className="auth-form" onSubmit={(e) => void authenticate(mode, e)}>
+          <header>
+            <p className="page-kicker">{mode === "login" ? "Welcome back" : "Get started"}</p>
+            <h2>{mode === "login" ? "Sign in to Lumora" : "Create your Lumora account"}</h2>
+            <span>
+              {mode === "login"
+                ? "Enter your credentials to continue."
+                : "Set up your account and first workspace."}
+            </span>
+          </header>
           <label>
-            Email
+            Work email
             <input
               type="email"
               value={email}
@@ -168,125 +131,50 @@ export default function App() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={8}
-              autoComplete="current-password"
+              minLength={mode === "signup" ? 12 : 1}
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
             />
           </label>
-          <label>
-            Workspace name (used on first signup)
-            <input
-              value={workspaceName}
-              onChange={(e) => setWorkspaceName(e.target.value)}
-              maxLength={200}
-            />
-          </label>
-          <div className="queue__actions">
-            <button type="submit" disabled={busy}>
-              Log in
+          {mode === "signup" ? (
+            <label className="auth-workspace">
+              Workspace name
+              <input
+                value={workspaceName}
+                onChange={(e) => setWorkspaceName(e.target.value)}
+                maxLength={200}
+                required
+                placeholder="e.g. Acme Content Team"
+              />
+            </label>
+          ) : null}
+          <div className="auth-actions">
+            <button className="button button--primary" type="submit" disabled={busy}>
+              {busy
+                ? mode === "login"
+                  ? "Signing in…"
+                  : "Creating account…"
+                : mode === "login"
+                  ? "Sign in"
+                  : "Create account"}
             </button>
             <button
+              className="auth-create"
               type="button"
               disabled={busy}
-              onClick={(e) => void authenticate("signup", e as unknown as FormEvent)}
-            >
-              Create account
-            </button>
-          </div>
-        </form>
-      ) : (
-        <>
-          <div className="desk__meta">
-            <span>
-              {session.email} · Workspace {session.workspaceId}
-            </span>
-            <button
-              type="button"
-              className="linkish"
               onClick={() => {
-                sessionStorage.removeItem(STORAGE_KEY);
-                setSession(null);
-                setGates([]);
+                setError(null);
+                setMode((current) => (current === "login" ? "signup" : "login"));
               }}
             >
-              Sign out
+              {mode === "login"
+                ? "New to Lumora? Create an account"
+                : "Already have an account? Sign in"}
             </button>
           </div>
-
-          <form className="panel" onSubmit={(e) => void submitDraft(e)}>
-            <h2>Submit draft for review</h2>
-            <label>
-              Topic
-              <input
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                required
-                maxLength={500}
-              />
-            </label>
-            <label>
-              Script body (optional — Draft Desk generates if empty)
-              <textarea
-                value={scriptBody}
-                onChange={(e) => setScriptBody(e.target.value)}
-                rows={6}
-              />
-            </label>
-            <button type="submit" disabled={busy}>
-              Send to Review Gate
-            </button>
-          </form>
-
-          <section className="panel">
-            <div className="panel__row">
-              <h2>Awaiting review</h2>
-              <button type="button" onClick={() => void refresh(session)} disabled={busy}>
-                Refresh
-              </button>
-            </div>
-            {gates.length === 0 ? (
-              <p className="muted">No items in the gate.</p>
-            ) : (
-              <ul className="queue">
-                {gates.map((gate) => (
-                  <li key={gate.id} className="queue__item">
-                    <h3>{gate.topic}</h3>
-                    <p className="muted">Gate {gate.id}</p>
-                    <pre>{gate.script_body}</pre>
-                    <label>
-                      Notes
-                      <input
-                        value={notes[gate.id] ?? ""}
-                        onChange={(e) =>
-                          setNotes((prev) => ({ ...prev, [gate.id]: e.target.value }))
-                        }
-                      />
-                    </label>
-                    <div className="queue__actions">
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() => void decide(gate.id, true)}
-                      >
-                        Approve
-                      </button>
-                      <button
-                        type="button"
-                        className="danger"
-                        disabled={busy}
-                        onClick={() => void decide(gate.id, false)}
-                      >
-                        Reject
-                      </button>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-        </>
-      )}
-
-      {error ? <p className="error" role="alert">{error}</p> : null}
+          {error ? <p className="error" role="alert">{error}</p> : null}
+        </form>
+        <footer>Protected by workspace-scoped access controls.</footer>
+      </section>
     </div>
   );
 }

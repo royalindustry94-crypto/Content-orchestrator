@@ -45,6 +45,8 @@ from app.models.enums import (
     WorkerCredentialStatus,
     WorkerStatus,
 )
+from app.models.pipeline import PipelineRun
+from app.models.worker_logs import WorkerLog
 from app.models.workers import WorkerCredential, WorkerHeartbeat, WorkerRegistration
 from app.models.workspace_membership import WorkspaceMembership
 from app.orchestration.claiming import claim_assignment
@@ -68,6 +70,8 @@ from app.schemas.workers import (
     SubmitOut,
     WorkerDrainIn,
     WorkerHeartbeatIn,
+    WorkerLogAccepted,
+    WorkerLogIn,
     WorkerOut,
     WorkerProvisionIn,
     WorkerProvisionOut,
@@ -104,6 +108,80 @@ def _worker_out(registration: WorkerRegistration) -> WorkerOut:
         registered_at=registration.registered_at,
         deregistered_at=registration.deregistered_at,
     )
+
+
+@worker_router.post(
+    "/logs", response_model=WorkerLogAccepted, status_code=status.HTTP_202_ACCEPTED
+)
+async def ingest_worker_log(
+    payload: WorkerLogIn,
+    request: Request,
+    worker: AuthenticatedWorker = Depends(get_current_worker),
+) -> WorkerLogAccepted:
+    """Persist one authenticated worker log event.
+
+    Worker identity/workspace are credential-derived. Optional assignment
+    and pipeline references are verified before insert, preventing workers
+    from attaching logs to another tenant's work.
+    """
+    now = datetime.now(UTC)
+    occurred_at = payload.occurred_at or now
+    if occurred_at > now + timedelta(minutes=5):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="occurred_at cannot be more than five minutes in the future",
+        )
+    async with AsyncSessionLocal() as session:
+        pipeline_run_id = payload.pipeline_run_id
+        if payload.assignment_id is not None:
+            assignment = await session.get(StageAssignment, payload.assignment_id)
+            if (
+                assignment is None
+                or assignment.workspace_id != worker.workspace_id
+                or assignment.worker_id != worker.worker_id
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="assignment does not belong to authenticated worker",
+                )
+            if (
+                payload.pipeline_run_id is not None
+                and assignment.pipeline_run_id != payload.pipeline_run_id
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="pipeline_run_id does not match assignment",
+                )
+            pipeline_run_id = assignment.pipeline_run_id
+        if pipeline_run_id is not None:
+            run = await session.get(PipelineRun, pipeline_run_id)
+            if run is None or run.workspace_id != worker.workspace_id:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+                    detail="pipeline does not belong to authenticated worker workspace",
+                )
+        log = WorkerLog(
+            workspace_id=worker.workspace_id,
+            worker_id=worker.worker_id,
+            pipeline_run_id=pipeline_run_id,
+            assignment_id=payload.assignment_id,
+            severity=payload.severity,
+            message=payload.message,
+            context=payload.context,
+            occurred_at=occurred_at,
+            received_at=now,
+        )
+        session.add(log)
+        await session.commit()
+        log_id = log.id
+    audit(
+        request,
+        "worker_log_ingested",
+        worker_id=str(worker.worker_id),
+        severity=payload.severity,
+        log_id=str(log_id),
+    )
+    return WorkerLogAccepted(id=log_id, received_at=now)
 
 
 # --------------------------------------------------------------------------

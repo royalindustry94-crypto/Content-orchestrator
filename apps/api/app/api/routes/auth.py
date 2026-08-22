@@ -56,9 +56,14 @@ async def login(payload: LoginIn, db: AsyncSession = Depends(get_db)) -> AuthTok
             db, email=str(payload.email), password=payload.password
         )
     except local_auth.AuthError as exc:
+        # Persist the failed-attempt counter before returning 401 (M-F): the
+        # service mutated the locked credential row, so rolling back here
+        # would make the lockout unenforceable.
+        await db.commit()
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, detail=exc.message
         ) from exc
+    await db.commit()
     return AuthTokenOut(
         access_token=token.access_token,
         token_type=token.token_type,

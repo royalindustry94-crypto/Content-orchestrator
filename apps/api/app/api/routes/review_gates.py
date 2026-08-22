@@ -82,6 +82,11 @@ async def decide_review_gate(
         ) from exc
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+    except content_desk.ReviewGateDeliveryError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="review decision could not be applied; retry safely",
+        ) from exc
 
     audit(
         request,

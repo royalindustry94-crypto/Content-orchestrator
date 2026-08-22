@@ -86,13 +86,27 @@ async def _collect(session: AsyncSession) -> str:
     return "\n".join(lines)
 
 
+# Only these environments may scrape /metrics without a token. Anything else
+# (staging, preview, demo, beta, or an unrecognised value) is treated as a
+# deployed environment and requires the scrape token: an unauthenticated
+# metrics endpoint discloses tenant-count, queue-depth and failure-rate
+# telemetry to anyone who can reach the host (M-G).
+TOKENLESS_METRICS_ENVIRONMENTS = frozenset({"local", "test", "ci"})
+
+
 def _authorize_metrics_scrape(authorization: str | None) -> None:
-    """Fail-closed metrics auth (PR #34 M-3)."""
+    """Fail-closed metrics auth (PR #34 M-3, hardened for M-G).
+
+    Previously any environment other than ``production``/``prod`` served
+    metrics without a token, so a staging or preview deployment exposed
+    operational telemetry publicly. The allow-list is now explicit and
+    closed by default.
+    """
     settings = get_settings()
     expected = (settings.metrics_scraper_token or "").strip()
     env = settings.environment.strip().lower()
     if not expected:
-        if env in {"production", "prod"}:
+        if env not in TOKENLESS_METRICS_ENVIRONMENTS:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="metrics scrape token required",

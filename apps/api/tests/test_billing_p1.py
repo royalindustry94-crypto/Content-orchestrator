@@ -216,7 +216,7 @@ async def test_billing_idor(client, new_user, billing_on):
     # second user
     email = f"{uuid.uuid4()}@ex.com"
     signup = await client.post(
-        "/auth/signup", json={"email": email, "password": "securepass1"}
+        "/auth/signup", json={"email": email, "password": "securepass1-beta"}
     )
     hb = {"Authorization": f"Bearer {signup.json()['access_token']}"}
     _uid, _tok, ha = a

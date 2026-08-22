@@ -1,0 +1,6 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Historical non-secret smoke fixture value; removed in the next commit"
+stopwords = ["isolation-probe-2026"]

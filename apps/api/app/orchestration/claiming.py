@@ -27,6 +27,7 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -34,7 +35,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.models.assignments import StageAssignment
 from app.models.claim_audit import StageClaimAudit
-from app.models.enums import ClaimOutcome, StageAssignmentStatus, WorkerStatus
+from app.models.enums import (
+    ClaimOutcome,
+    ReservationStatus,
+    StageAssignmentStatus,
+    WorkerStatus,
+)
+from app.models.spend import SpendReservation
 from app.models.workers import WorkerRegistration
 from app.orchestration.events.envelope import child_span
 from app.orchestration.events.types import STAGE_ASSIGNED
@@ -234,6 +241,43 @@ async def claim_assignment(
             reason=reason, assignment=None, stage=None,
         )
         return ClaimResult(None, outcome, reason)
+
+    # 3a. Spend gate at ownership transfer. dispatch_stage only reserves when
+    #     it assigns a worker directly; a PENDING row claimed here has no
+    #     reservation yet, so the cap must be enforced now. Fail closed: if the
+    #     workspace is over budget the claim is a normal audited non-grant and
+    #     the assignment stays PENDING (reserve_spend pauses the run).
+    from app.models.pipeline import PipelineRun as _PipelineRun
+    from app.orchestration import controller as _controller
+
+    run_for_spend = await session.get(_PipelineRun, assignment.pipeline_run_id)
+    if run_for_spend is not None:
+        open_reservation = (
+            await session.execute(
+                select(SpendReservation).where(
+                    SpendReservation.pipeline_run_id == assignment.pipeline_run_id,
+                    SpendReservation.stage == assignment.stage,
+                    SpendReservation.status == ReservationStatus.RESERVED,
+                )
+            )
+        ).scalar_one_or_none()
+        if open_reservation is None:
+            reservation = await _controller.reserve_spend(
+                session,
+                run=run_for_spend,
+                stage=assignment.stage,
+                provider=assignment.provider or "draft_desk",
+                estimated_cost_usd=Decimal(
+                    str(get_settings().default_stage_estimate_usd)
+                ),
+            )
+            if reservation is None:
+                reason = "workspace spend cap reached"
+                await _record(
+                    session, worker=worker, outcome=ClaimOutcome.CAPACITY,
+                    reason=reason, assignment=assignment, stage=assignment.stage,
+                )
+                return ClaimResult(None, ClaimOutcome.CAPACITY, reason)
 
     # 4. Mutate assignment + worker load in the SAME transaction.
     lease_seconds = _claim_lease_seconds()
