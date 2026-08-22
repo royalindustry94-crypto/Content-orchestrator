@@ -1,59 +1,49 @@
-# Post-Merge Verification — Private Beta Baseline
+# Post-Merge Verification — Controlled Beta Baseline
 
-**Date:** 2026-08-06  
-**Approved tip:** `a31cfef5496723d2b3ec4da7093b5682326a5a60`  
-**Main merge commit:** `43b286d30f0f0734b480251b98050f4d5337273e`  
-**Auditor:** Autonomous release execution of CEO merge path
+**Date:** 2026-08-22 UTC
 
----
+| Field | Recorded value |
+|---|---|
+| Approved executable SHA | `c4c501b61dea23f036560d6473c85cd848f4aadc` |
+| PR | [#44](https://github.com/royalindustry94-crypto/Content-orchestrator/pull/44) |
+| PR final head | `aa906e5c42f313057e0b851c000553a7f8dc5c7a` |
+| Merge SHA | `64974855ddabfda2ff05de4069d93c0178f58acc` |
+| Final main executable baseline SHA | `64974855ddabfda2ff05de4069d93c0178f58acc` |
+| Migration head | `0040` |
+| Main CI | [Run 32578620932](https://github.com/royalindustry94-crypto/actions/runs/32578620932) |
 
-## Merge sequence executed
+> The merge is a two-parent GitHub merge commit. The approved executable SHA and the PR final head are both ancestors of main. A tree comparison confirmed that main has no executable, infrastructure, or migration-path delta from the approved SHA; the post-approved commits are documentation-only.
 
-| Step | Action | Result |
-|------|--------|--------|
-| 1 | Merge PR #35 → PR #34 branch | **DONE** — fast-forward `41b3268` → `a31cfef` |
-| 2 | Confirm #34 contains `a31cfef` | **PASS** |
-| 3 | CI on updated #34 head | **PASS** — https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/31073316933 |
-| 4 | Critical / High / regressions | **PASS** (see below) |
-| 5 | Merge PR #34 → `main` (`--no-ff`) | **DONE** — preserves migration history |
-| 6 | Verify `main` contains approved tip | **PASS** — `a31cfef` is ancestor of `main` tip |
-| 7 | Post-merge CI on `main` | **PASS** — https://github.com/royalindustry94-crypto/Content-orchestrator/actions/runs/31073497705 |
-| 8 | Close superseded PRs | After `main` verified |
-
----
-
-## Gate confirmation (pre-main-merge)
+## Verification results
 
 | Check | Result |
-|-------|--------|
-| Critical findings | **0** |
-| High findings | **0** |
-| CI on PR #34 @ `a31cfef` | **Green** (api, worker, web, security, docker-build) |
-| Migration replay (fresh DB → head → base → head) | **PASS** — head `0033` |
-| Security (CI security job) | **PASS** |
-| HRG resurrection regression (`test_c1_*`) | **PASS** (in `test_pr34_high_fixes.py` suite) |
-| Spend/idempotency regressions (H-3/H-4 + clamp/idempotent commit) | **PASS** (9/9 in `test_pr34_high_fixes.py`) |
+|---|---|
+| Main CI | **PASS** — API, worker, web, security, and Docker all succeeded. |
+| Migration replay | **PASS** — downgrade to base, upgrade to head `0040`, then `alembic check` reported no new upgrade operations. |
+| HRG regression suite | **PASS** — review decision and publication-version controls included in the 63-test targeted control set. |
+| Tenant-isolation suite | **PASS** — cross-workspace/RLS coverage included in the 63-test targeted control set. |
+| Spend/idempotency suite | **PASS** — cap, reservation, retry, and recovery controls included in the 63-test targeted control set. |
+| Security controls | **PASS** — local-auth, runtime credential, metrics, and preview credential coverage included in the 63-test targeted control set. |
+| Worker | **PASS** — lint and 4 tests. |
+| Frontend | **PASS** — lint, production build, 25 tests, and high-severity dependency audit. |
 
----
+## Finding and boundary status
 
-## Tree verification
+**Critical findings:** 0 open in repository scope.
 
-```
-approved tip a31cfef  ⊂  main merge parents
-alembic head on tip: 0033
-```
+**High findings:** 0 open in repository scope.
 
----
+The baseline retains all controlled-beta boundaries. `BILLING_ENABLED=false` remains the default. Automatic external publishing remains disabled. The Human Review Gate remains mandatory. No public deployment, tester invitation, billing activation, or production-readiness claim was made by this merge.
 
-## Remaining external blockers (non-code)
+## Remaining external blockers
 
-- Managed Postgres PITR / hosted backup credentials
-- Live Stripe keys + `BILLING_ENABLED=true` for paid launch
-- Optional APM
-- BYOK (WP-PB-005) if required for customer tenancy
-
----
+| Blocker | Required owner action |
+|---|---|
+| Managed recovery | Perform and sign off an authorised managed backup/PITR restore drill. |
+| Hosted metrics | Record tokenless deployed `/metrics` returning `401` without exposing the token. |
+| Billing | Keep disabled until an authorised Stripe reconciliation and entitlement drill completes. |
+| Beta evidence | Obtain a qualified tester cohort, consented workflow outcomes, provider invoices, and realised cost/acceptance data. |
 
 ## Verdict
 
-**BETA BASELINE MERGED**
+**CONTROLLED BETA BASELINE MERGED.** Deployment is the next gate and remains out of scope for this record.
