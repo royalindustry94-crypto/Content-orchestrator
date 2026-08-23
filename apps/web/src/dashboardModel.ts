@@ -30,6 +30,7 @@ export type DashboardData = {
   activity: ActivityFeed;
   health: SystemHealth;
   customers: Customers;
+  workers: WorkerMonitor;
 };
 
 export type HealthLevel = "operational" | "degraded" | "down" | "unknown";
@@ -66,7 +67,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 export function isDashboardData(value: unknown): value is DashboardData {
-  return isRecord(value) && "executive" in value && "alerts" in value && "activity" in value && "health" in value;
+  return isRecord(value) && "executive" in value && "alerts" in value && "activity" in value && "health" in value && "workers" in value;
 }
 
 export function isExecutiveMode(value: unknown): value is ExecutiveMode {

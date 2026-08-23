@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   createWorkspace,
   listWorkspaces,
@@ -30,12 +30,28 @@ function loadSession(): Session | null {
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(() => loadSession());
+  const [launchState, setLaunchState] = useState<"hidden" | "visible" | "exiting">(() => loadSession() ? "visible" : "hidden");
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [workspaceName, setWorkspaceName] = useState("My Agency Desk");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!session || launchState !== "visible") return;
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) {
+      setLaunchState("hidden");
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => setLaunchState("exiting"));
+    const timeout = window.setTimeout(() => setLaunchState("hidden"), 420);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
+    };
+  }, [launchState, session]);
 
   async function authenticate(mode: "login" | "signup", event: FormEvent) {
     event.preventDefault();
@@ -61,6 +77,7 @@ export default function App() {
         email: auth.email,
       };
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      setLaunchState("visible");
       setSession(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentication failed");
@@ -71,20 +88,30 @@ export default function App() {
 
   if (session) {
     return (
-      <LumoraDashboard
-        token={session.token}
-        workspaceId={session.workspaceId}
-        email={session.email}
-        onWorkspaceChange={(workspaceId) => {
-          const next = { ...session, workspaceId };
-          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-          setSession(next);
-        }}
-        onSignOut={() => {
-          sessionStorage.removeItem(STORAGE_KEY);
-          setSession(null);
-        }}
-      />
+      <>
+        <LumoraDashboard
+          token={session.token}
+          workspaceId={session.workspaceId}
+          email={session.email}
+          onWorkspaceChange={(workspaceId) => {
+            const next = { ...session, workspaceId };
+            sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+            setSession(next);
+          }}
+          onSignOut={() => {
+            sessionStorage.removeItem(STORAGE_KEY);
+            setLaunchState("hidden");
+            setSession(null);
+          }}
+        />
+        {launchState !== "hidden" ? (
+          <div aria-label="The Business Manager launch" className={launchState === "exiting" ? "business-launch business-launch--exiting" : "business-launch"} role="status">
+            <BusinessManagerMark className="business-launch__mark" />
+            <p>The Business Manager</p>
+            <span>We get it sorted.</span>
+          </div>
+        ) : null}
+      </>
     );
   }
 
@@ -95,7 +122,7 @@ export default function App() {
           <BusinessManagerMark className="auth-brand__mark" />
           <div>
             <p className="auth-brand__name">The Business Manager</p>
-            <span className="auth-brand__section">Command Center</span>
+            <span className="auth-brand__section">Business Operating System</span>
           </div>
         </div>
         <div>

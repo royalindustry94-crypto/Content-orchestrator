@@ -93,7 +93,7 @@ async function report() {
     footer: (document.querySelector('.sidebar-foot strong')||{}).innerText || null,
     heading: (document.querySelector('main h1, main h2')||{}).innerText || null,
     horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth,
-    conditionRows: document.querySelectorAll('#active-alerts .alert-row').length,
+    conditionRows: document.querySelectorAll('#active-alerts .decision-card').length,
     unlabeledControls: [...document.querySelectorAll('input, select, textarea')].filter(el =>
       !el.getAttribute('aria-label') &&
       !el.getAttribute('aria-labelledby') &&
@@ -137,8 +137,12 @@ console.log("login:", JSON.stringify(loginInfo));
 console.log("LOGIN UX:", JSON.stringify(loginUx));
 if (!loginInfo.ok) { console.log("LOGIN FAILED"); process.exit(2); }
 
-await navigate(BASE);
-await sleep(1200);
+await send("Page.navigate", { url: BASE }, sessionId);
+await sleep(80);
+const launchObserved = await evaluate(`!!document.querySelector('.business-launch')`);
+console.log("LAUNCH OBSERVED:", launchObserved);
+if (launchObserved) await shot("00-launch");
+await sleep(760);
 const backendTruth = await evaluate(`(async () => {
   const session = JSON.parse(sessionStorage.getItem('lumora.missionControl.session'));
   const headers = { Authorization: 'Bearer ' + session.token };
@@ -155,7 +159,7 @@ const backendTruth = await evaluate(`(async () => {
   };
 })()`);
 
-const routes = ["Command Center", "AI Workers", "Content Pipeline", "Human Review", "Opportunities", "Analytics", "Spend & Usage", "Audience", "Integrations", "Settings"];
+const routes = ["Home", "AI Workforce", "Content Operations", "Human Review", "Opportunities", "Business Intelligence", "Financial Intelligence", "Audience", "Connections", "Settings"];
 const missionTabs = ["Overview", "Timeline", "Live logs", "AI assistant", "Content"];
 
 const results = [];
@@ -199,7 +203,7 @@ for (const label of routes) {
   results.push({ label, clicked, ...rep });
   index++;
 
-  if (label === "Integrations") {
+  if (label === "Connections") {
     for (const tab of missionTabs) {
       await evaluate(`(() => {
         const tabs = document.querySelector('.view-tabs');
@@ -211,7 +215,7 @@ for (const label of routes) {
       await sleep(1200);
       const trep = await report();
       await shot(`${String(index).padStart(2, "0")}-mission-${tab.replace(/\s+/g, "-").toLowerCase()}`);
-      results.push({ label: `Integrations/${tab}`, ...trep });
+      results.push({ label: `Connections/${tab}`, ...trep });
       index++;
     }
   }
@@ -225,6 +229,7 @@ await send(
 );
 await navigate(BASE);
 await sleep(1200);
+await shot("89-mobile-home");
 await evaluate(`(() => { const b=[...document.querySelectorAll('button')].find(x=>/open navigation/i.test(x.getAttribute('aria-label')||'')); if(b)b.click(); return !!b; })()`);
 await sleep(500);
 await shot("90-mobile-nav-open");
@@ -232,7 +237,7 @@ const mrep = await report();
 results.push({ label: "mobile-dashboard", ...mrep });
 
 const mobileResults = [];
-for (const label of ["Human Review", "AI Workers", "Settings"]) {
+for (const label of ["Human Review", "AI Workforce", "Settings"]) {
   await evaluate(`(() => {
     const open = [...document.querySelectorAll('button')].find(x => /open navigation/i.test(x.getAttribute('aria-label') || ''));
     if (open) open.click();
@@ -250,12 +255,12 @@ for (const label of ["Human Review", "AI Workers", "Settings"]) {
   await shot(`9${mobileResults.length}-${label.replace(/\s+/g, "-").toLowerCase()}`);
 }
 
-writeFileSync(`${OUT}/results.json`, JSON.stringify({ results, mobileResults, loginUx, searchResult, consoleProblems, uncaughtExceptions }, null, 2));
+writeFileSync(`${OUT}/results.json`, JSON.stringify({ results, mobileResults, loginUx, launchObserved, searchResult, consoleProblems, uncaughtExceptions }, null, 2));
 const crashes = results.filter((r) => r.crash || r.textLen === 0);
 const accessibilityFailures = results.filter((r) => r.unlabeledControls > 0);
 const mobileFailures = mobileResults.filter((r) => r.crash || r.textLen === 0 || r.horizontalOverflow || r.unlabeledControls > 0);
 const footerFailures = results.filter((r) => r.footer !== backendTruth.expectedFooter);
-const dashboardResult = results.find((r) => r.label === "Command Center");
+const dashboardResult = results.find((r) => r.label === "Home");
 const alertParityWorks = dashboardResult?.conditionRows === backendTruth.alertTypes;
 console.log("ROUTES:", results.length);
 console.log("BLANK/CRASH:", crashes.length);
@@ -283,7 +288,8 @@ process.exit(
   consoleProblems.length === 0 &&
   uncaughtExceptions.length === 0 &&
   searchWorks &&
-  loginUxWorks
+  loginUxWorks &&
+  launchObserved
     ? 0
     : 1,
 );

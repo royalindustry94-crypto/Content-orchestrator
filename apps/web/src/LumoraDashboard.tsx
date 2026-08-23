@@ -174,15 +174,15 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
 }
 
 const NAV: Array<{ id: NavKey; label: string; icon: IconName }> = [
-  { id: "dashboard", label: "Command Center", icon: "dashboard" },
-  { id: "workers", label: "AI Workers", icon: "workers" },
-  { id: "pipelines", label: "Content Pipeline", icon: "pipelines" },
+  { id: "dashboard", label: "Home", icon: "dashboard" },
+  { id: "workers", label: "AI Workforce", icon: "workers" },
+  { id: "pipelines", label: "Content Operations", icon: "pipelines" },
   { id: "review", label: "Human Review", icon: "review" },
   { id: "leads", label: "Opportunities", icon: "leads" },
-  { id: "analytics", label: "Analytics", icon: "analytics" },
-  { id: "billing", label: "Spend & Usage", icon: "billing" },
+  { id: "analytics", label: "Business Intelligence", icon: "analytics" },
+  { id: "billing", label: "Financial Intelligence", icon: "billing" },
   { id: "customers", label: "Audience", icon: "customers" },
-  { id: "mission", label: "Integrations", icon: "mission" },
+  { id: "mission", label: "Connections", icon: "mission" },
   { id: "settings", label: "Settings", icon: "settings" },
 ];
 
@@ -293,103 +293,117 @@ function DashboardHome({
   workspaceId: string;
   navigate: (key: NavKey) => void;
 }) {
-  const activeAlerts = data.alerts.alerts;
-  const scrollToAlerts = () => {
-    document.getElementById("active-alerts")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const [range, setRange] = useState<"7D" | "30D" | "90D" | "1Y">("30D");
+  const priority = { critical: 0, warning: 1, info: 2 } as const;
+  const decisionTargets: Record<string, NavKey> = {
+    review_required: "review",
+    review_waiting: "review",
+    failed_jobs: "pipelines",
+    pipeline_failed: "pipelines",
+    spend_warning: "billing",
+    worker_offline: "workers",
+    failed_webhooks: "mission",
+    queue_backlog: "pipelines",
   };
-  const metrics = [
-    { label: "Active content jobs", value: data.executive.jobs_running, icon: "activity" as IconName, tone: "gold", target: "pipelines" as NavKey },
-    { label: "Awaiting Human Review", value: data.executive.human_reviews_waiting, icon: "review" as IconName, tone: "gold", target: "review" as NavKey },
-    { label: "Publish-ready content", value: data.pipelines.publish_queue, icon: "check" as IconName, tone: "green", target: "pipelines" as NavKey },
-    { label: "Active workers", value: data.executive.workers_online, icon: "workers" as IconName, tone: "gold", target: "workers" as NavKey },
-    { label: "Failed jobs", value: data.executive.jobs_failed, icon: "alert" as IconName, tone: data.executive.jobs_failed ? "red" : "green", target: "pipelines" as NavKey },
-    { label: "Spend today", value: money(data.executive.spend_today_usd), icon: "billing" as IconName, tone: "gold", target: "billing" as NavKey },
-  ];
-  const flow = [
-    { label: "Queued", value: data.pipelines.jobs_waiting, tone: "muted" },
-    { label: "In progress", value: data.executive.jobs_running, tone: "gold" },
-    { label: "Human review", value: data.executive.human_reviews_waiting, tone: "gold" },
-    { label: "Publish-ready", value: data.pipelines.publish_queue, tone: "green" },
-  ];
+  const decisions = [...data.alerts.alerts]
+    .filter((alert) => ["critical", "warning"].includes(alert.severity))
+    .sort((left, right) => priority[left.severity] - priority[right.severity]);
+  const departments = [
+    ["Scout", "Research and opportunity discovery"],
+    ["Strategist", "Business and content recommendations"],
+    ["Writer", "Scripts, copy, and content packages"],
+    ["Producer", "Generation and render orchestration"],
+    ["Compliance", "Policy, rights, and originality checks"],
+    ["Chief Auditor", "Independent audit-chain verification"],
+    ["Analyst", "Outcome and performance learning"],
+  ] as const;
+  const realWorkers = data.workers.workers;
+  const activeWorkerCount = realWorkers.filter((worker) => ["online", "busy"].includes(worker.status.toLowerCase())).length;
+
   return (
-    <div className="dashboard-home command-center-home">
-      <section className="hero-row command-center-hero">
+    <div className="dashboard-home business-home">
+      <section className="business-home__intro">
         <div>
           <p className="page-kicker">The Business Manager</p>
-          <h2>Command Center</h2>
-          <p>Real-time workflow health, review controls, and operational signals for this workspace.</p>
+          <h2>Home</h2>
+          <p>What happened, what it cost, what it made, and what needs your decision.</p>
         </div>
-        <span className="live-indicator"><i /> Live backend data</span>
+        <span className="live-indicator"><i /> Workspace-backed data</span>
       </section>
 
-      <div className="saas-metrics command-center-metrics">
-        {metrics.map((metric) => (
-          <button
-            className={`saas-metric saas-metric--${metric.tone}`}
-            key={metric.label}
-            onClick={() => navigate(metric.target)}
-            type="button"
-          >
-            <span className="metric-icon"><Icon name={metric.icon} /></span>
-            <span>{metric.label}</span>
-            <strong>{metric.value}</strong>
-            <small>Open view <Icon name="arrow" size={13} /></small>
-          </button>
-        ))}
-      </div>
-
-      <section className="surface command-flow-surface">
-        <SectionHeader
-          title="Content flow"
-          detail={`${data.pipelines.queue_depth} item${data.pipelines.queue_depth === 1 ? "" : "s"} currently in the workspace queue`}
-          action={<button className="text-button" onClick={() => navigate("pipelines")} type="button">Open Content Pipeline</button>}
-        />
-        <div className="command-flow">
-          {flow.map((step, index) => (
-            <div className={`flow-step flow-step--${step.tone}`} key={step.label}>
-              <span className="flow-index">{String(index + 1).padStart(2, "0")}</span>
-              <strong>{step.value}</strong>
-              <small>{step.label}</small>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="surface alerts-surface" id="active-alerts">
-        <SectionHeader
-          title="Operational attention"
-          detail={activeAlerts.length ? `${activeAlerts.length} active condition${activeAlerts.length === 1 ? "" : "s"} require attention` : "No active conditions reported by the backend"}
-          action={activeAlerts.length ? <button className="text-button" onClick={scrollToAlerts} type="button">Review alerts</button> : undefined}
-        />
-        {activeAlerts.length === 0 ? (
-          <EmptyState icon="check" title="No active alerts" message="The currently reported workspace conditions are healthy." />
-        ) : (
-          <ul className="alerts-list">
-            {activeAlerts.map((alert) => (
-              <li className={`alert-row alert-row--${alert.severity}`} key={alert.key}>
-                <span className={`severity-tag severity-tag--${alert.severity}`}>{alert.severity}</span>
-                <div>
-                  <strong>{alert.title}</strong>
-                  <small>{alert.message}</small>
-                </div>
-                {alert.count > 1 ? <b className="alert-count">{alert.count}</b> : null}
-              </li>
+      <section className="financial-hero" aria-label="Business profitability">
+        <div className="financial-hero__copy">
+          <p className="financial-hero__eyebrow">Business performance</p>
+          <h3>Is my business making money?</h3>
+          <p>Connect your financial data to see profitability.</p>
+          <span className="financial-hero__note">Revenue, expenses, net profit, and margin appear only after a connected workspace source is available.</span>
+          <div className="financial-range" role="group" aria-label="Financial time range">
+            {(["7D", "30D", "90D", "1Y"] as const).map((option) => (
+              <button className={range === option ? "financial-range__option financial-range__option--active" : "financial-range__option"} key={option} onClick={() => setRange(option)} type="button">{option}</button>
             ))}
-          </ul>
+          </div>
+        </div>
+        <div className="financial-hero__donut" aria-label={`Financial data unavailable for ${range}`}>
+          <div className="financial-hero__donut-core">
+            <span>Financial data</span>
+            <strong>Not connected</strong>
+            <small>{range} view</small>
+          </div>
+        </div>
+      </section>
+
+      <section className="business-section what-needs-you" id="active-alerts">
+        <SectionHeader
+          title="What needs you now"
+          detail={decisions.length ? "High-value human decisions and interventions, ordered by severity." : "No high-value human decisions are currently reported by the backend."}
+          action={decisions.length ? <button className="text-button" onClick={() => navigate("review")} type="button">Open Human Review</button> : undefined}
+        />
+        {decisions.length === 0 ? (
+          <EmptyState icon="check" title="Nothing needs your decision" message="No review, failure, spend, or connection condition currently requires a founder action." />
+        ) : (
+          <div className="decision-list">
+            {decisions.map((alert) => (
+              <button className={`decision-card decision-card--${alert.severity}`} key={alert.key} onClick={() => navigate(decisionTargets[alert.key] ?? "mission")} type="button">
+                <span className={`severity-tag severity-tag--${alert.severity}`}>{alert.severity}</span>
+                <span className="decision-card__copy"><strong>{alert.title}</strong><small>{alert.message}</small></span>
+                {alert.count > 1 ? <b>{alert.count}</b> : <Icon name="arrow" size={16} />}
+              </button>
+            ))}
+          </div>
         )}
       </section>
 
-      <div className="dashboard-columns">
+      <section className="business-section workforce-summary">
+        <SectionHeader
+          title="AI Workforce"
+          detail={`${realWorkers.length} registered worker process${realWorkers.length === 1 ? "" : "es"}; ${activeWorkerCount} currently live. Department capability is shown only when configured.`}
+          action={<button className="text-button" onClick={() => navigate("workers")} type="button">Open workforce</button>}
+        />
+        <div className="department-grid">
+          {departments.map(([name, responsibility]) => (
+            <article className="department-card" key={name}>
+              <span className="department-card__state">Not configured</span>
+              <h4>{name}</h4>
+              <p>{responsibility}</p>
+              <small>No workspace role binding or executable capability is configured.</small>
+            </article>
+          ))}
+        </div>
+        <div className="workforce-telemetry">
+          <div><span>Registered processes</span><strong>{realWorkers.length}</strong></div>
+          <div><span>Live processes</span><strong>{activeWorkerCount}</strong></div>
+          <div><span>Queue depth</span><strong>{data.pipelines.queue_depth}</strong></div>
+          <div><span>Retries recorded</span><strong>{realWorkers.reduce((total, worker) => total + worker.retry_count, 0)}</strong></div>
+        </div>
+      </section>
+
+      <div className="business-home__signals">
         <section className="surface activity-surface">
-          <SectionHeader
-            title="Recent activity"
-            detail="Backend-recorded events in this workspace"
-            action={<button className="text-button" onClick={() => navigate("analytics")} type="button">Open Analytics</button>}
-          />
-          <ActivityFeedView data={{ ...data.activity, items: data.activity.items.slice(0, 6) }} />
+          <SectionHeader title="What happened" detail="Backend-recorded activity in this workspace" action={<button className="text-button" onClick={() => navigate("analytics")} type="button">Open activity</button>} />
+          <ActivityFeedView data={{ ...data.activity, items: data.activity.items.slice(0, 5) }} />
         </section>
         <section className="surface health-surface">
-          <SectionHeader title="System health" detail="Current service indicators" />
+          <SectionHeader title="System signals" detail="Advanced operational detail" />
           <div className="health-list">
             {data.health.indicators.map((indicator) => (
               <div className="health-row" key={indicator.key}>
@@ -402,8 +416,8 @@ function DashboardHome({
         </section>
       </div>
 
-      <section className="surface quick-surface">
-        <SectionHeader title="Operator controls" detail="Destructive actions require explicit confirmation and are audit-recorded." />
+      <section className="surface quick-surface business-home__controls">
+        <SectionHeader title="Advanced operator controls" detail="Existing audited controls remain available; destructive actions require explicit confirmation." />
         <QuickActionsView token={token} workspaceId={workspaceId} />
       </section>
     </div>
@@ -779,15 +793,16 @@ export default function LumoraDashboard({
     try {
       let next: ViewData;
       if (nav === "dashboard") {
-        const [executive, pipelines, alerts, activity, health, customers] = await Promise.all([
+        const [executive, pipelines, alerts, activity, health, customers, workers] = await Promise.all([
           getExecutiveDashboard(token, workspaceId),
           getPipelineMonitor(token, workspaceId),
           getOperationsAlerts(token, workspaceId),
           getActivityFeed(token, workspaceId),
           getSystemHealth(token, workspaceId),
           getCustomers(token, workspaceId),
+          getWorkerMonitor(token, workspaceId),
         ]);
-        next = { executive, pipelines, alerts, activity, health, customers };
+        next = { executive, pipelines, alerts, activity, health, customers, workers };
       } else if (nav === "mission") {
         if (missionTab === "overview") next = await getExecutiveMode(token, workspaceId);
         else if (missionTab === "timeline") next = await getUniversalTimeline(token, workspaceId);
@@ -1034,25 +1049,31 @@ export default function LumoraDashboard({
       >
         <div className="brand">
           <BusinessManagerMark className="brand-mark" />
-          <div className="brand-copy"><strong>The Business Manager</strong><small>Command Center</small></div>
+          <div className="brand-copy"><strong>The Business Manager</strong><small>Business Operating System</small></div>
           <button aria-label="Close navigation" className="mobile-close" onClick={() => setMobileOpen(false)} type="button"><Icon name="close" /></button>
         </div>
         <nav aria-label="Primary navigation">
-          <p>Command</p>
-          {NAV.slice(0, 4).map((item) => (
+          <p>Business</p>
+          {NAV.slice(0, 2).map((item) => (
+            <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
+              <Icon name={item.icon} /><span>{item.label}</span>
+            </button>
+          ))}
+          <p>Content</p>
+          {NAV.slice(2, 4).map((item) => (
             <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
               <Icon name={item.icon} /><span>{item.label}</span>
               {item.id === "review" && reviewCount > 0 ? <b>{reviewCount}</b> : null}
             </button>
           ))}
-          <p>Operations</p>
-          {NAV.slice(4, 9).map((item) => (
+          <p>Intelligence</p>
+          {NAV.slice(4, 8).map((item) => (
             <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
               <Icon name={item.icon} /><span>{item.label}</span>
             </button>
           ))}
-          <p>Workspace</p>
-          {NAV.slice(9).map((item) => (
+          <p>System</p>
+          {NAV.slice(8).map((item) => (
             <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
               <Icon name={item.icon} /><span>{item.label}</span>
             </button>
@@ -1079,7 +1100,7 @@ export default function LumoraDashboard({
             <button aria-label="Open navigation" className="mobile-menu" onClick={() => setMobileOpen(true)} type="button"><Icon name="menu" /></button>
             <div className="mobile-brand" aria-label="The Business Manager">
               <BusinessManagerMark className="mobile-brand__mark" />
-              <span><strong>The Business Manager</strong><small>Command Center</small></span>
+              <span><strong>The Business Manager</strong><small>Business Operating System</small></span>
             </div>
           </div>
           <div className="topbar-utilities">

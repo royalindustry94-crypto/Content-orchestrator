@@ -68,6 +68,7 @@ const dashboardPayload = {
   activity: { items: [] },
   health: { indicators: [] },
   customers: { revenue_mtd_usd: "0" },
+  workers: { workers: [] },
 };
 const executiveModePayload = { health: [], critical_alerts: 0 };
 const pipelinePayload = { pipelines: [], active_pipelines: 0 };

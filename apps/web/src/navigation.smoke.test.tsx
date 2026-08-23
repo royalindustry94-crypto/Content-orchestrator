@@ -197,36 +197,37 @@ describe("Mission Control destructive-action interlock", () => {
 });
 
 describe("dashboard navigation smoke test", () => {
-  it("loads Command Center with a truthful health footer (not a fake 'operational')", async () => {
+  it("loads Home with a truthful health footer (not a fake 'operational')", async () => {
     renderShell();
-    expect(await screen.findByRole("heading", { name: "Command Center" })).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeDefined();
     // Health footer must reflect the red worker indicator — never "operational".
     expect(await screen.findByText(/Service disruption detected/i)).toBeDefined();
     expect(screen.queryByText("All systems operational")).toBeNull();
   });
 
-  it("shows real operational attention without a synthetic alert-count metric", async () => {
+  it("shows real founder decisions without a synthetic alert-count metric", async () => {
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
-    expect(await screen.findByText("Operational attention")).toBeDefined();
+    await screen.findByRole("heading", { name: "Home" });
+    expect(await screen.findByText("What needs you now")).toBeDefined();
     expect(await screen.findByText("Worker Offline")).toBeDefined();
     expect(await screen.findByText("Review Waiting")).toBeDefined();
   });
 
   it("renders the requested primary navigation and summary from existing backend fields", async () => {
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
     for (const label of [
-      "Command Center", "AI Workers", "Content Pipeline", "Human Review", "Opportunities",
-      "Analytics", "Spend & Usage", "Audience", "Integrations", "Settings",
+      "Home", "AI Workforce", "Content Operations", "Human Review", "Opportunities",
+      "Business Intelligence", "Financial Intelligence", "Audience", "Connections", "Settings",
     ]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
     for (const label of [
-      "Active content jobs", "Awaiting Human Review", "Publish-ready content",
-      "Active workers", "Failed jobs", "Spend today",
+      "Is my business making money?", "Connect your financial data to see profitability.",
+      "What needs you now", "AI Workforce", "Not connected",
     ]) {
-      expect(screen.getByText(label)).toBeDefined();
+      // AI Workforce intentionally appears in both primary navigation and the Home section.
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
     expect(screen.queryByText("Revenue")).toBeNull();
   });
@@ -246,7 +247,7 @@ describe("dashboard navigation smoke test", () => {
           }),
     );
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
     const input = screen.getByRole("textbox", { name: /global search/i });
 
     fireEvent.change(input, { target: { value: "ab" } });
@@ -267,7 +268,7 @@ describe("dashboard navigation smoke test", () => {
 
   it("opens the keyboard command palette and closes it with Escape", async () => {
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     expect(await screen.findByRole("dialog", { name: /command palette/i })).toBeDefined();
     fireEvent.keyDown(document, { key: "Escape" });
@@ -276,7 +277,7 @@ describe("dashboard navigation smoke test", () => {
 
   it("routes command palette deep links to the intended destination", async () => {
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     const palette = await screen.findByRole("dialog", { name: /command palette/i });
     fireEvent.click(within(palette).getByRole("button", { name: /open logs/i }));
@@ -284,11 +285,11 @@ describe("dashboard navigation smoke test", () => {
     expect(await screen.findByText(/No worker logs match/i)).toBeDefined();
   });
 
-  it("loads every Integrations view tab safely", async () => {
+  it("loads every Connections view tab safely", async () => {
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
     const nav = screen.getByRole("navigation", { name: /primary navigation/i });
-    fireEvent.click(within(nav).getByRole("button", { name: /^Integrations$/i }));
+    fireEvent.click(within(nav).getByRole("button", { name: /^Connections$/i }));
     await screen.findByText(/Today's summary/i);
 
     const tabs: Array<[string, RegExp]> = [
@@ -307,19 +308,19 @@ describe("dashboard navigation smoke test", () => {
 
   it("navigates across every route without a blank-screen crash", async () => {
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
 
     const routes: Array<[string, RegExp]> = [
-      ["Content Pipeline", /No active pipelines/i],
-      ["AI Workers", /No workers registered/i],
+      ["Content Operations", /No active pipelines/i],
+      ["AI Workforce", /No workers registered/i],
       ["Audience", /No customers yet/i],
       ["Opportunities", /No leads yet/i],
-      ["Integrations", /Today's summary/i],
-      ["Analytics", /Engineering delivery/i],
-      ["Spend & Usage", /Cost control/i],
+      ["Connections", /Today's summary/i],
+      ["Business Intelligence", /Engineering delivery/i],
+      ["Financial Intelligence", /Cost control/i],
       ["Settings", /Deployment/i],
       ["Human Review", /keeps every publish decision/i],
-      ["Command Center", /Real-time workflow health/i],
+      ["Home", /Connect your financial data to see profitability/i],
     ];
 
     for (const [label, expected] of routes) {
@@ -339,7 +340,7 @@ describe("dashboard navigation smoke test", () => {
       new Error("503: backend unavailable"),
     );
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
     const nav = screen.getByRole("navigation", { name: /primary navigation/i });
     fireEvent.click(within(nav).getByRole("button", { name: /^Opportunities$/i }));
     expect(await screen.findByText(/We couldn’t load this view|We couldn't load this view/i)).toBeDefined();
@@ -350,7 +351,7 @@ describe("dashboard navigation smoke test", () => {
   it("ignores a late response from a route that is no longer active", async () => {
     const api = await import("./api");
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
 
     let resolvePipeline!: (value: typeof pipelines) => void;
     const delayedPipeline = new Promise<typeof pipelines>((resolve) => {
@@ -361,8 +362,8 @@ describe("dashboard navigation smoke test", () => {
 
     const nav = screen.getByRole("navigation", { name: /primary navigation/i });
 
-    fireEvent.click(within(nav).getByRole("button", { name: /^Content Pipeline$/i }));
-    fireEvent.click(within(nav).getByRole("button", { name: /^AI Workers$/i }));
+    fireEvent.click(within(nav).getByRole("button", { name: /^Content Operations$/i }));
+    fireEvent.click(within(nav).getByRole("button", { name: /^AI Workforce$/i }));
     expect(await screen.findByText(/No workers registered/i)).toBeDefined();
 
     resolvePipeline(pipelines);
@@ -375,7 +376,7 @@ describe("dashboard navigation smoke test", () => {
 describe("mobile smoke test", () => {
   it("opens the mobile navigation drawer and reveals a search affordance", async () => {
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
     // Mobile menu + search buttons exist for small screens.
     expect(screen.getByRole("button", { name: /open navigation/i })).toBeDefined();
     const searchToggle = screen.getByRole("button", { name: /^Search$/i });
