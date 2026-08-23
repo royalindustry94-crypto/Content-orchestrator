@@ -111,7 +111,7 @@ await send(
   sessionId,
 );
 const loginUxInitial = await evaluate(`(() => {
-  const signInHeading = [...document.querySelectorAll('h1,h2')].some(el => /sign in to lumora/i.test(el.textContent || ''));
+  const signInHeading = [...document.querySelectorAll('h1,h2')].some(el => /sign in to the business manager/i.test(el.textContent || ''));
   const loginWorkspaceField = [...document.querySelectorAll('label')].some(el => /^workspace name/i.test((el.textContent || '').trim()));
   const createButton = [...document.querySelectorAll('button')].find(el => /create an account/i.test(el.textContent || ''));
   if (createButton) createButton.click();

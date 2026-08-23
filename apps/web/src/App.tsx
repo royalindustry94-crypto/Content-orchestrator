@@ -6,6 +6,7 @@ import {
   signup,
 } from "./api";
 import LumoraDashboard from "./LumoraDashboard";
+import { BusinessManagerMark } from "./BusinessManagerMark";
 
 type Session = {
   token: string;
@@ -90,13 +91,19 @@ export default function App() {
   return (
     <div className="auth-shell">
       <section className="auth-brand">
-        <div className="auth-brand__logo"><span>L</span>Lumora</div>
+        <div className="auth-brand__identity">
+          <BusinessManagerMark className="auth-brand__mark" />
+          <div>
+            <p className="auth-brand__name">The Business Manager</p>
+            <span className="auth-brand__section">Command Center</span>
+          </div>
+        </div>
         <div>
-          <p className="page-kicker">Mission Control</p>
-          <h1>Run your content operation with clarity.</h1>
+          <p className="page-kicker">Founder workspace access</p>
+          <h1>See it. Plan it. Grow it.</h1>
           <p>
-            One calm, intelligent workspace for every pipeline, worker,
-            customer and Human Review Gate.
+            A secure operating system for your content pipeline, workforce,
+            and Human Review Gate.
           </p>
         </div>
         <div className="auth-signal">
@@ -107,7 +114,7 @@ export default function App() {
         <form className="auth-form" onSubmit={(e) => void authenticate(mode, e)}>
           <header>
             <p className="page-kicker">{mode === "login" ? "Welcome back" : "Get started"}</p>
-            <h2>{mode === "login" ? "Sign in to Lumora" : "Create your Lumora account"}</h2>
+            <h2>{mode === "login" ? "Sign in to The Business Manager" : "Create your Business Manager account"}</h2>
             <span>
               {mode === "login"
                 ? "Enter your credentials to continue."
@@ -167,7 +174,7 @@ export default function App() {
               }}
             >
               {mode === "login"
-                ? "New to Lumora? Create an account"
+                ? "New here? Create an account"
                 : "Already have an account? Sign in"}
             </button>
           </div>

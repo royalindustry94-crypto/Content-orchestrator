@@ -2682,3 +2682,440 @@ button.side-link--active { border-color: rgba(111, 163, 255, 0.2); background: #
 @media (max-width: 1280px) { .command-center-metrics { grid-template-columns: repeat(3, minmax(150px, 1fr)); } }
 @media (max-width: 760px) { .command-center-metrics, .command-flow { grid-template-columns: repeat(2, minmax(0, 1fr)); } .flow-step:nth-child(2)::after { display: none; } }
 @media (max-width: 480px) { .command-center-metrics, .command-flow { grid-template-columns: 1fr; } .flow-step::after { display: none; } }
+
+/* ── The Business Manager — Founder Preview Only ─────────────────────── */
+:root {
+  --paper: #0d1321;
+  --panel: #1b1f24;
+  --panel-raised: #202632;
+  --panel-soft: #0a0f18;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-soft: rgba(255, 255, 255, 0.055);
+  --ink: #f7f8fa;
+  --muted: #a8b0bd;
+  --muted-strong: #d8dce4;
+  --accent: #d4af37;
+  --accent-bright: #e2c45a;
+  --accent-dark: rgba(212, 175, 55, 0.12);
+  --success: #4ecb8b;
+  --warning: #e9b45a;
+  --danger: #ee6b71;
+  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+body,
+.auth-shell,
+.lumora-workspace {
+  background: #0d1321;
+}
+
+body {
+  background-image: none;
+}
+
+.lumora-sidebar {
+  background: #090f1a;
+  border-right-color: rgba(255, 255, 255, 0.08);
+}
+
+.brand {
+  padding: 1.35rem 1.2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.brand > div strong {
+  color: #f7f8fa;
+  font-family: Inter, system-ui, sans-serif;
+  font-size: 0.93rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.brand > div small {
+  color: #a8b0bd;
+  font-size: 0.69rem;
+  font-weight: 500;
+}
+
+.brand-mark--tb {
+  position: relative;
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.46);
+  border-radius: 11px;
+  background: #151b25;
+  color: #d4af37;
+  font-size: 0.88rem;
+  font-weight: 800;
+  letter-spacing: -0.16em;
+  line-height: 1;
+}
+
+.brand-mark--tb span:first-child { transform: translateX(1px); }
+.brand-mark--tb span:nth-child(2) { transform: translateX(-1px); }
+.brand-mark--tb i {
+  position: absolute;
+  right: 5px;
+  bottom: 7px;
+  width: 14px;
+  height: 10px;
+  border-top: 2px solid #d4af37;
+  border-right: 2px solid #d4af37;
+  transform: skewY(-30deg) rotate(-2deg);
+}
+.brand-mark--tb i::before,
+.brand-mark--tb i::after {
+  position: absolute;
+  bottom: 0;
+  width: 2px;
+  background: #d4af37;
+  content: "";
+}
+.brand-mark--tb i::before { left: 2px; height: 4px; }
+.brand-mark--tb i::after { left: 7px; height: 7px; }
+
+.side-link {
+  margin: 0.15rem 0.7rem;
+  border-radius: 10px;
+  color: #a8b0bd;
+}
+
+.side-link:hover {
+  background: rgba(255, 255, 255, 0.045);
+  color: #f7f8fa;
+}
+
+.side-link--active {
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  background: rgba(212, 175, 55, 0.1);
+  color: #f7f8fa;
+}
+
+.side-link--active .ui-icon,
+.side-link--active b {
+  color: #d4af37;
+}
+
+.lumora-sidebar nav > p {
+  color: #707b8d;
+  font-size: 0.67rem;
+  letter-spacing: 0.08em;
+}
+
+.topbar {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+  background: rgba(13, 19, 33, 0.94);
+}
+
+.workspace-switcher,
+.icon-button,
+.topbar-search .global-search > input {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: #151b25;
+}
+
+.workspace-avatar,
+.profile-button > span {
+  background: #202632;
+  color: #d4af37;
+}
+
+.mobile-brand { display: none; }
+
+.lumora-main {
+  max-width: 1540px;
+  padding: clamp(1.6rem, 3vw, 2.7rem);
+}
+
+.hero-row h2,
+.view-header h1,
+.saas-metric strong,
+.compact-metrics strong,
+.review-card h3,
+.worker-card h3,
+.section-header h3 {
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.hero-row h2,
+.view-header h1 {
+  color: #f7f8fa;
+  font-size: clamp(1.8rem, 2.2vw, 2rem);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+}
+
+.page-kicker,
+.eyebrow {
+  color: #d4af37;
+}
+
+.saas-metrics { gap: 0.9rem; }
+.saas-metric,
+.surface,
+.worker-card,
+.review-card,
+.compact-metrics article,
+.data-table,
+.table-wrap,
+.top-popover,
+.command-palette,
+.assistant-panel form,
+.assistant-panel section {
+  border-color: rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  background: #1b1f24;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.16);
+}
+
+.saas-metric {
+  min-height: 138px;
+  background: #1b1f24;
+}
+
+.saas-metric:hover,
+.review-card:hover {
+  border-color: rgba(212, 175, 55, 0.3);
+  background: #202632;
+  transform: translateY(-1px);
+}
+
+.metric-icon {
+  background: rgba(93, 151, 255, 0.13);
+  color: #8bb8ff;
+}
+.saas-metric--green .metric-icon { background: rgba(78, 203, 139, 0.12); color: #69d9a2; }
+.saas-metric--amber .metric-icon { background: rgba(233, 180, 90, 0.12); color: #e9b45a; }
+.saas-metric--red .metric-icon { background: rgba(238, 107, 113, 0.12); color: #ee6b71; }
+.saas-metric--blue .metric-icon { background: rgba(93, 151, 255, 0.13); color: #8bb8ff; }
+.saas-metric--pink .metric-icon { background: rgba(212, 175, 55, 0.11); color: #d4af37; }
+
+.saas-metric strong { font-size: clamp(1.5rem, 2vw, 1.9rem); font-weight: 700; }
+.saas-metric > span:nth-child(2),
+.saas-metric small,
+.section-header p,
+.view-header p,
+.hero-row > div > p:last-child { color: #a8b0bd; font-size: 0.75rem; }
+
+.button--primary {
+  border-color: rgba(93, 151, 255, 0.52);
+  background: #3e78cf;
+  color: #fff;
+}
+.button--primary:hover { background: #4c87df; }
+.button--approve { border-color: rgba(78, 203, 139, 0.3); background: rgba(78, 203, 139, 0.12); color: #69d9a2; }
+.text-button { color: #d4af37; }
+.text-button:hover { color: #e2c45a; }
+
+.live-indicator {
+  border-color: rgba(78, 203, 139, 0.24);
+  background: rgba(78, 203, 139, 0.08);
+  color: #69d9a2;
+}
+.live-indicator i { background: #4ecb8b; box-shadow: none; }
+
+.status--good { background: rgba(78, 203, 139, 0.12); color: #69d9a2; }
+.status--warn { background: rgba(233, 180, 90, 0.12); color: #e9b45a; }
+.status--bad { background: rgba(238, 107, 113, 0.12); color: #ee6b71; }
+
+.health-dot--green { background: #4ecb8b; box-shadow: none; }
+.health-dot--amber,
+.health-dot--warning { background: #e9b45a; }
+.health-dot--red,
+.health-dot--critical { background: #ee6b71; }
+
+.alert-row--info { border-left-color: #8bb8ff; }
+.severity-tag--info { background: rgba(93, 151, 255, 0.14); color: #8bb8ff; }
+.severity-tag--warning { background: rgba(233, 180, 90, 0.14); color: #e9b45a; }
+.severity-tag--critical { background: rgba(238, 107, 113, 0.14); color: #ee6b71; }
+
+.auth-shell { background: #0d1321; }
+.auth-brand {
+  background: #0d1321;
+}
+.auth-brand__logo { color: #f7f8fa; font-family: Inter, system-ui, sans-serif; }
+.auth-brand h1,
+.auth-form h2 { font-family: Inter, system-ui, sans-serif; }
+.auth-form input,
+.inline-form input,
+.data-row select,
+.assistant-panel textarea { background: #151b25; border-color: rgba(255, 255, 255, 0.1); }
+.auth-form input:focus,
+.inline-form input:focus { outline-color: rgba(93, 151, 255, 0.3); border-color: #5d97ff; }
+
+@media (max-width: 720px) {
+  .topbar {
+    grid-template-columns: 34px 28px minmax(0, 1fr) auto;
+    gap: 0.55rem;
+    padding: 0 0.85rem;
+  }
+  .mobile-brand {
+    display: inline-flex;
+    width: 27px;
+    height: 27px;
+    border-radius: 8px;
+    font-size: 0.66rem;
+  }
+  .workspace-switcher { min-width: 0; }
+  .workspace-switcher select { max-width: 160px; }
+  .lumora-main { padding: 1.2rem 0.9rem 2.4rem; }
+  .hero-row { margin-bottom: 1.25rem; }
+  .hero-row h2 { font-size: 1.72rem; }
+  .saas-metrics { gap: 0.65rem; }
+  .saas-metric { min-height: 126px; padding: 0.8rem; }
+  .saas-metric strong { font-size: 1.4rem; }
+  .surface { padding: 0.9rem; }
+}
+
+/* The Business Manager rebrand — preview-only visual overrides */
+:root { --paper:#0A0D12; --panel:#151A21; --panel-raised:#191F27; --panel-soft:#10141B; --line:rgba(212,175,55,.14); --line-soft:rgba(212,175,55,.09); --ink:#F7F8FA; --muted:#9CA3AF; --muted-strong:#D7DBE2; --accent:#D4AF37; --accent-bright:#E2C45A; --accent-dark:#28200D; --success:#4ECB8B; --warning:#E5B756; --danger:#E86C71; background:#0A0D12; }
+body,#root,.lumora-workspace { background:#0A0D12; color:#F7F8FA; font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
+.lumora-sidebar { background:#080B10; border-right-color:rgba(212,175,55,.12); }
+.topbar { background:#0A0D12; border-bottom-color:rgba(212,175,55,.12); }
+.business-manager-mark { display:block; flex:0 0 auto; }
+.brand { min-height:76px; padding:.85rem .95rem; gap:.72rem; border-bottom:1px solid rgba(212,175,55,.1); }
+.brand-mark { width:50px; height:50px; }
+.brand-copy strong,.mobile-brand strong,.auth-brand__name { color:#F7F8FA; font-weight:720; letter-spacing:-.025em; }
+.brand-copy strong { display:block; font-size:.92rem; line-height:1.05; }
+.brand-copy small,.mobile-brand small,.auth-brand__section { display:block; margin-top:.2rem; color:#D4AF37; font-size:.61rem; font-weight:720; letter-spacing:.13em; text-transform:uppercase; }
+.side-link { color:#9CA3AF; border-left-color:transparent; }
+.side-link:hover { background:#151A21; color:#F7F8FA; }
+.side-link--active { background:linear-gradient(90deg,rgba(212,175,55,.17),rgba(212,175,55,.045)); border-color:rgba(212,175,55,.18); border-left-color:#D4AF37; color:#F7F8FA; }
+.side-link--active .ui-icon { color:#D4AF37; }
+.workspace-switcher,.topbar-search,.icon-button { background:#10141B; border-color:rgba(212,175,55,.14); }
+.workspace-switcher:focus-within,.topbar-search:focus-within,.icon-button:hover { border-color:rgba(212,175,55,.55); box-shadow:none; }
+.page-kicker { color:#D4AF37; font-weight:750; letter-spacing:.14em; }
+.command-center-hero h2 { font-size:clamp(1.75rem,2.4vw,2rem); font-weight:720; letter-spacing:-.045em; }
+.command-center-hero { border-bottom-color:rgba(212,175,55,.13); }
+.saas-metric,.quick-surface,.content-flow,.attention-panel,.mission-panel,.health-card,.panel,.card { background:#151A21; border-color:rgba(212,175,55,.14); box-shadow:0 16px 36px rgba(0,0,0,.17); }
+.saas-metric { border-radius:12px; min-height:112px; }
+.saas-metric:hover { border-color:rgba(212,175,55,.32); transform:translateY(-1px); }
+.saas-metric .metric-icon,.saas-metric--blue .metric-icon,.saas-metric--pink .metric-icon { background:rgba(212,175,55,.11); color:#D4AF37; }
+.saas-metric--green .metric-icon { background:rgba(78,203,139,.11); color:#6CE0A6; }
+.saas-metric--amber .metric-icon { background:rgba(229,183,86,.12); color:#E5B756; }
+.saas-metric--red .metric-icon { background:rgba(232,108,113,.12); color:#F08A8E; }
+.flow-step { background:#10141B; border-color:rgba(212,175,55,.14); border-radius:12px; }
+.flow-step--blue,.flow-step--pink { border-top-color:#D4AF37; }
+.flow-step::after { background:rgba(212,175,55,.34); }
+.button--primary { background:#D4AF37; border-color:#D4AF37; color:#10141B; font-weight:750; }
+.button--primary:hover { background:#E2C45A; border-color:#E2C45A; }
+.text-button,.open-link { color:#E2C45A; }
+.alert-row--info { border-left-color:#D4AF37; }.severity-tag--info { background:rgba(212,175,55,.14); color:#E2C45A; }
+.inline-form input:focus { border-color:#D4AF37; outline-color:rgba(212,175,55,.3); }
+.auth-shell { background:#0A0D12; }.auth-brand { background:radial-gradient(circle at 14% 10%,rgba(212,175,55,.12),transparent 33%),#10141B; border-right-color:rgba(212,175,55,.14); }
+.auth-brand__identity { display:flex; align-items:center; gap:.8rem; }.auth-brand__mark { width:58px; height:58px; }.auth-brand__name { margin:0; font-size:1rem; }.auth-panel { background:#151A21; border-color:rgba(212,175,55,.14); }
+.mobile-brand { display:none; align-items:center; gap:.45rem; min-width:0; }.mobile-brand__mark { width:34px; height:34px; }.mobile-brand>span{min-width:0}.mobile-brand strong{display:block;font-size:.76rem;line-height:1.02;white-space:nowrap}.mobile-brand small{font-size:.51rem;letter-spacing:.1em;margin-top:.1rem;white-space:nowrap}
+@media (max-width:760px){.topbar{gap:.42rem;min-height:64px;padding:.55rem .7rem}.mobile-brand{display:flex;flex:1}.workspace-switcher{flex:0 1 118px;min-width:0}.workspace-switcher select{min-width:0}.topbar-search{order:5;width:100%}.topbar-actions{gap:.25rem}.brand-mark{width:52px;height:52px}.command-center-hero{padding-top:1.15rem}.saas-metric{min-height:102px}}
+/* Decorative legacy blue is neutralized; blue remains only if future data semantics require it. */
+.saas-metric--blue .metric-icon,.saas-metric--pink .metric-icon { background:rgba(212,175,55,.11); color:#D4AF37; }
+.button--primary,.button--primary:hover { box-shadow:none; }
+
+/* 390px founder-review header: identity remains distinct from workspace and account controls. */
+.topbar-identity,
+.topbar-utilities { display: contents; }
+
+@media (max-width: 760px) {
+  .topbar {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "identity"
+      "utilities"
+      "search";
+    gap: 0.55rem;
+    height: auto;
+    min-height: 118px;
+    padding: 0.65rem 0.8rem;
+  }
+
+  .topbar-identity {
+    grid-area: identity;
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.65rem;
+  }
+
+  .mobile-brand {
+    display: flex;
+    flex: 1 1 auto;
+    width: auto;
+    height: auto;
+    min-width: 0;
+  }
+
+  .mobile-brand__mark {
+    width: 38px;
+    height: 38px;
+  }
+
+  .mobile-brand strong { font-size: 0.82rem; }
+  .mobile-brand small { font-size: 0.54rem; }
+
+  .topbar-utilities {
+    grid-area: utilities;
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 0.45rem;
+  }
+
+  .topbar-utilities .workspace-switcher {
+    display: flex;
+    flex: 1 1 auto;
+    min-width: 0;
+    height: 40px;
+    padding: 0 0.55rem;
+    border: 1px solid rgba(212,175,55,.14);
+    border-radius: 10px;
+    background: #10141B;
+  }
+
+  .topbar-utilities .workspace-switcher select {
+    width: 100%;
+    max-width: none;
+  }
+
+  .topbar-utilities .topbar-actions {
+    flex: 0 0 auto;
+    gap: 0.3rem;
+  }
+
+  .topbar-search { display: none; }
+
+  .topbar-search--open {
+    grid-area: search;
+    display: flex;
+    position: static;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: transparent;
+  }
+}
+
+/* Final production rebrand neutralization for inherited selector specificity. */
+button.side-link--active {
+  border-color: rgba(212,175,55,.18);
+  border-left-color: #D4AF37;
+  background: linear-gradient(90deg,rgba(212,175,55,.17),rgba(212,175,55,.045));
+  box-shadow: inset 2px 0 #D4AF37;
+  color: #F7F8FA;
+}
+
+.saas-metric--gold .metric-icon {
+  background: rgba(212,175,55,.11);
+  color: #D4AF37;
+}
+
+.flow-step--gold { border-top-color: #D4AF37; }
+.flow-step--green { border-top-color: #4ECB8B; }
+
+.auth-form input:focus,
+.inline-form input:focus {
+  border-color: #D4AF37;
+  outline-color: rgba(212,175,55,.3);
+}

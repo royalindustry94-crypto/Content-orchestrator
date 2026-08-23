@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import ErrorBoundary from "./ErrorBoundary";
+import { BusinessManagerMark } from "./BusinessManagerMark";
 import { useDialogFocus } from "./useDialogFocus";
 import {
   createLead,
@@ -297,24 +298,24 @@ function DashboardHome({
     document.getElementById("active-alerts")?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
   const metrics = [
-    { label: "Active content jobs", value: data.executive.jobs_running, icon: "activity" as IconName, tone: "blue", target: "pipelines" as NavKey },
-    { label: "Awaiting Human Review", value: data.executive.human_reviews_waiting, icon: "review" as IconName, tone: "amber", target: "review" as NavKey },
-    { label: "Publish-ready content", value: data.pipelines.publish_queue, icon: "check" as IconName, tone: "violet", target: "pipelines" as NavKey },
-    { label: "Active workers", value: data.executive.workers_online, icon: "workers" as IconName, tone: "blue", target: "workers" as NavKey },
+    { label: "Active content jobs", value: data.executive.jobs_running, icon: "activity" as IconName, tone: "gold", target: "pipelines" as NavKey },
+    { label: "Awaiting Human Review", value: data.executive.human_reviews_waiting, icon: "review" as IconName, tone: "gold", target: "review" as NavKey },
+    { label: "Publish-ready content", value: data.pipelines.publish_queue, icon: "check" as IconName, tone: "green", target: "pipelines" as NavKey },
+    { label: "Active workers", value: data.executive.workers_online, icon: "workers" as IconName, tone: "gold", target: "workers" as NavKey },
     { label: "Failed jobs", value: data.executive.jobs_failed, icon: "alert" as IconName, tone: data.executive.jobs_failed ? "red" : "green", target: "pipelines" as NavKey },
-    { label: "Spend today", value: money(data.executive.spend_today_usd), icon: "billing" as IconName, tone: "violet", target: "billing" as NavKey },
+    { label: "Spend today", value: money(data.executive.spend_today_usd), icon: "billing" as IconName, tone: "gold", target: "billing" as NavKey },
   ];
   const flow = [
     { label: "Queued", value: data.pipelines.jobs_waiting, tone: "muted" },
-    { label: "In progress", value: data.executive.jobs_running, tone: "blue" },
-    { label: "Human review", value: data.executive.human_reviews_waiting, tone: "amber" },
-    { label: "Publish-ready", value: data.pipelines.publish_queue, tone: "violet" },
+    { label: "In progress", value: data.executive.jobs_running, tone: "gold" },
+    { label: "Human review", value: data.executive.human_reviews_waiting, tone: "gold" },
+    { label: "Publish-ready", value: data.pipelines.publish_queue, tone: "green" },
   ];
   return (
     <div className="dashboard-home command-center-home">
       <section className="hero-row command-center-hero">
         <div>
-          <p className="page-kicker">Workspace operations</p>
+          <p className="page-kicker">The Business Manager</p>
           <h2>Command Center</h2>
           <p>Real-time workflow health, review controls, and operational signals for this workspace.</p>
         </div>
@@ -1032,8 +1033,8 @@ export default function LumoraDashboard({
         tabIndex={-1}
       >
         <div className="brand">
-          <span className="brand-mark">L</span>
-          <div><strong>Lumora</strong><small>Command Center</small></div>
+          <BusinessManagerMark className="brand-mark" />
+          <div className="brand-copy"><strong>The Business Manager</strong><small>Command Center</small></div>
           <button aria-label="Close navigation" className="mobile-close" onClick={() => setMobileOpen(false)} type="button"><Icon name="close" /></button>
         </div>
         <nav aria-label="Primary navigation">
@@ -1074,13 +1075,20 @@ export default function LumoraDashboard({
 
       <div className="lumora-workspace">
         <header className="topbar">
-          <button aria-label="Open navigation" className="mobile-menu" onClick={() => setMobileOpen(true)} type="button"><Icon name="menu" /></button>
-          <label className="workspace-switcher">
-            <span className="workspace-avatar">{(currentWorkspace?.name ?? "W").slice(0, 1).toUpperCase()}</span>
-            <select aria-label="Workspace" onChange={(event) => onWorkspaceChange(event.target.value)} value={workspaceId}>
-              {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
-            </select>
-          </label>
+          <div className="topbar-identity">
+            <button aria-label="Open navigation" className="mobile-menu" onClick={() => setMobileOpen(true)} type="button"><Icon name="menu" /></button>
+            <div className="mobile-brand" aria-label="The Business Manager">
+              <BusinessManagerMark className="mobile-brand__mark" />
+              <span><strong>The Business Manager</strong><small>Command Center</small></span>
+            </div>
+          </div>
+          <div className="topbar-utilities">
+            <label className="workspace-switcher">
+              <span className="workspace-avatar">{(currentWorkspace?.name ?? "W").slice(0, 1).toUpperCase()}</span>
+              <select aria-label="Workspace" onChange={(event) => onWorkspaceChange(event.target.value)} value={workspaceId}>
+                {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+              </select>
+            </label>
           <div className={mobileSearchOpen ? "topbar-search topbar-search--open" : "topbar-search"}>
             <Icon name="search" size={17} />
             <GlobalSearchBar
@@ -1144,12 +1152,13 @@ export default function LumoraDashboard({
               ) : null}
             </div>
           </div>
+          </div>
         </header>
 
         <main className="lumora-main">
           {nav !== "dashboard" ? (
             <header className="view-header">
-              <div><p>Lumora / {title}</p><h1>{title}</h1></div>
+              <div><p>The Business Manager / {title}</p><h1>{title}</h1></div>
               <button aria-label="Refresh data" className="icon-button refresh-button" disabled={loading} onClick={() => void load()} type="button"><Icon name="refresh" /></button>
             </header>
           ) : null}

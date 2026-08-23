@@ -301,7 +301,7 @@ describe("dashboard navigation smoke test", () => {
     for (const [label, expected] of tabs) {
       fireEvent.click(screen.getByRole("tab", { name: label }));
       expect(await screen.findByText(expected)).toBeDefined();
-      expect(screen.queryByText(/Lumora hit an unexpected error/i)).toBeNull();
+      expect(screen.queryByText(/The Business Manager hit an unexpected error/i)).toBeNull();
     }
   });
 
@@ -327,8 +327,8 @@ describe("dashboard navigation smoke test", () => {
       fireEvent.click(within(nav).getByRole("button", { name: new RegExp(`^${label}$`, "i") }));
       await waitFor(() => expect(screen.getByText(expected)).toBeDefined());
       // The shell must survive: brand is always present, crash fallback is not.
-      expect(screen.getByText("Lumora")).toBeDefined();
-      expect(screen.queryByText(/Lumora hit an unexpected error/i)).toBeNull();
+      expect(screen.getAllByText("The Business Manager").length).toBeGreaterThan(0);
+      expect(screen.queryByText(/The Business Manager hit an unexpected error/i)).toBeNull();
     }
   });
 
@@ -344,7 +344,7 @@ describe("dashboard navigation smoke test", () => {
     fireEvent.click(within(nav).getByRole("button", { name: /^Opportunities$/i }));
     expect(await screen.findByText(/We couldn’t load this view|We couldn't load this view/i)).toBeDefined();
     // Shell still intact.
-    expect(screen.getByText("Lumora")).toBeDefined();
+    expect(screen.getAllByText("The Business Manager").length).toBeGreaterThan(0);
   });
 
   it("ignores a late response from a route that is no longer active", async () => {
@@ -368,7 +368,7 @@ describe("dashboard navigation smoke test", () => {
     resolvePipeline(pipelines);
     await waitFor(() => expect(screen.getByText(/No workers registered/i)).toBeDefined());
     expect(screen.queryByText(/No active pipelines/i)).toBeNull();
-    expect(screen.queryByText(/Lumora hit an unexpected error/i)).toBeNull();
+    expect(screen.queryByText(/The Business Manager hit an unexpected error/i)).toBeNull();
   });
 });
 
