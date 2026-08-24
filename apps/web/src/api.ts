@@ -1141,3 +1141,212 @@ export function sendStrategyBriefToWriter(
     { method: "POST" },
   );
 }
+
+
+export type ContentDepartmentRun = {
+  id: string;
+  strategy_brief_id: string;
+  trigger: string;
+  status: string;
+  provider_state: string;
+  business_context_state: string;
+  max_provider_calls: number;
+  max_tokens: number;
+  max_cost_usd: string;
+  max_attempts: number;
+  timeout_seconds: number;
+  provider_calls_used: number;
+  tokens_used: number;
+  actual_cost_usd: string;
+  creative_directions_created: number;
+  packages_ready: number;
+  packages_blocked: number;
+  last_error: string | null;
+  correlation_id: string;
+  trace_id: string | null;
+  test_data: boolean;
+};
+
+export type CreativeDirection = {
+  id: string;
+  strategy_brief_id: string;
+  objective: string;
+  target_platform: string | null;
+  target_audience: string | null;
+  creative_concept: string;
+  hook_direction: string | null;
+  story_structure: string | null;
+  tone: string | null;
+  visual_direction: string | null;
+  cta_direction: string | null;
+  required_claims: unknown[];
+  prohibited_claims: unknown[];
+  required_assets: unknown[];
+  production_complexity: string;
+  risk_notes: unknown[];
+  worker_id: string;
+  provider: string;
+  prompt_version: string;
+  status: string;
+  test_data: boolean;
+};
+
+export type ContentPackage = {
+  id: string;
+  content_department_run_id: string;
+  creative_direction_id: string;
+  strategy_brief_id: string;
+  content_item_id: string;
+  content_version_id: string;
+  prior_content_version_id: string | null;
+  revision_reason: string | null;
+  writer_worker_id: string;
+  provider: string;
+  model: string | null;
+  prompt_version: string;
+  input_references: Record<string, unknown>;
+  package_fields: Record<string, unknown>;
+  status: string;
+  audit_gate_status: string;
+  producer_handoff_state: string;
+  invalidated_at: string | null;
+  test_data: boolean;
+};
+
+export type ContentClaim = {
+  id: string;
+  content_package_id: string;
+  content_version_id: string;
+  claim_text: string;
+  claim_type: string;
+  source_required: boolean;
+  supporting_evidence: unknown[];
+  verification_status: string;
+  confidence: string;
+  risk: string;
+  freshness: string | null;
+  evidence_reasoning: string | null;
+  test_data: boolean;
+};
+
+export type ContentAudit = {
+  id: string;
+  content_package_id: string;
+  content_version_id: string;
+  auditor_type: "language" | "fact" | "brand" | "originality";
+  auditor_worker_id: string;
+  state: "not_run" | "pass" | "pass_with_warning" | "blocked" | "error";
+  findings: unknown[];
+  warnings: unknown[];
+  blocked_reasons: unknown[];
+  evidence: unknown[];
+  checked_at: string;
+  cost_usd: string;
+  retry_history: unknown[];
+  test_data: boolean;
+};
+
+export type OriginalityFingerprint = {
+  id: string;
+  content_package_id: string;
+  content_version_id: string;
+  text_fingerprint: string;
+  hook_fingerprint: string;
+  structure_fingerprint: string;
+  semantic_reference: string | null;
+  comparison_set: unknown[];
+  similarity_findings: unknown[];
+  state: string;
+  test_data: boolean;
+};
+
+export type ContentPackageDetail = {
+  package: ContentPackage;
+  direction: CreativeDirection;
+  claims: ContentClaim[];
+  audits: ContentAudit[];
+  originality: OriginalityFingerprint | null;
+  invalidation_count: number;
+};
+
+export type ContentDepartmentSummary = {
+  provider_state: string;
+  status: string;
+  current_run: ContentDepartmentRun | null;
+  last_run: ContentDepartmentRun | null;
+  creative_directions: number;
+  packages_ready: number;
+  packages_blocked: number;
+  packages_in_progress: number;
+  claims_unverified: number;
+  cost_today_usd: string;
+  last_error: string | null;
+  schedule_enabled: boolean;
+  business_context_state: string;
+  performance_data_state: string;
+};
+
+export type ProducerGate = {
+  content_package_id: string;
+  eligible: boolean;
+  state: string;
+  detail: string;
+};
+
+export function getContentDepartmentSummary(
+  token: string,
+  workspaceId: string,
+): Promise<ContentDepartmentSummary> {
+  return apiFetch<ContentDepartmentSummary>(
+    `/workspaces/${workspaceId}/content-department/summary`,
+    token,
+  );
+}
+
+export function createContentDepartmentRun(
+  token: string,
+  workspaceId: string,
+  payload: {
+    strategy_brief_id: string;
+    max_provider_calls?: number;
+    max_tokens?: number;
+    max_cost_usd?: string;
+    max_attempts?: number;
+    timeout_seconds?: number;
+  },
+): Promise<ContentDepartmentRun> {
+  return apiFetch<ContentDepartmentRun>(
+    `/workspaces/${workspaceId}/content-department/runs`,
+    token,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export function listContentPackages(token: string, workspaceId: string): Promise<ContentPackage[]> {
+  return apiFetch<ContentPackage[]>(
+    `/workspaces/${workspaceId}/content-department/packages`,
+    token,
+  );
+}
+
+export function getContentPackageDetail(
+  token: string,
+  workspaceId: string,
+  packageId: string,
+): Promise<ContentPackageDetail> {
+  return apiFetch<ContentPackageDetail>(
+    `/workspaces/${workspaceId}/content-department/packages/${packageId}`,
+    token,
+  );
+}
+
+export function getProducerGate(
+  token: string,
+  workspaceId: string,
+  packageId: string,
+): Promise<ProducerGate> {
+  return apiFetch<ProducerGate>(
+    `/workspaces/${workspaceId}/content-department/packages/${packageId}/producer-gate`,
+    token,
+  );
+}

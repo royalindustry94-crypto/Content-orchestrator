@@ -104,6 +104,9 @@ async function report() {
     strategyProviderNotConfigured: /STRATEGY PROVIDER NOT CONFIGURED/i.test(document.body?.innerText || ''),
     strategyBusinessContextIncomplete: /BUSINESS CONTEXT INCOMPLETE/i.test(document.body?.innerText || ''),
     strategyBriefEmpty: /No Strategy Briefs yet/i.test(document.body?.innerText || ''),
+    contentProviderNotConfigured: /CONTENT PROVIDER NOT CONFIGURED/i.test(document.body?.innerText || ''),
+    contentBusinessContextIncomplete: /BUSINESS CONTEXT INCOMPLETE/i.test(document.body?.innerText || ''),
+    contentPackageEmpty: /No Creative Packages yet/i.test(document.body?.innerText || ''),
     unlabeledControls: [...document.querySelectorAll('input, select, textarea')].filter(el =>
       !el.getAttribute('aria-label') &&
       !el.getAttribute('aria-labelledby') &&
@@ -170,7 +173,7 @@ const backendTruth = await evaluate(`(async () => {
   };
 })()`);
 
-const routes = ["Home", "Ask", "Opportunities", "Strategy", "Content", "Human Review", "Workforce", "Money", "Insights", "Audience", "Connections", "Settings"];
+const routes = ["Home", "Ask", "Opportunities", "Strategy", "Content Department", "Content", "Human Review", "Workforce", "Money", "Insights", "Audience", "Connections", "Settings"];
 const missionTabs = ["Overview", "Timeline", "Live logs", "AI assistant", "Content"];
 
 const results = [];
@@ -203,7 +206,10 @@ for (const label of routes) {
   const clicked = await evaluate(`(() => {
     const nav = document.querySelector('nav[aria-label="Primary navigation"]');
     if (!nav) return false;
-    const btn = [...nav.querySelectorAll('button')].find(b => b.innerText.trim().startsWith(${JSON.stringify(label)}));
+    const btn = [...nav.querySelectorAll('button')].find(b => {
+      const text = b.innerText.trim();
+      return text === ${JSON.stringify(label)} || text.startsWith(${JSON.stringify(label + "\n")});
+    });
     if (!btn) return false;
     btn.click();
     return true;
@@ -248,7 +254,7 @@ const mrep = await report();
 results.push({ label: "mobile-dashboard", ...mrep });
 
 const mobileResults = [];
-for (const label of ["Opportunities", "Strategy", "Human Review", "Workforce", "Settings"]) {
+for (const label of ["Opportunities", "Strategy", "Content Department", "Human Review", "Workforce", "Settings"]) {
   await evaluate(`(() => {
     const open = [...document.querySelectorAll('button')].find(x => /open navigation/i.test(x.getAttribute('aria-label') || ''));
     if (open) open.click();
@@ -256,7 +262,10 @@ for (const label of ["Opportunities", "Strategy", "Human Review", "Workforce", "
   await sleep(100);
   await evaluate(`(() => {
     const nav = document.querySelector('nav[aria-label="Primary navigation"]');
-    const btn = nav && [...nav.querySelectorAll('button')].find(b => b.innerText.trim().startsWith(${JSON.stringify(label)}));
+    const btn = nav && [...nav.querySelectorAll('button')].find(b => {
+      const text = b.innerText.trim();
+      return text === ${JSON.stringify(label)} || text.startsWith(${JSON.stringify(label + "\n")});
+    });
     if (btn) btn.click();
     return !!btn;
   })()`);
@@ -279,6 +288,8 @@ const researchResult = results.find((r) => r.label === "Opportunities");
 const scoutTruthWorks = researchResult?.researchProviderNotConfigured && researchResult?.researchOpportunityEmpty;
 const strategyResult = results.find((r) => r.label === "Strategy");
 const strategistTruthWorks = strategyResult?.strategyProviderNotConfigured && strategyResult?.strategyBusinessContextIncomplete && strategyResult?.strategyBriefEmpty;
+const contentDepartmentResult = results.find((r) => r.label === "Content Department");
+const contentDepartmentTruthWorks = contentDepartmentResult?.contentProviderNotConfigured && contentDepartmentResult?.contentBusinessContextIncomplete && contentDepartmentResult?.contentPackageEmpty;
 console.log("ROUTES:", results.length);
 console.log("BLANK/CRASH:", crashes.length);
 console.log("SEARCH:", JSON.stringify(searchResult));
@@ -293,6 +304,7 @@ console.log("FOUR-CIRCLE FINANCIAL HOME:", fourCirclesWork);
 console.log("CENTERED HOME + BANKROLL:", bankrollWorks);
 console.log("SCOUT TRUTHFUL NOT-CONFIGURED STATE:", scoutTruthWorks);
 console.log("STRATEGIST TRUTHFUL NOT-CONFIGURED STATE:", strategistTruthWorks);
+console.log("CONTENT DEPARTMENT TRUTHFUL NOT-CONFIGURED STATE:", contentDepartmentTruthWorks);
 for (const r of results) {
   console.log(`  ${r.crash ? "CRASH" : r.textLen === 0 ? "BLANK" : "ok   "} | ${r.label} | textLen=${r.textLen} | footer=${r.footer ?? "-"} | unlabeled=${r.unlabeledControls}`);
 }
@@ -310,6 +322,7 @@ process.exit(
   bankrollWorks &&
   scoutTruthWorks &&
   strategistTruthWorks &&
+  contentDepartmentTruthWorks &&
   consoleProblems.length === 0 &&
   uncaughtExceptions.length === 0 &&
   searchWorks &&

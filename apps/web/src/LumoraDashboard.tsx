@@ -11,12 +11,15 @@ import { BusinessManagerMark } from "./BusinessManagerMark";
 import { useDialogFocus } from "./useDialogFocus";
 import {
   auditOpportunity,
+  createContentDepartmentRun,
   createLead,
   createResearchRun,
   createStrategyRun,
   decideReviewGate,
   getActivityFeed,
   getContentCommand,
+  getContentDepartmentSummary,
+  getContentPackageDetail,
   getCostControl,
   getCustomers,
   getExecutiveDashboard,
@@ -32,11 +35,13 @@ import {
   getPipelineMonitor,
   getSpendDashboard,
   getSystemHealth,
+  getProducerGate,
   getStrategyBriefDetail,
   getStrategySummary,
   getUniversalTimeline,
   getWorkerMonitor,
   getWorkerTimeline,
+  listContentPackages,
   listOpportunities,
   listReviewGates,
   listStrategyBriefs,
@@ -46,13 +51,18 @@ import {
   auditStrategyBrief,
   updateLead,
   type ActivityFeed,
+  type ContentAudit,
   type ContentCommand,
+  type ContentDepartmentSummary,
+  type ContentPackage,
+  type ContentPackageDetail,
   type CostControl,
   type Customers,
   type ExecutiveDashboard,
   type ExecutiveInsights,
   type ExecutiveMode,
   type GitHubOut,
+  type ProducerGate,
   type Leads,
   type LiveLogs,
   type Notifications,
@@ -118,6 +128,7 @@ type NavKey =
   | "leads"
   | "research"
   | "strategy"
+  | "content_department"
   | "analytics"
   | "billing"
   | "settings";
@@ -201,6 +212,7 @@ const NAV: Array<{ id: NavKey; label: string; icon: IconName }> = [
   { id: "ask", label: "Ask", icon: "mission" },
   { id: "research", label: "Opportunities", icon: "leads" },
   { id: "strategy", label: "Strategy", icon: "mission" },
+  { id: "content_department", label: "Content Department", icon: "pipelines" },
   { id: "pipelines", label: "Content", icon: "pipelines" },
   { id: "review", label: "Human Review", icon: "review" },
   { id: "workers", label: "Workforce", icon: "workers" },
@@ -1076,6 +1088,176 @@ function StrategyView({
   );
 }
 
+function ContentDepartmentView({
+  data,
+  token,
+  workspaceId,
+  refresh,
+}: {
+  data: { summary: ContentDepartmentSummary; packages: ContentPackage[]; briefs: StrategyBrief[] };
+  token: string;
+  workspaceId: string;
+  refresh: () => void;
+}) {
+  const [selectedBriefId, setSelectedBriefId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<ContentPackageDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
+  const approvedBriefs = data.briefs.filter((brief) => brief.audit_gate_status === "pass");
+  const current = data.summary.current_run ?? data.summary.last_run;
+
+  const runContentDepartment = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedBriefId) {
+      setActionError("Select a Strategy Auditor PASS brief before recording a Content Department request.");
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
+    setNotice(null);
+    try {
+      const run = await createContentDepartmentRun(token, workspaceId, {
+        strategy_brief_id: selectedBriefId,
+        max_provider_calls: 5,
+        max_tokens: 4000,
+        max_cost_usd: "0.00",
+        max_attempts: 3,
+        timeout_seconds: 900,
+      });
+      setNotice(run.last_error ?? "Content Department request recorded.");
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to record the Content Department request.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openPackage = async (pkg: ContentPackage) => {
+    setLoadingDetail(pkg.id);
+    setActionError(null);
+    try {
+      setSelected(await getContentPackageDetail(token, workspaceId, pkg.id));
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to load the Creative Package.");
+    } finally {
+      setLoadingDetail(null);
+    }
+  };
+
+  const checkProducer = async (pkg: ContentPackage) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const gate: ProducerGate = await getProducerGate(token, workspaceId, pkg.id);
+      setNotice(gate.detail);
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Producer eligibility remains blocked.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="content-department-view stack">
+      <section className="content-department-hero surface">
+        <div>
+          <p className="page-kicker">Creative Director + Writer + Independent Auditors</p>
+          <h2>Build complete creative packages, not unreviewed drafts</h2>
+          <p>Only Strategy Auditor PASS briefs may enter. Every Content Version is immutable; Language, Fact, Brand, and Originality audits must independently pass before future Producer eligibility.</p>
+        </div>
+        <Status value={data.summary.provider_state === "not_configured" ? "Content provider not configured" : data.summary.provider_state} />
+      </section>
+
+      <section className="content-department-command surface">
+        <div>
+          <SectionHeader title="Record a content package request" detail="Manual only. A configured content provider, complete Business Brain context, and explicit capability policy are required before a real Creative Direction or Content Version can be created." />
+          <p className="research-limits">Default limits: 1 approved Strategy Brief · 5 provider calls · 4,000 tokens · $0.00 preview budget · 3 attempts.</p>
+        </div>
+        <form className="content-department-command__form" onSubmit={(event) => void runContentDepartment(event)}>
+          <label>
+            <span>Strategy Auditor PASS brief</span>
+            <select aria-label="Strategy Auditor PASS brief" onChange={(event) => setSelectedBriefId(event.target.value)} value={selectedBriefId}>
+              <option value="">Select an approved strategy brief</option>
+              {approvedBriefs.map((brief) => <option key={brief.id} value={brief.id}>{brief.objective}</option>)}
+            </select>
+          </label>
+          <button className="button button--primary" disabled={busy || approvedBriefs.length === 0} type="submit">{busy ? "Recording…" : "Record content request"}</button>
+        </form>
+        {data.summary.provider_state === "not_configured" ? <p className="research-not-configured" role="status">CONTENT PROVIDER NOT CONFIGURED — no Creative Direction, content version, claim, audit, provider cost, or fabricated package will be created.</p> : null}
+        {data.summary.business_context_state !== "complete" ? <p className="strategy-context" role="status">BUSINESS CONTEXT INCOMPLETE — brand rules, audience constraints, and capability policy are not assumed.</p> : null}
+        {notice ? <p className="research-notice" role="status">{notice}</p> : null}
+        {actionError ? <p className="error" role="alert">{actionError}</p> : null}
+      </section>
+
+      <section className="research-status-grid" aria-label="Content Department status">
+        <article><span>Current request</span><strong>{current ? current.status.replaceAll("_", " ") : "Not run"}</strong><small>{current?.last_error ?? "No Content Department request has been recorded."}</small></article>
+        <article><span>Creative directions</span><strong>{data.summary.creative_directions}</strong><small>Derived only from Strategy Auditor PASS briefs.</small></article>
+        <article><span>Creative packages</span><strong>{data.summary.packages_ready}</strong><small>{data.summary.packages_in_progress} awaiting audit · {data.summary.packages_blocked} blocked.</small></article>
+        <article><span>Claims awaiting evidence</span><strong>{data.summary.claims_unverified}</strong><small>{money(data.summary.cost_today_usd)} provider cost today.</small></article>
+      </section>
+
+      <section className="surface content-package-list">
+        <SectionHeader title="Creative Packages" detail="Each package links its Strategy Brief, Creative Direction, immutable Content Version, structured claims, audit evidence, originality record, and producer state." />
+        {data.packages.length === 0 ? (
+          <EmptyState icon="pipelines" title="No Creative Packages yet" message="The preview will not invent content. Configure approved content capability, Business Brain, evidence rules, and spend policy before live generation." />
+        ) : (
+          <div className="content-package-grid">
+            {data.packages.map((pkg) => (
+              <article className="content-package" key={pkg.id}>
+                <header><Status value={pkg.audit_gate_status} /><span>{pkg.test_data ? "TEST DATA" : pkg.status.replaceAll("_", " ")}</span></header>
+                <h3>{String(pkg.package_fields.title ?? "Creative Package")}</h3>
+                <p>Writer: {pkg.writer_worker_id.replaceAll("_", " ")} · Version {pkg.content_version_id.slice(0, 8)}</p>
+                <dl>
+                  <div><dt>Audits</dt><dd>{pkg.audit_gate_status.replaceAll("_", " ")}</dd></div>
+                  <div><dt>Originality</dt><dd>{pkg.status === "audited_blocked" ? "Requires differentiation" : "Not run"}</dd></div>
+                  <div><dt>Producer</dt><dd>{pkg.producer_handoff_state.replaceAll("_", " ")}</dd></div>
+                </dl>
+                <footer>
+                  <button className="button button--open" disabled={loadingDetail === pkg.id} onClick={() => void openPackage(pkg)} type="button">{loadingDetail === pkg.id ? "Loading…" : "Inspect package"}</button>
+                  <button className="text-button" disabled={busy || pkg.audit_gate_status !== "pass"} onClick={() => void checkProducer(pkg)} type="button">Check Producer eligibility</button>
+                </footer>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="research-boundaries surface">
+        <SectionHeader title="Content Department boundaries" detail="Content creation is evidence-led, versioned, independently audited, and never self-approved." />
+        <div className="research-boundaries__grid">
+          <p><strong>Creative Direction</strong> Only Strategy Auditor <code>pass</code> briefs may initiate a bounded content request.</p>
+          <p><strong>Claims</strong> Number, comparative, product, quote, price, and health/finance/legal-style claims require independent evidence; Writer text is never its own verification source.</p>
+          <p><strong>Auditors</strong> Language, Fact, Brand, and Originality operate independently. Any block, error, or missing audit stops the package.</p>
+          <p><strong>Human Review</strong> Producer readiness never publishes. The existing Human Review Gate must still approve the exact current Content Version before any publication policy can pass.</p>
+          <p><strong>Scheduling</strong> {data.summary.schedule_enabled ? "Enabled by an explicit future policy." : "Disabled by default; no autonomous content cycle is running."}</p>
+        </div>
+      </section>
+
+      {selected ? (
+        <section aria-label="Creative Package detail" className="content-package-detail surface">
+          <SectionHeader action={<button className="text-button" onClick={() => setSelected(null)} type="button">Close</button>} detail="Immutable Creative Direction, version-linked claims, independent audit evidence, originality status, and revision invalidation history." title={String(selected.package.package_fields.title ?? "Creative Package")} />
+          <div className="content-package-detail__grid">
+            <p><strong>Strategy Brief</strong>{selected.package.strategy_brief_id.slice(0, 8)}</p>
+            <p><strong>Creative concept</strong>{selected.direction.creative_concept}</p>
+            <p><strong>Hook direction</strong>{selected.direction.hook_direction ?? "Not configured"}</p>
+            <p><strong>Version</strong>{selected.package.content_version_id.slice(0, 8)}</p>
+            <p><strong>Revision lineage</strong>{selected.package.prior_content_version_id ? `Revision of ${selected.package.prior_content_version_id.slice(0, 8)}` : "Original version"}</p>
+            <p><strong>Invalidations</strong>{selected.invalidation_count}</p>
+          </div>
+          <div className="content-package-detail__panels">
+            <article><h4>Claims</h4>{selected.claims.length ? selected.claims.map((claim) => <p key={claim.id}><Status value={claim.verification_status} /> {claim.claim_text} <small>{claim.claim_type} · {claim.risk}</small></p>) : <p>No claims were extracted.</p>}</article>
+            <article><h4>Independent audits</h4>{selected.audits.length ? selected.audits.map((audit: ContentAudit) => <p key={audit.id}><Status value={audit.state} /> {audit.auditor_type} · {audit.blocked_reasons.join(" ") || audit.warnings.join(" ") || "No findings recorded."}</p>) : <p>NOT RUN — Producer remains blocked.</p>}</article>
+            <article><h4>Originality</h4><p>{selected.originality ? selected.originality.state.replaceAll("_", " ") : "NOT RUN"}</p><small>{selected.originality?.similarity_findings.length ? "Similarity findings require differentiation." : "No originality evaluation has been recorded."}</small></article>
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 function BillingView({ spend, cost }: { spend: SpendDashboard; cost: CostControl }) {
   return (
     <>
@@ -1120,6 +1302,7 @@ type ViewData =
   | Leads
   | { summary: ResearchSummary; opportunities: Opportunity[] }
   | { summary: StrategySummary; briefs: StrategyBrief[]; opportunities: Opportunity[] }
+  | { summary: ContentDepartmentSummary; packages: ContentPackage[]; briefs: StrategyBrief[] }
   | { insights: ExecutiveInsights; activity: ActivityFeed; github: GitHubOut }
   | { spend: SpendDashboard; cost: CostControl }
   | { health: SystemHealth; executive: ExecutiveDashboard }
@@ -1131,6 +1314,10 @@ function isResearchViewData(value: ViewData): value is { summary: ResearchSummar
 
 function isStrategyViewData(value: ViewData): value is { summary: StrategySummary; briefs: StrategyBrief[]; opportunities: Opportunity[] } {
   return Boolean(value && "summary" in value && "briefs" in value && "opportunities" in value && "business_context_state" in value.summary);
+}
+
+function isContentDepartmentViewData(value: ViewData): value is { summary: ContentDepartmentSummary; packages: ContentPackage[]; briefs: StrategyBrief[] } {
+  return Boolean(value && "summary" in value && "packages" in value && "briefs" in value && "claims_unverified" in value.summary);
 }
 
 export default function LumoraDashboard({
@@ -1255,6 +1442,13 @@ export default function LumoraDashboard({
           listOpportunities(token, workspaceId),
         ]);
         next = { summary, briefs, opportunities };
+      } else if (nav === "content_department") {
+        const [summary, packages, briefs] = await Promise.all([
+          getContentDepartmentSummary(token, workspaceId),
+          listContentPackages(token, workspaceId),
+          listStrategyBriefs(token, workspaceId),
+        ]);
+        next = { summary, packages, briefs };
       } else if (nav === "analytics") {
         const [insights, activity, github] = await Promise.all([
           getExecutiveInsights(token, workspaceId),
@@ -1430,6 +1624,10 @@ export default function LumoraDashboard({
     if (nav === "strategy") {
       if (!isStrategyViewData(data)) return <Loading />;
       return <StrategyView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
+    }
+    if (nav === "content_department") {
+      if (!isContentDepartmentViewData(data)) return <Loading />;
+      return <ContentDepartmentView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
     }
     if (nav === "analytics") {
       if (!isAnalyticsData(data)) return <Loading />;

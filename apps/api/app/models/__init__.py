@@ -13,6 +13,15 @@ from app.models.claim_audit import StageClaimAudit  # noqa: F401
 # Milestone 3 content domain
 from app.models.config import ContentPillar, ProviderCredential, SpendCap  # noqa: F401
 from app.models.content import ContentItem, ContentLineage, ContentVersion  # noqa: F401
+from app.models.content_department import (  # noqa: F401
+    ContentAudit,
+    ContentAuditInvalidation,
+    ContentClaim,
+    ContentDepartmentRun,
+    ContentPackage,
+    CreativeDirection,
+    OriginalityFingerprint,
+)
 from app.models.delivery import Asset, PublishJob  # noqa: F401
 from app.models.events import ConsumerCheckpoint, EventConsumer, OutboxEvent  # noqa: F401
 from app.models.history import AnalyticsSnapshot, ProviderUsage, ReviewDecision  # noqa: F401
@@ -61,6 +70,13 @@ __all__ = [
     "ContentItem",
     "ContentVersion",
     "ContentLineage",
+    "ContentDepartmentRun",
+    "CreativeDirection",
+    "ContentPackage",
+    "ContentClaim",
+    "ContentAudit",
+    "ContentAuditInvalidation",
+    "OriginalityFingerprint",
     "PipelineRun",
     "PipelineStageRun",
     "Asset",

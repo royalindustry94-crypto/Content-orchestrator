@@ -14,6 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.auth import router as auth_router
 from app.api.routes.billing import router as billing_router
 from app.api.routes.concurrency import router as concurrency_router
+from app.api.routes.content_department import router as content_department_router
 from app.api.routes.content_jobs import router as content_jobs_router
 from app.api.routes.data_governance import router as data_governance_router
 from app.api.routes.health import router as health_router
@@ -208,6 +209,7 @@ app.include_router(profiles_router)
 app.include_router(workspaces_router)
 app.include_router(memberships_router)
 app.include_router(content_jobs_router)
+app.include_router(content_department_router)
 app.include_router(review_gates_router)
 app.include_router(research_router)
 app.include_router(strategy_router)
