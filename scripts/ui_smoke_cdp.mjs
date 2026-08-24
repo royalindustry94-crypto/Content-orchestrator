@@ -94,8 +94,8 @@ async function report() {
     heading: (document.querySelector('main h1, main h2')||{}).innerText || null,
     horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth,
     conditionRows: document.querySelectorAll('#active-alerts .decision-card').length,
-    circularFinancials: document.querySelectorAll('.financial-pie,.financial-hero__donut').length,
-    unavailableFinancialMetrics: [...document.querySelectorAll('.financial-overview__metric strong')].filter(el => el.textContent?.trim() === 'Not connected').length,
+    financialCircles: document.querySelectorAll('.financial-overview__circle').length,
+    unavailableFinancialMetrics: [...document.querySelectorAll('.financial-overview__circle strong')].filter(el => el.textContent?.trim() === 'Not connected').length,
     unlabeledControls: [...document.querySelectorAll('input, select, textarea')].filter(el =>
       !el.getAttribute('aria-label') &&
       !el.getAttribute('aria-labelledby') &&
@@ -265,7 +265,7 @@ const mobileFailures = mobileResults.filter((r) => r.crash || r.textLen === 0 ||
 const footerFailures = results.filter((r) => r.footer !== backendTruth.expectedFooter);
 const dashboardResult = results.find((r) => r.label === "Home");
 const alertParityWorks = dashboardResult?.conditionRows === backendTruth.alertTypes;
-const noCirclesWorks = dashboardResult?.circularFinancials === 0 && dashboardResult?.unavailableFinancialMetrics === 4;
+const fourCirclesWork = dashboardResult?.financialCircles === 4 && dashboardResult?.unavailableFinancialMetrics === 4;
 console.log("ROUTES:", results.length);
 console.log("BLANK/CRASH:", crashes.length);
 console.log("SEARCH:", JSON.stringify(searchResult));
@@ -276,7 +276,7 @@ console.log("MOBILE SUPPLEMENTAL:", mobileResults.length, "failures:", mobileFai
 console.log("BACKEND TRUTH:", JSON.stringify(backendTruth));
 console.log("FOOTER MISMATCHES:", footerFailures.length);
 console.log("ALERT ROW PARITY:", alertParityWorks);
-console.log("NO-CIRCLES FINANCIAL HOME:", noCirclesWorks);
+console.log("FOUR-CIRCLE FINANCIAL HOME:", fourCirclesWork);
 for (const r of results) {
   console.log(`  ${r.crash ? "CRASH" : r.textLen === 0 ? "BLANK" : "ok   "} | ${r.label} | textLen=${r.textLen} | footer=${r.footer ?? "-"} | unlabeled=${r.unlabeledControls}`);
 }
@@ -290,7 +290,7 @@ process.exit(
   mobileFailures.length === 0 &&
   footerFailures.length === 0 &&
   alertParityWorks &&
-  noCirclesWorks &&
+  fourCirclesWork &&
   consoleProblems.length === 0 &&
   uncaughtExceptions.length === 0 &&
   searchWorks &&

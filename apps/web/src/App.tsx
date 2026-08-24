@@ -122,7 +122,11 @@ export default function App() {
   return (
     <main className="auth-shell auth-shell--approved">
       <section className="auth-card" aria-labelledby="auth-title">
-        <img className="auth-lockup" src="/business-manager-lockup.png" alt="The Business Manager — Business Operating System" />
+        <div className="auth-lockup" aria-label="The Business Manager — Business Operating System">
+          <BusinessManagerMark className="auth-lockup__mark" />
+          <strong className="auth-lockup__name">The Business Manager</strong>
+          <small className="auth-lockup__subtitle">Business Operating System</small>
+        </div>
         <form className="auth-form auth-form--approved" onSubmit={(event) => void authenticate(mode, event)}>
           <h1 id="auth-title">{mode === "login" ? "Sign in" : "Create account"}</h1>
           <label>

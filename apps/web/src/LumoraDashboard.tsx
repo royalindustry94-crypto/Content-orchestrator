@@ -341,12 +341,16 @@ function DashboardHome({
           </div>
           <p>Connect a financial source to see verified business performance.</p>
         </header>
-        <div className="financial-overview__grid">
+        <div className="financial-overview__circle-grid">
           {(["Revenue", "Spending", "Net profit", "Profit margin"] as const).map((label) => (
-            <article className="financial-overview__metric" key={label}>
+            <article className="financial-overview__circle-card" key={label}>
               <span>{label}</span>
-              <strong>Not connected</strong>
-              <small>Source-backed data required</small>
+              <div className="financial-overview__circle" aria-label={`${label}: financial source not connected`}>
+                <div>
+                  <strong>Not connected</strong>
+                  <small>Source-backed data required</small>
+                </div>
+              </div>
             </article>
           ))}
         </div>
