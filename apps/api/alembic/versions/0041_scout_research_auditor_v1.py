@@ -17,6 +17,7 @@ from pathlib import Path
 
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
 from alembic import op
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
