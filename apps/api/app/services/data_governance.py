@@ -84,6 +84,12 @@ EXPORTABLE_TABLES: tuple[str, ...] = (
     "workflow_stages",
     "workflow_transitions",
     "leads",
+    "research_runs",
+    "research_sources",
+    "opportunities",
+    "opportunity_evidence",
+    "research_audits",
+    "research_schedules",
 )
 
 # Customer content tables that carry ``deleted_at`` and whose RLS grants the
@@ -150,6 +156,12 @@ RETAINED_ON_DELETE: tuple[str, ...] = (
     "provider_credentials",
     "workspace_memberships",
     "workspaces",
+    "research_runs",
+    "research_sources",
+    "opportunities",
+    "opportunity_evidence",
+    "research_audits",
+    "research_schedules",
 )
 
 

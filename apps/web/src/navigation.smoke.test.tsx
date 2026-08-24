@@ -111,6 +111,17 @@ vi.mock("./api", () => ({
   getWorkerMonitor: vi.fn(async () => ({ workers: [], generated_at: "" })),
   getWorkerTimeline: vi.fn(async () => ({ workers: [], generated_at: "" })),
   getLeads: vi.fn(async () => ({ leads: [], total: 0, generated_at: "" })),
+  getResearchSummary: vi.fn(async () => ({
+    provider_state: "not_configured", status: "not_run", current_research: null, last_run: null,
+    next_run_at: null, opportunities_found: 0, audited_opportunities: 0, blocked_findings: 0,
+    cost_today_usd: "0", last_error: "RESEARCH PROVIDER NOT CONFIGURED", schedule_enabled: false,
+    research_data_state: "not_connected",
+  })),
+  listOpportunities: vi.fn(async () => []),
+  createResearchRun: vi.fn(async () => ({})),
+  getOpportunityDetail: vi.fn(async () => ({})),
+  auditOpportunity: vi.fn(async () => ({})),
+  sendOpportunityToStrategist: vi.fn(async () => ({})),
   getSpendDashboard: vi.fn(async () => ({
     today_usd: "0", week_usd: "0", month_usd: "0", by_provider: [],
     daily_cap_usd: null, monthly_cap_usd: null, budget_remaining_daily_usd: null,
@@ -314,7 +325,7 @@ describe("dashboard navigation smoke test", () => {
 
     const routes: Array<[string, RegExp]> = [
       ["Ask", /Ask My Business/i],
-      ["Opportunities", /No leads yet/i],
+      ["Opportunities", /No opportunities yet/i],
       ["Content", /No active pipelines/i],
       ["Human Review", /keeps every publish decision/i],
       ["Workforce", /No workers registered/i],
@@ -339,7 +350,7 @@ describe("dashboard navigation smoke test", () => {
   it("surfaces a retryable error state instead of crashing when a route fails", async () => {
     const api = await import("./api");
     // Reject a route-only endpoint so the initial dashboard load still succeeds.
-    (api.getLeads as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+    (api.getResearchSummary as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
       new Error("503: backend unavailable"),
     );
     renderShell();

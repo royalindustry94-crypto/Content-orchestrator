@@ -775,3 +775,188 @@ export function decideReviewGate(
     },
   );
 }
+
+export type ResearchRun = {
+  id: string;
+  workspace_id: string;
+  trigger: string;
+  research_objective: string;
+  permitted_sources: string[];
+  started_at: string;
+  deadline: string;
+  max_searches: number;
+  max_provider_calls: number;
+  max_tokens: number;
+  max_cost_usd: string;
+  max_attempts: number;
+  status: string;
+  provider_state: string;
+  searches_used: number;
+  provider_calls_used: number;
+  tokens_used: number;
+  reserved_cost_usd: string;
+  actual_cost_usd: string;
+  opportunity_count: number;
+  audited_opportunity_count: number;
+  blocked_opportunity_count: number;
+  last_error: string | null;
+  correlation_id: string;
+  trace_id: string | null;
+  test_data: boolean;
+};
+
+export type ResearchSource = {
+  id: string;
+  research_run_id: string;
+  canonical_url: string;
+  source_type: string;
+  retrieved_at: string;
+  published_at: string | null;
+  publisher: string | null;
+  author: string | null;
+  claim_supported: string | null;
+  freshness: string;
+  confidence: string;
+  handling_state: string;
+  rejection_reason: string | null;
+  test_data: boolean;
+};
+
+export type Opportunity = {
+  id: string;
+  research_run_id: string;
+  title: string;
+  topic: string;
+  summary: string;
+  proposed_angle: string;
+  target_audience: string | null;
+  target_platform: string | null;
+  suggested_format: string | null;
+  discovered_at: string;
+  freshness: string;
+  source_count: number;
+  confidence: string;
+  risk: string;
+  status: string;
+  created_by_worker: string;
+  component_scores: Record<string, number>;
+  score_reasoning: Record<string, string>;
+  audit_gate_status: string;
+  performance_data_state: string;
+  strategist_state: string;
+  test_data: boolean;
+};
+
+export type OpportunityEvidence = {
+  source: ResearchSource;
+  claim_supported: string;
+  relevance: string;
+  contradiction_flag: boolean;
+};
+
+export type ResearchAudit = {
+  id: string;
+  opportunity_id: string;
+  research_run_id: string;
+  state: string;
+  evaluator_context_version: string;
+  findings: Array<Record<string, string>>;
+  warnings: string[];
+  blocked_reasons: string[];
+  checked_at: string;
+  test_data: boolean;
+};
+
+export type OpportunityDetail = {
+  opportunity: Opportunity;
+  evidence: OpportunityEvidence[];
+  latest_audit: ResearchAudit | null;
+};
+
+export type ResearchSummary = {
+  provider_state: string;
+  status: string;
+  current_research: ResearchRun | null;
+  last_run: ResearchRun | null;
+  next_run_at: string | null;
+  opportunities_found: number;
+  audited_opportunities: number;
+  blocked_findings: number;
+  cost_today_usd: string;
+  last_error: string | null;
+  schedule_enabled: boolean;
+  research_data_state: string;
+};
+
+export type StrategistGate = {
+  opportunity_id: string;
+  eligible: boolean;
+  state: string;
+  detail: string;
+};
+
+export function getResearchSummary(token: string, workspaceId: string): Promise<ResearchSummary> {
+  return apiFetch<ResearchSummary>(`/workspaces/${workspaceId}/research/summary`, token);
+}
+
+export function listResearchRuns(token: string, workspaceId: string): Promise<ResearchRun[]> {
+  return apiFetch<ResearchRun[]>(`/workspaces/${workspaceId}/research/runs`, token);
+}
+
+export function createResearchRun(
+  token: string,
+  workspaceId: string,
+  payload: {
+    research_objective: string;
+    permitted_sources?: string[];
+    max_searches?: number;
+    max_provider_calls?: number;
+    max_tokens?: number;
+    max_cost_usd?: string;
+    max_attempts?: number;
+  },
+): Promise<ResearchRun> {
+  return apiFetch<ResearchRun>(`/workspaces/${workspaceId}/research/runs`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listOpportunities(token: string, workspaceId: string): Promise<Opportunity[]> {
+  return apiFetch<Opportunity[]>(`/workspaces/${workspaceId}/research/opportunities`, token);
+}
+
+export function getOpportunityDetail(
+  token: string,
+  workspaceId: string,
+  opportunityId: string,
+): Promise<OpportunityDetail> {
+  return apiFetch<OpportunityDetail>(
+    `/workspaces/${workspaceId}/research/opportunities/${opportunityId}`,
+    token,
+  );
+}
+
+export function auditOpportunity(
+  token: string,
+  workspaceId: string,
+  opportunityId: string,
+): Promise<ResearchAudit> {
+  return apiFetch<ResearchAudit>(
+    `/workspaces/${workspaceId}/research/opportunities/${opportunityId}/audit`,
+    token,
+    { method: "POST" },
+  );
+}
+
+export function sendOpportunityToStrategist(
+  token: string,
+  workspaceId: string,
+  opportunityId: string,
+): Promise<StrategistGate> {
+  return apiFetch<StrategistGate>(
+    `/workspaces/${workspaceId}/research/opportunities/${opportunityId}/send-to-strategist`,
+    token,
+    { method: "POST" },
+  );
+}

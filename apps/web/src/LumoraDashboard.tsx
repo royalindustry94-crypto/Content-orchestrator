@@ -10,7 +10,9 @@ import ErrorBoundary from "./ErrorBoundary";
 import { BusinessManagerMark } from "./BusinessManagerMark";
 import { useDialogFocus } from "./useDialogFocus";
 import {
+  auditOpportunity,
   createLead,
+  createResearchRun,
   decideReviewGate,
   getActivityFeed,
   getContentCommand,
@@ -23,6 +25,8 @@ import {
   getLeads,
   getLiveLogs,
   getNotifications,
+  getOpportunityDetail,
+  getResearchSummary,
   getOperationsAlerts,
   getPipelineMonitor,
   getSpendDashboard,
@@ -30,8 +34,10 @@ import {
   getUniversalTimeline,
   getWorkerMonitor,
   getWorkerTimeline,
+  listOpportunities,
   listReviewGates,
   listWorkspaces,
+  sendOpportunityToStrategist,
   updateLead,
   type ActivityFeed,
   type ContentCommand,
@@ -44,6 +50,10 @@ import {
   type Leads,
   type LiveLogs,
   type Notifications,
+  type Opportunity,
+  type OpportunityDetail,
+  type ResearchAudit,
+  type ResearchSummary,
   type PipelineMonitor,
   type ReviewGate,
   type SpendDashboard,
@@ -96,6 +106,7 @@ type NavKey =
   | "workers"
   | "customers"
   | "leads"
+  | "research"
   | "analytics"
   | "billing"
   | "settings";
@@ -177,7 +188,7 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
 const NAV: Array<{ id: NavKey; label: string; icon: IconName }> = [
   { id: "dashboard", label: "Home", icon: "dashboard" },
   { id: "ask", label: "Ask", icon: "mission" },
-  { id: "leads", label: "Opportunities", icon: "leads" },
+  { id: "research", label: "Opportunities", icon: "leads" },
   { id: "pipelines", label: "Content", icon: "pipelines" },
   { id: "review", label: "Human Review", icon: "review" },
   { id: "workers", label: "Workforce", icon: "workers" },
@@ -683,6 +694,181 @@ function LeadsView({
   );
 }
 
+function ResearchView({
+  data,
+  token,
+  workspaceId,
+  refresh,
+}: {
+  data: { summary: ResearchSummary; opportunities: Opportunity[] };
+  token: string;
+  workspaceId: string;
+  refresh: () => void;
+}) {
+  const [objective, setObjective] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<OpportunityDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
+
+  const runResearch = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setActionError(null);
+    setNotice(null);
+    try {
+      const run = await createResearchRun(token, workspaceId, {
+        research_objective: objective,
+        max_searches: 5,
+        max_provider_calls: 5,
+        max_tokens: 4000,
+        max_cost_usd: "0.00",
+        max_attempts: 3,
+      });
+      setObjective("");
+      setNotice(run.last_error ?? "Research run recorded.");
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to create the research run.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openEvidence = async (opportunity: Opportunity) => {
+    setLoadingDetail(opportunity.id);
+    setActionError(null);
+    try {
+      setSelected(await getOpportunityDetail(token, workspaceId, opportunity.id));
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to load evidence.");
+    } finally {
+      setLoadingDetail(null);
+    }
+  };
+
+  const runAudit = async (opportunity: Opportunity) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const audit: ResearchAudit = await auditOpportunity(token, workspaceId, opportunity.id);
+      setNotice(`Research Auditor: ${audit.state.replaceAll("_", " ")}.`);
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to run the Research Auditor.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendToStrategist = async (opportunity: Opportunity) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const result = await sendOpportunityToStrategist(token, workspaceId, opportunity.id);
+      setNotice(result.detail);
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Strategist handoff is unavailable.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const current = data.summary.current_research ?? data.summary.last_run;
+  return (
+    <div className="research-view stack">
+      <section className="research-hero surface">
+        <div>
+          <p className="page-kicker">Scout + Research Auditor</p>
+          <h2>Evidence-backed opportunities</h2>
+          <p>Scout records bounded research evidence. Research Auditor independently checks provenance before any future Strategist handoff.</p>
+        </div>
+        <Status value={data.summary.provider_state === "not_configured" ? "Research provider not configured" : data.summary.provider_state} />
+      </section>
+
+      <section className="research-command surface">
+        <div>
+          <SectionHeader title="Run research" detail="Manual only. Daily and custom schedules remain disabled in this Founder Preview." />
+          <p className="research-limits">Default limits: 5 searches · 5 provider calls · 4,000 tokens · $0.00 preview budget · 3 attempts.</p>
+        </div>
+        <form className="research-command__form" onSubmit={(event) => void runResearch(event)}>
+          <input aria-label="Research objective" maxLength={1000} onChange={(event) => setObjective(event.target.value)} placeholder="Describe the opportunity or demand signal to investigate" required value={objective} />
+          <button className="button button--primary" disabled={busy} type="submit">{busy ? "Recording…" : "Run research"}</button>
+        </form>
+        {data.summary.provider_state === "not_configured" ? <p className="research-not-configured" role="status">RESEARCH PROVIDER NOT CONFIGURED — no external research call, spend, or fabricated opportunity will be created.</p> : null}
+        {notice ? <p className="research-notice" role="status">{notice}</p> : null}
+        {actionError ? <p className="error" role="alert">{actionError}</p> : null}
+      </section>
+
+      <section className="research-status-grid" aria-label="Scout status">
+        <article><span>Current research</span><strong>{current ? current.status.replaceAll("_", " ") : "Not run"}</strong><small>{current ? current.research_objective : "No manual research run has been created."}</small></article>
+        <article><span>Opportunities found</span><strong>{data.summary.opportunities_found}</strong><small>Only evidence-backed opportunity records are counted.</small></article>
+        <article><span>Audited findings</span><strong>{data.summary.audited_opportunities}</strong><small>{data.summary.blocked_findings} blocked by independent audit.</small></article>
+        <article><span>Cost today</span><strong>{money(data.summary.cost_today_usd)}</strong><small>Provider usage is attributable only when a provider is configured.</small></article>
+      </section>
+
+      <section className="surface research-opportunities">
+        <SectionHeader title="Opportunities" detail="Auditable observations, not automatic content instructions." />
+        {data.opportunities.length === 0 ? (
+          <EmptyState icon="leads" title="No opportunities yet" message="Connect a research provider or run the explicit test path in automated validation; the preview will not invent trends or demand signals." />
+        ) : (
+          <div className="research-opportunity-grid">
+            {data.opportunities.map((opportunity) => (
+              <article className="research-opportunity" key={opportunity.id}>
+                <header><Status value={opportunity.audit_gate_status} /><span>{opportunity.test_data ? "TEST DATA" : opportunity.freshness}</span></header>
+                <h3>{opportunity.title}</h3>
+                <p>{opportunity.summary}</p>
+                <dl>
+                  <div><dt>Evidence</dt><dd>{opportunity.source_count} source{opportunity.source_count === 1 ? "" : "s"}</dd></div>
+                  <div><dt>Confidence</dt><dd>{Number(opportunity.confidence).toLocaleString(undefined, { style: "percent", maximumFractionDigits: 0 })}</dd></div>
+                  <div><dt>Performance</dt><dd>{opportunity.performance_data_state.replaceAll("_", " ")}</dd></div>
+                </dl>
+                <footer>
+                  <button className="button button--open" disabled={loadingDetail === opportunity.id} onClick={() => void openEvidence(opportunity)} type="button">{loadingDetail === opportunity.id ? "Loading…" : "Inspect evidence"}</button>
+                  <button className="button button--secondary" disabled={busy} onClick={() => void runAudit(opportunity)} type="button">Run auditor</button>
+                  <button className="text-button" disabled={busy || opportunity.audit_gate_status !== "pass"} onClick={() => void sendToStrategist(opportunity)} type="button">Send to Strategist</button>
+                </footer>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="research-boundaries surface">
+        <SectionHeader title="Research boundaries" detail="The system remains fail-closed where evidence, providers, schedules, or performance data are absent." />
+        <div className="research-boundaries__grid">
+          <p><strong>Sources</strong> Provenance, freshness, publisher, author, claim support, and rejection reason are inspectable per opportunity.</p>
+          <p><strong>Auditor</strong> Scout cannot approve its own work. Only an independent <code>pass</code> can make a future Strategist handoff eligible.</p>
+          <p><strong>Performance</strong> NO PERFORMANCE DATA is retained until a real workspace source is configured.</p>
+          <p><strong>Scheduling</strong> {data.summary.schedule_enabled ? "Enabled by an explicit future policy." : "Disabled by default; no autonomous Scout cycle is running."}</p>
+        </div>
+      </section>
+
+      {selected ? (
+        <section aria-label="Opportunity evidence" className="research-evidence surface">
+          <SectionHeader action={<button className="text-button" onClick={() => setSelected(null)} type="button">Close</button>} detail="Immutable source provenance and the latest independent Research Auditor decision." title={selected.opportunity.title} />
+          <div className="research-evidence__sources">
+            {selected.evidence.length ? selected.evidence.map((item) => (
+              <article key={item.source.id}>
+                <Status value={item.source.handling_state} />
+                <a href={item.source.canonical_url} rel="noreferrer" target="_blank">{item.source.publisher ?? item.source.canonical_url}</a>
+                <p>{item.claim_supported}</p>
+                <small>Retrieved {formatDate(item.source.retrieved_at)} · {item.source.freshness} · confidence {Number(item.source.confidence).toLocaleString(undefined, { style: "percent", maximumFractionDigits: 0 })}</small>
+              </article>
+            )) : <p>No source evidence is available.</p>}
+          </div>
+          <div className="research-evidence__audit">
+            <h4>Research Auditor</h4>
+            {selected.latest_audit ? <><Status value={selected.latest_audit.state} /><p>{selected.latest_audit.blocked_reasons.join(" ") || selected.latest_audit.warnings.join(" ") || "Independent audit passed without warnings."}</p></> : <p>NOT RUN — this opportunity is not eligible for Strategist handoff.</p>}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 function BillingView({ spend, cost }: { spend: SpendDashboard; cost: CostControl }) {
   return (
     <>
@@ -725,6 +911,7 @@ type ViewData =
   | { monitor: WorkerMonitor; timeline: WorkerTimeline }
   | Customers
   | Leads
+  | { summary: ResearchSummary; opportunities: Opportunity[] }
   | { insights: ExecutiveInsights; activity: ActivityFeed; github: GitHubOut }
   | { spend: SpendDashboard; cost: CostControl }
   | { health: SystemHealth; executive: ExecutiveDashboard }
@@ -839,7 +1026,13 @@ export default function LumoraDashboard({
       }
       else if (nav === "customers") next = await getCustomers(token, workspaceId);
       else if (nav === "leads") next = await getLeads(token, workspaceId);
-      else if (nav === "analytics") {
+      else if (nav === "research") {
+        const [summary, opportunities] = await Promise.all([
+          getResearchSummary(token, workspaceId),
+          listOpportunities(token, workspaceId),
+        ]);
+        next = { summary, opportunities };
+      } else if (nav === "analytics") {
         const [insights, activity, github] = await Promise.all([
           getExecutiveInsights(token, workspaceId),
           getActivityFeed(token, workspaceId),
@@ -1006,6 +1199,10 @@ export default function LumoraDashboard({
     if (nav === "leads") {
       if (!isLeads(data)) return <Loading />;
       return <LeadsView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
+    }
+    if (nav === "research") {
+      if (!data || !("summary" in data) || !("opportunities" in data)) return <Loading />;
+      return <ResearchView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
     }
     if (nav === "analytics") {
       if (!isAnalyticsData(data)) return <Loading />;

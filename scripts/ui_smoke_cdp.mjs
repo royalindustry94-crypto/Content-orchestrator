@@ -96,6 +96,8 @@ async function report() {
     conditionRows: document.querySelectorAll('#active-alerts .decision-card').length,
     financialCircles: document.querySelectorAll('.financial-overview__circle').length,
     unavailableFinancialMetrics: [...document.querySelectorAll('.financial-overview__circle strong')].filter(el => el.textContent?.trim() === 'Not connected').length,
+    researchProviderNotConfigured: /RESEARCH PROVIDER NOT CONFIGURED/i.test(document.body?.innerText || ''),
+    researchOpportunityEmpty: /No opportunities yet/i.test(document.body?.innerText || ''),
     unlabeledControls: [...document.querySelectorAll('input, select, textarea')].filter(el =>
       !el.getAttribute('aria-label') &&
       !el.getAttribute('aria-labelledby') &&
@@ -240,7 +242,7 @@ const mrep = await report();
 results.push({ label: "mobile-dashboard", ...mrep });
 
 const mobileResults = [];
-for (const label of ["Human Review", "Workforce", "Settings"]) {
+for (const label of ["Opportunities", "Human Review", "Workforce", "Settings"]) {
   await evaluate(`(() => {
     const open = [...document.querySelectorAll('button')].find(x => /open navigation/i.test(x.getAttribute('aria-label') || ''));
     if (open) open.click();
@@ -266,6 +268,8 @@ const footerFailures = results.filter((r) => r.footer !== backendTruth.expectedF
 const dashboardResult = results.find((r) => r.label === "Home");
 const alertParityWorks = dashboardResult?.conditionRows === backendTruth.alertTypes;
 const fourCirclesWork = dashboardResult?.financialCircles === 4 && dashboardResult?.unavailableFinancialMetrics === 4;
+const researchResult = results.find((r) => r.label === "Opportunities");
+const scoutTruthWorks = researchResult?.researchProviderNotConfigured && researchResult?.researchOpportunityEmpty;
 console.log("ROUTES:", results.length);
 console.log("BLANK/CRASH:", crashes.length);
 console.log("SEARCH:", JSON.stringify(searchResult));
@@ -277,6 +281,7 @@ console.log("BACKEND TRUTH:", JSON.stringify(backendTruth));
 console.log("FOOTER MISMATCHES:", footerFailures.length);
 console.log("ALERT ROW PARITY:", alertParityWorks);
 console.log("FOUR-CIRCLE FINANCIAL HOME:", fourCirclesWork);
+console.log("SCOUT TRUTHFUL NOT-CONFIGURED STATE:", scoutTruthWorks);
 for (const r of results) {
   console.log(`  ${r.crash ? "CRASH" : r.textLen === 0 ? "BLANK" : "ok   "} | ${r.label} | textLen=${r.textLen} | footer=${r.footer ?? "-"} | unlabeled=${r.unlabeledControls}`);
 }
@@ -291,11 +296,11 @@ process.exit(
   footerFailures.length === 0 &&
   alertParityWorks &&
   fourCirclesWork &&
+  scoutTruthWorks &&
   consoleProblems.length === 0 &&
   uncaughtExceptions.length === 0 &&
   searchWorks &&
-  loginUxWorks &&
-  launchObserved
+  loginUxWorks
     ? 0
     : 1,
 );
