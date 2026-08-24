@@ -90,6 +90,11 @@ EXPORTABLE_TABLES: tuple[str, ...] = (
     "opportunity_evidence",
     "research_audits",
     "research_schedules",
+    "strategy_runs",
+    "strategy_briefs",
+    "strategy_brief_opportunities",
+    "strategy_audits",
+    "strategy_schedules",
 )
 
 # Customer content tables that carry ``deleted_at`` and whose RLS grants the
@@ -162,6 +167,11 @@ RETAINED_ON_DELETE: tuple[str, ...] = (
     "opportunity_evidence",
     "research_audits",
     "research_schedules",
+    "strategy_runs",
+    "strategy_briefs",
+    "strategy_brief_opportunities",
+    "strategy_audits",
+    "strategy_schedules",
 )
 
 
@@ -196,10 +206,7 @@ class DeletionOutcome:
 async def _existing_tables(session: AsyncSession) -> set[str]:
     rows = (
         await session.execute(
-            text(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema = 'public'"
-            )
+            text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
         )
     ).all()
     return {r[0] for r in rows}
@@ -219,9 +226,7 @@ async def _table_has_workspace_column(session: AsyncSession, table: str) -> bool
     return found is not None
 
 
-async def export_workspace(
-    session: AsyncSession, *, workspace_id: uuid.UUID
-) -> ExportBundle:
+async def export_workspace(session: AsyncSession, *, workspace_id: uuid.UUID) -> ExportBundle:
     """Export the workspace's own eligible records.
 
     Credential and service-only tables are excluded by name and reported.
@@ -243,10 +248,7 @@ async def export_workspace(
             continue
         rows = (await session.execute(stmt, {"ws": str(workspace_id)})).mappings().all()
         serialised = [
-            {
-                k: (str(v) if isinstance(v, uuid.UUID | datetime) else v)
-                for k, v in row.items()
-            }
+            {k: (str(v) if isinstance(v, uuid.UUID | datetime) else v) for k, v in row.items()}
             for row in rows
         ]
         tables[table] = serialised

@@ -24,6 +24,7 @@ from app.api.routes.profiles import router as profiles_router
 from app.api.routes.research import router as research_router
 from app.api.routes.review_gates import router as review_gates_router
 from app.api.routes.spend import router as spend_router
+from app.api.routes.strategy import router as strategy_router
 from app.api.routes.webhooks import router as webhooks_router
 from app.api.routes.workers import admin_router as workers_admin_router
 from app.api.routes.workers import worker_router as workers_machine_router
@@ -209,6 +210,7 @@ app.include_router(memberships_router)
 app.include_router(content_jobs_router)
 app.include_router(review_gates_router)
 app.include_router(research_router)
+app.include_router(strategy_router)
 app.include_router(spend_router)
 app.include_router(billing_router)
 app.include_router(concurrency_router)

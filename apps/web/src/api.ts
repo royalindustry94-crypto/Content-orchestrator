@@ -960,3 +960,184 @@ export function sendOpportunityToStrategist(
     { method: "POST" },
   );
 }
+
+
+export type StrategyRun = {
+  id: string;
+  workspace_id: string;
+  trigger: string;
+  strategy_objective: string;
+  source_opportunity_ids: string[];
+  started_at: string;
+  deadline: string;
+  max_provider_calls: number;
+  max_tokens: number;
+  max_cost_usd: string;
+  max_attempts: number;
+  status: string;
+  provider_state: string;
+  business_context_state: string;
+  provider_calls_used: number;
+  tokens_used: number;
+  reserved_cost_usd: string;
+  actual_cost_usd: string;
+  briefs_created: number;
+  briefs_passed: number;
+  briefs_blocked: number;
+  last_error: string | null;
+  correlation_id: string;
+  trace_id: string | null;
+  test_data: boolean;
+};
+
+export type StrategyBrief = {
+  id: string;
+  strategy_run_id: string;
+  objective: string;
+  target_audience: string | null;
+  target_platform: string | null;
+  content_format: string | null;
+  creative_angle: string | null;
+  core_message: string | null;
+  hook_direction: string | null;
+  cta_direction: string | null;
+  business_goal: string | null;
+  success_metric: string | null;
+  commercial_goal: string | null;
+  estimated_complexity: string;
+  risk_level: string;
+  evidence_summary: string;
+  reasoning: string;
+  confidence: string;
+  priority: string;
+  component_scores: Record<string, number>;
+  score_reasoning: Record<string, string>;
+  recommended_length: string | null;
+  recommended_posting_window: string | null;
+  required_assets: string[];
+  production_requirements: string[];
+  rights_requirements: string[];
+  compliance_requirements: string[];
+  estimated_provider_usage: Record<string, unknown>;
+  estimated_cost_range: Record<string, unknown>;
+  cost_state: string;
+  capability_state: string;
+  business_context_state: string;
+  performance_data_state: string;
+  structural_fingerprint: string;
+  repetition_state: string;
+  repetition_reasons: string[];
+  audit_gate_status: string;
+  writer_handoff_state: string;
+  created_by_worker: string;
+  status: string;
+  test_data: boolean;
+};
+
+export type StrategyAudit = {
+  id: string;
+  strategy_brief_id: string;
+  strategy_run_id: string;
+  state: string;
+  evaluator_context_version: string;
+  findings: Array<Record<string, string>>;
+  warnings: string[];
+  blocked_reasons: string[];
+  checked_at: string;
+  test_data: boolean;
+};
+
+export type StrategyBriefDetail = {
+  brief: StrategyBrief;
+  source_opportunity_ids: string[];
+  latest_audit: StrategyAudit | null;
+};
+
+export type StrategySummary = {
+  provider_state: string;
+  status: string;
+  current_strategy: StrategyRun | null;
+  last_run: StrategyRun | null;
+  next_run_at: string | null;
+  opportunities_received: number;
+  briefs_created: number;
+  briefs_passed: number;
+  briefs_blocked: number;
+  cost_today_usd: string;
+  last_error: string | null;
+  schedule_enabled: boolean;
+  business_context_state: string;
+  performance_data_state: string;
+};
+
+export type WriterGate = {
+  strategy_brief_id: string;
+  eligible: boolean;
+  state: string;
+  detail: string;
+};
+
+export function getStrategySummary(token: string, workspaceId: string): Promise<StrategySummary> {
+  return apiFetch<StrategySummary>(`/workspaces/${workspaceId}/strategy/summary`, token);
+}
+
+export function listStrategyRuns(token: string, workspaceId: string): Promise<StrategyRun[]> {
+  return apiFetch<StrategyRun[]>(`/workspaces/${workspaceId}/strategy/runs`, token);
+}
+
+export function createStrategyRun(
+  token: string,
+  workspaceId: string,
+  payload: {
+    strategy_objective: string;
+    source_opportunity_ids: string[];
+    max_provider_calls?: number;
+    max_tokens?: number;
+    max_cost_usd?: string;
+    max_attempts?: number;
+  },
+): Promise<StrategyRun> {
+  return apiFetch<StrategyRun>(`/workspaces/${workspaceId}/strategy/runs`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listStrategyBriefs(token: string, workspaceId: string): Promise<StrategyBrief[]> {
+  return apiFetch<StrategyBrief[]>(`/workspaces/${workspaceId}/strategy/briefs`, token);
+}
+
+export function getStrategyBriefDetail(
+  token: string,
+  workspaceId: string,
+  briefId: string,
+): Promise<StrategyBriefDetail> {
+  return apiFetch<StrategyBriefDetail>(
+    `/workspaces/${workspaceId}/strategy/briefs/${briefId}`,
+    token,
+  );
+}
+
+export function auditStrategyBrief(
+  token: string,
+  workspaceId: string,
+  briefId: string,
+): Promise<StrategyAudit> {
+  return apiFetch<StrategyAudit>(
+    `/workspaces/${workspaceId}/strategy/briefs/${briefId}/audit`,
+    token,
+    { method: "POST" },
+  );
+}
+
+export function sendStrategyBriefToWriter(
+  token: string,
+  workspaceId: string,
+  briefId: string,
+): Promise<WriterGate> {
+  return apiFetch<WriterGate>(
+    `/workspaces/${workspaceId}/strategy/briefs/${briefId}/send-to-writer`,
+    token,
+    { method: "POST" },
+  );
+}

@@ -13,6 +13,7 @@ import {
   auditOpportunity,
   createLead,
   createResearchRun,
+  createStrategyRun,
   decideReviewGate,
   getActivityFeed,
   getContentCommand,
@@ -31,13 +32,18 @@ import {
   getPipelineMonitor,
   getSpendDashboard,
   getSystemHealth,
+  getStrategyBriefDetail,
+  getStrategySummary,
   getUniversalTimeline,
   getWorkerMonitor,
   getWorkerTimeline,
   listOpportunities,
   listReviewGates,
+  listStrategyBriefs,
   listWorkspaces,
   sendOpportunityToStrategist,
+  sendStrategyBriefToWriter,
+  auditStrategyBrief,
   updateLead,
   type ActivityFeed,
   type ContentCommand,
@@ -58,6 +64,10 @@ import {
   type ReviewGate,
   type SpendDashboard,
   type SystemHealth,
+  type StrategyAudit,
+  type StrategyBrief,
+  type StrategyBriefDetail,
+  type StrategySummary,
   type WorkerMonitor,
   type WorkerTimeline,
   type Workspace,
@@ -107,6 +117,7 @@ type NavKey =
   | "customers"
   | "leads"
   | "research"
+  | "strategy"
   | "analytics"
   | "billing"
   | "settings";
@@ -189,6 +200,7 @@ const NAV: Array<{ id: NavKey; label: string; icon: IconName }> = [
   { id: "dashboard", label: "Home", icon: "dashboard" },
   { id: "ask", label: "Ask", icon: "mission" },
   { id: "research", label: "Opportunities", icon: "leads" },
+  { id: "strategy", label: "Strategy", icon: "mission" },
   { id: "pipelines", label: "Content", icon: "pipelines" },
   { id: "review", label: "Human Review", icon: "review" },
   { id: "workers", label: "Workforce", icon: "workers" },
@@ -869,6 +881,201 @@ function ResearchView({
   );
 }
 
+function StrategyView({
+  data,
+  token,
+  workspaceId,
+  refresh,
+}: {
+  data: { summary: StrategySummary; briefs: StrategyBrief[]; opportunities: Opportunity[] };
+  token: string;
+  workspaceId: string;
+  refresh: () => void;
+}) {
+  const [objective, setObjective] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<StrategyBriefDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
+  const eligibleOpportunities = data.opportunities.filter((item) => item.audit_gate_status === "pass");
+  const current = data.summary.current_strategy ?? data.summary.last_run;
+
+  const toggleOpportunity = (opportunityId: string) => {
+    setSelectedIds((currentIds) => currentIds.includes(opportunityId)
+      ? currentIds.filter((item) => item !== opportunityId)
+      : [...currentIds, opportunityId].slice(0, 5));
+  };
+
+  const runStrategy = async (event: FormEvent) => {
+    event.preventDefault();
+    if (selectedIds.length === 0) {
+      setActionError("Select a Research Auditor PASS opportunity before recording a strategy request.");
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
+    setNotice(null);
+    try {
+      const run = await createStrategyRun(token, workspaceId, {
+        strategy_objective: objective,
+        source_opportunity_ids: selectedIds,
+        max_provider_calls: 5,
+        max_tokens: 4000,
+        max_cost_usd: "0.00",
+        max_attempts: 3,
+      });
+      setObjective("");
+      setNotice(run.last_error ?? "Strategy request recorded.");
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to record the strategy request.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openBrief = async (brief: StrategyBrief) => {
+    setLoadingDetail(brief.id);
+    setActionError(null);
+    try {
+      setSelected(await getStrategyBriefDetail(token, workspaceId, brief.id));
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to load the Strategy Brief.");
+    } finally {
+      setLoadingDetail(null);
+    }
+  };
+
+  const runAudit = async (brief: StrategyBrief) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const audit: StrategyAudit = await auditStrategyBrief(token, workspaceId, brief.id);
+      setNotice(`Strategy Auditor: ${audit.state.replaceAll("_", " ")}.`);
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to run the Strategy Auditor.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendToWriter = async (brief: StrategyBrief) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const result = await sendStrategyBriefToWriter(token, workspaceId, brief.id);
+      setNotice(result.detail);
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Writer handoff is unavailable.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="strategy-view stack">
+      <section className="strategy-hero surface">
+        <div>
+          <p className="page-kicker">Strategist + Strategy Auditor</p>
+          <h2>Evidence-led strategy, not invented predictions</h2>
+          <p>Only opportunities with a Research Auditor PASS can enter Strategist. An independent Strategy Auditor must PASS before any future Writer eligibility.</p>
+        </div>
+        <Status value={data.summary.provider_state === "not_configured" ? "Strategy provider not configured" : data.summary.provider_state} />
+      </section>
+
+      <section className="strategy-command surface">
+        <div>
+          <SectionHeader title="Record a strategy request" detail="Manual only. A configured provider, Business Brain, and capability profile are required before a real Strategy Brief can be created." />
+          <p className="research-limits">Default limits: up to 5 approved opportunities · 5 provider calls · 4,000 tokens · $0.00 preview budget · 3 attempts.</p>
+        </div>
+        <form className="strategy-command__form" onSubmit={(event) => void runStrategy(event)}>
+          <input aria-label="Strategy objective" maxLength={1000} onChange={(event) => setObjective(event.target.value)} placeholder="What business outcome should this strategy support?" required value={objective} />
+          <fieldset className="strategy-opportunity-picker">
+            <legend>Research Auditor PASS opportunities</legend>
+            {eligibleOpportunities.length ? eligibleOpportunities.map((opportunity) => (
+              <label key={opportunity.id}>
+                <input checked={selectedIds.includes(opportunity.id)} onChange={() => toggleOpportunity(opportunity.id)} type="checkbox" />
+                <span>{opportunity.title}</span>
+              </label>
+            )) : <p>No Research Auditor PASS opportunities are available in this workspace.</p>}
+          </fieldset>
+          <button className="button button--primary" disabled={busy || eligibleOpportunities.length === 0} type="submit">{busy ? "Recording…" : "Record strategy request"}</button>
+        </form>
+        {data.summary.provider_state === "not_configured" ? <p className="research-not-configured" role="status">STRATEGY PROVIDER NOT CONFIGURED — no external strategy call, spend, prediction, or fabricated brief will be created.</p> : null}
+        {data.summary.business_context_state !== "complete" ? <p className="strategy-context" role="status">BUSINESS CONTEXT INCOMPLETE — no workspace objective, audience rules, or capability profile is configured.</p> : null}
+        {notice ? <p className="research-notice" role="status">{notice}</p> : null}
+        {actionError ? <p className="error" role="alert">{actionError}</p> : null}
+      </section>
+
+      <section className="research-status-grid" aria-label="Strategist status">
+        <article><span>Current strategy</span><strong>{current ? current.status.replaceAll("_", " ") : "Not run"}</strong><small>{current ? current.strategy_objective : "No strategy request has been recorded."}</small></article>
+        <article><span>Approved intelligence</span><strong>{data.summary.opportunities_received}</strong><small>Only Research Auditor PASS opportunities are counted.</small></article>
+        <article><span>Strategy Briefs</span><strong>{data.summary.briefs_created}</strong><small>{data.summary.briefs_passed} passed · {data.summary.briefs_blocked} blocked by independent audit.</small></article>
+        <article><span>Cost today</span><strong>{money(data.summary.cost_today_usd)}</strong><small>{data.summary.performance_data_state === "no_data" ? "NO DATA for performance attribution." : "Source-backed state required."}</small></article>
+      </section>
+
+      <section className="surface strategy-briefs">
+        <SectionHeader title="Strategy Briefs" detail="Structured recommendations with source opportunity links, feasibility state, and independent audit results." />
+        {data.briefs.length === 0 ? (
+          <EmptyState icon="mission" title="No Strategy Briefs yet" message="The preview will not invent briefs. Configure approved intelligence, Business Brain, provider capability, and spend controls before live strategy generation." />
+        ) : (
+          <div className="strategy-brief-grid">
+            {data.briefs.map((brief) => (
+              <article className="strategy-brief" key={brief.id}>
+                <header><Status value={brief.audit_gate_status} /><span>{brief.test_data ? "TEST DATA" : brief.priority.replaceAll("_", " ")}</span></header>
+                <h3>{brief.objective}</h3>
+                <p>{brief.evidence_summary}</p>
+                <dl>
+                  <div><dt>Source state</dt><dd>{brief.audit_gate_status.replaceAll("_", " ")}</dd></div>
+                  <div><dt>Cost</dt><dd>{brief.cost_state.replaceAll("_", " ")}</dd></div>
+                  <div><dt>Capability</dt><dd>{brief.capability_state.replaceAll("_", " ")}</dd></div>
+                </dl>
+                <footer>
+                  <button className="button button--open" disabled={loadingDetail === brief.id} onClick={() => void openBrief(brief)} type="button">{loadingDetail === brief.id ? "Loading…" : "Inspect brief"}</button>
+                  <button className="button button--secondary" disabled={busy} onClick={() => void runAudit(brief)} type="button">Run auditor</button>
+                  <button className="text-button" disabled={busy || brief.audit_gate_status !== "pass"} onClick={() => void sendToWriter(brief)} type="button">Check Writer eligibility</button>
+                </footer>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="research-boundaries surface">
+        <SectionHeader title="Strategy boundaries" detail="The system remains fail-closed when intelligence, business context, cost, capability, or independent review is incomplete." />
+        <div className="research-boundaries__grid">
+          <p><strong>Intelligence</strong> Only Research Auditor <code>pass</code> opportunities can enter a bounded Strategy run.</p>
+          <p><strong>Business Brain</strong> {data.summary.business_context_state === "complete" ? "Configured state reported by the backend." : "BUSINESS CONTEXT INCOMPLETE — no goal, audience, or rule is assumed."}</p>
+          <p><strong>Auditor</strong> Strategy Auditor independently checks provenance, feasibility, repetition, and unsupported claims before Writer eligibility.</p>
+          <p><strong>Scheduling</strong> {data.summary.schedule_enabled ? "Enabled by an explicit future policy." : "Disabled by default; no autonomous strategy cycle is running."}</p>
+        </div>
+      </section>
+
+      {selected ? (
+        <section aria-label="Strategy Brief detail" className="strategy-detail surface">
+          <SectionHeader action={<button className="text-button" onClick={() => setSelected(null)} type="button">Close</button>} detail="Stored brief fields and the latest independent Strategy Auditor result." title={selected.brief.objective} />
+          <div className="strategy-detail__grid">
+            <p><strong>Audience</strong>{selected.brief.target_audience ?? "Not configured"}</p>
+            <p><strong>Platform / format</strong>{selected.brief.target_platform ?? "Not configured"} · {selected.brief.content_format ?? "Not configured"}</p>
+            <p><strong>Angle</strong>{selected.brief.creative_angle ?? "Not configured"}</p>
+            <p><strong>Business goal</strong>{selected.brief.business_goal ?? "BUSINESS CONTEXT INCOMPLETE"}</p>
+            <p><strong>Source opportunities</strong>{selected.source_opportunity_ids.length}</p>
+            <p><strong>Writer handoff</strong>{selected.brief.writer_handoff_state.replaceAll("_", " ")}</p>
+          </div>
+          <div className="research-evidence__audit">
+            <h4>Strategy Auditor</h4>
+            {selected.latest_audit ? <><Status value={selected.latest_audit.state} /><p>{selected.latest_audit.blocked_reasons.join(" ") || selected.latest_audit.warnings.join(" ") || "Independent audit passed without warnings."}</p></> : <p>NOT RUN — Writer handoff remains blocked.</p>}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 function BillingView({ spend, cost }: { spend: SpendDashboard; cost: CostControl }) {
   return (
     <>
@@ -912,10 +1119,19 @@ type ViewData =
   | Customers
   | Leads
   | { summary: ResearchSummary; opportunities: Opportunity[] }
+  | { summary: StrategySummary; briefs: StrategyBrief[]; opportunities: Opportunity[] }
   | { insights: ExecutiveInsights; activity: ActivityFeed; github: GitHubOut }
   | { spend: SpendDashboard; cost: CostControl }
   | { health: SystemHealth; executive: ExecutiveDashboard }
   | null;
+
+function isResearchViewData(value: ViewData): value is { summary: ResearchSummary; opportunities: Opportunity[] } {
+  return Boolean(value && "summary" in value && "opportunities" in value && "research_data_state" in value.summary);
+}
+
+function isStrategyViewData(value: ViewData): value is { summary: StrategySummary; briefs: StrategyBrief[]; opportunities: Opportunity[] } {
+  return Boolean(value && "summary" in value && "briefs" in value && "opportunities" in value && "business_context_state" in value.summary);
+}
 
 export default function LumoraDashboard({
   token,
@@ -1032,6 +1248,13 @@ export default function LumoraDashboard({
           listOpportunities(token, workspaceId),
         ]);
         next = { summary, opportunities };
+      } else if (nav === "strategy") {
+        const [summary, briefs, opportunities] = await Promise.all([
+          getStrategySummary(token, workspaceId),
+          listStrategyBriefs(token, workspaceId),
+          listOpportunities(token, workspaceId),
+        ]);
+        next = { summary, briefs, opportunities };
       } else if (nav === "analytics") {
         const [insights, activity, github] = await Promise.all([
           getExecutiveInsights(token, workspaceId),
@@ -1201,8 +1424,12 @@ export default function LumoraDashboard({
       return <LeadsView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
     }
     if (nav === "research") {
-      if (!data || !("summary" in data) || !("opportunities" in data)) return <Loading />;
+      if (!isResearchViewData(data)) return <Loading />;
       return <ResearchView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
+    }
+    if (nav === "strategy") {
+      if (!isStrategyViewData(data)) return <Loading />;
+      return <StrategyView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
     }
     if (nav === "analytics") {
       if (!isAnalyticsData(data)) return <Loading />;

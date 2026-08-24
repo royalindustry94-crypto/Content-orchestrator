@@ -3485,3 +3485,51 @@ button.side-link--active {
     text-align: center;
   }
 }
+
+
+/* Strategist + Strategy Auditor V1: truthful bounded-strategy surface */
+.strategy-view { gap: 18px; }
+.strategy-hero,
+.strategy-command,
+.strategy-briefs,
+.strategy-detail { border-color: rgba(212, 175, 55, 0.14); }
+.strategy-hero { align-items: flex-start; display: flex; gap: 24px; justify-content: space-between; }
+.strategy-hero h2 { margin: 5px 0 8px; }
+.strategy-hero p:not(.page-kicker) { color: var(--text-secondary, #9ca3af); margin: 0; max-width: 760px; }
+.strategy-command { display: grid; gap: 16px; }
+.strategy-command__form { display: grid; gap: 12px; }
+.strategy-command__form > input { width: 100%; }
+.strategy-opportunity-picker { border: 1px solid rgba(212, 175, 55, 0.16); border-radius: 12px; display: grid; gap: 8px; margin: 0; min-inline-size: 0; padding: 12px; }
+.strategy-opportunity-picker legend { color: var(--text-secondary, #9ca3af); font-size: 0.8rem; font-weight: 700; padding: 0 6px; text-transform: uppercase; }
+.strategy-opportunity-picker label { align-items: center; border-radius: 8px; color: var(--text-primary, #f7f8fa); display: flex; gap: 10px; min-width: 0; padding: 8px; }
+.strategy-opportunity-picker label:hover { background: rgba(212, 175, 55, 0.06); }
+.strategy-opportunity-picker input { accent-color: #d4af37; flex: 0 0 auto; }
+.strategy-opportunity-picker p,
+.strategy-context { color: var(--text-secondary, #9ca3af); margin: 0; }
+.strategy-context { border-left: 2px solid rgba(212, 175, 55, 0.72); font-size: 0.86rem; padding-left: 10px; }
+.strategy-brief-grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); }
+.strategy-brief { background: #151a21; border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 12px; display: grid; gap: 12px; min-width: 0; padding: 16px; }
+.strategy-brief > header,
+.strategy-brief > footer { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; justify-content: space-between; }
+.strategy-brief > header > span:not(.status) { color: var(--text-secondary, #9ca3af); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
+.strategy-brief h3,
+.strategy-brief p { margin: 0; }
+.strategy-brief p { color: var(--text-secondary, #9ca3af); }
+.strategy-brief dl,
+.strategy-detail__grid { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 0; }
+.strategy-brief dl div,
+.strategy-detail__grid p { display: grid; gap: 3px; margin: 0; min-width: 0; }
+.strategy-brief dt,
+.strategy-detail__grid strong { color: var(--text-secondary, #9ca3af); font-size: 0.72rem; font-weight: 700; text-transform: uppercase; }
+.strategy-brief dd,
+.strategy-detail__grid p { overflow-wrap: anywhere; }
+.strategy-detail { display: grid; gap: 16px; }
+@media (max-width: 640px) {
+  .strategy-hero { align-items: stretch; flex-direction: column; gap: 12px; }
+  .strategy-brief dl,
+  .strategy-detail__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .strategy-brief > footer { align-items: stretch; flex-direction: column; }
+  .strategy-brief > footer .button,
+  .strategy-brief > footer .text-button,
+  .strategy-command__form > .button { width: 100%; }
+}
