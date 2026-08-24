@@ -243,7 +243,10 @@ async def export_workspace(
             continue
         rows = (await session.execute(stmt, {"ws": str(workspace_id)})).mappings().all()
         serialised = [
-            {k: (str(v) if isinstance(v, uuid.UUID | datetime) else v) for k, v in row.items()}
+            {
+                k: (str(v) if isinstance(v, uuid.UUID | datetime) else v)
+                for k, v in row.items()
+            }
             for row in rows
         ]
         tables[table] = serialised

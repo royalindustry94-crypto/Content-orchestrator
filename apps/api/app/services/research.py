@@ -54,14 +54,26 @@ def _utcnow() -> datetime:
 
 def _canonical_url(value: str) -> str:
     parsed = urlsplit(value.strip())
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname or parsed.username or parsed.password:
-        raise ValueError("source URL must be a public http(s) URL without embedded credentials")
+    if (
+        parsed.scheme not in {"http", "https"}
+        or not parsed.hostname
+        or parsed.username
+        or parsed.password
+    ):
+        raise ValueError(
+            "source URL must be a public http(s) URL without embedded credentials"
+        )
     host = parsed.hostname.lower().rstrip(".")
     if host in {"localhost", "localhost.localdomain"}:
         raise ValueError("private or localhost source URL is not permitted")
     try:
         address = ipaddress.ip_address(host)
-        if address.is_private or address.is_loopback or address.is_link_local or address.is_reserved:
+        if (
+            address.is_private
+            or address.is_loopback
+            or address.is_link_local
+            or address.is_reserved
+        ):
             raise ValueError("private or local source URL is not permitted")
     except ValueError as exc:
         if "private or local" in str(exc):
@@ -79,9 +91,21 @@ def _safe_excerpt(value: str | None) -> tuple[str | None, str | None]:
     return _SECRET_PATTERN.sub("[REDACTED_SECRET]", bounded), None
 
 
-def _dedupe_key(*, topic: str, angle: str, platform: str | None, format_name: str | None, source_urls: list[str]) -> str:
+def _dedupe_key(
+    *,
+    topic: str,
+    angle: str,
+    platform: str | None,
+    format_name: str | None,
+    source_urls: list[str],
+) -> str:
     material = "\n".join(
-        [topic.strip().lower(), angle.strip().lower(), (platform or "").strip().lower(), (format_name or "").strip().lower()]
+        [
+            topic.strip().lower(),
+            angle.strip().lower(),
+            (platform or "").strip().lower(),
+            (format_name or "").strip().lower(),
+        ]
         + sorted(source_urls)
     )
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
@@ -99,7 +123,9 @@ def _run_is_terminal(status: str) -> bool:
     }
 
 
-async def _emit_run(session: AsyncSession, run: ResearchRun, event_type: str, payload: dict) -> None:
+async def _emit_run(
+    session: AsyncSession, run: ResearchRun, event_type: str, payload: dict
+) -> None:
     await emit(
         session,
         event_type=event_type,
@@ -145,20 +171,35 @@ async def create_manual_run(
     )
     session.add(run)
     await session.flush()
-    await _emit_run(session, run, "research.started", {"trigger": "manual", "limits": {
-        "max_searches": run.max_searches,
-        "max_provider_calls": run.max_provider_calls,
-        "max_tokens": run.max_tokens,
-        "max_cost_usd": str(run.max_cost_usd),
-        "max_attempts": run.max_attempts,
-    }})
-    await _emit_run(session, run, "research.provider_not_configured", {
-        "detail": "No external research provider is configured in the Founder Preview.",
-    })
+    await _emit_run(
+        session,
+        run,
+        "research.started",
+        {
+            "trigger": "manual",
+            "limits": {
+                "max_searches": run.max_searches,
+                "max_provider_calls": run.max_provider_calls,
+                "max_tokens": run.max_tokens,
+                "max_cost_usd": str(run.max_cost_usd),
+                "max_attempts": run.max_attempts,
+            },
+        },
+    )
+    await _emit_run(
+        session,
+        run,
+        "research.provider_not_configured",
+        {
+            "detail": "No external research provider is configured in the Founder Preview.",
+        },
+    )
     return run
 
 
-async def list_runs(session: AsyncSession, *, workspace_id: uuid.UUID, limit: int = 50) -> list[ResearchRun]:
+async def list_runs(
+    session: AsyncSession, *, workspace_id: uuid.UUID, limit: int = 50
+) -> list[ResearchRun]:
     result = await session.execute(
         select(ResearchRun)
         .where(ResearchRun.workspace_id == workspace_id)
@@ -168,25 +209,35 @@ async def list_runs(session: AsyncSession, *, workspace_id: uuid.UUID, limit: in
     return list(result.scalars().all())
 
 
-async def get_run(session: AsyncSession, *, workspace_id: uuid.UUID, run_id: uuid.UUID) -> ResearchRun | None:
+async def get_run(
+    session: AsyncSession, *, workspace_id: uuid.UUID, run_id: uuid.UUID
+) -> ResearchRun | None:
     return (
         await session.execute(
-            select(ResearchRun).where(ResearchRun.workspace_id == workspace_id, ResearchRun.id == run_id)
+            select(ResearchRun).where(
+                ResearchRun.workspace_id == workspace_id, ResearchRun.id == run_id
+            )
         )
     ).scalar_one_or_none()
 
 
-async def list_opportunities(session: AsyncSession, *, workspace_id: uuid.UUID, limit: int = 100) -> list[Opportunity]:
+async def list_opportunities(
+    session: AsyncSession, *, workspace_id: uuid.UUID, limit: int = 100
+) -> list[Opportunity]:
     result = await session.execute(
         select(Opportunity)
-        .where(Opportunity.workspace_id == workspace_id, Opportunity.deleted_at.is_(None))
+        .where(
+            Opportunity.workspace_id == workspace_id, Opportunity.deleted_at.is_(None)
+        )
         .order_by(Opportunity.discovered_at.desc())
         .limit(limit)
     )
     return list(result.scalars().all())
 
 
-async def get_opportunity(session: AsyncSession, *, workspace_id: uuid.UUID, opportunity_id: uuid.UUID) -> Opportunity | None:
+async def get_opportunity(
+    session: AsyncSession, *, workspace_id: uuid.UUID, opportunity_id: uuid.UUID
+) -> Opportunity | None:
     return (
         await session.execute(
             select(Opportunity).where(
@@ -198,7 +249,9 @@ async def get_opportunity(session: AsyncSession, *, workspace_id: uuid.UUID, opp
     ).scalar_one_or_none()
 
 
-async def opportunity_evidence(session: AsyncSession, *, workspace_id: uuid.UUID, opportunity_id: uuid.UUID) -> list[tuple[OpportunityEvidence, ResearchSource]]:
+async def opportunity_evidence(
+    session: AsyncSession, *, workspace_id: uuid.UUID, opportunity_id: uuid.UUID
+) -> list[tuple[OpportunityEvidence, ResearchSource]]:
     result = await session.execute(
         select(OpportunityEvidence, ResearchSource)
         .join(ResearchSource, ResearchSource.id == OpportunityEvidence.source_id)
@@ -212,11 +265,16 @@ async def opportunity_evidence(session: AsyncSession, *, workspace_id: uuid.UUID
     return list(result.all())
 
 
-async def latest_audit(session: AsyncSession, *, workspace_id: uuid.UUID, opportunity_id: uuid.UUID) -> ResearchAudit | None:
+async def latest_audit(
+    session: AsyncSession, *, workspace_id: uuid.UUID, opportunity_id: uuid.UUID
+) -> ResearchAudit | None:
     return (
         await session.execute(
             select(ResearchAudit)
-            .where(ResearchAudit.workspace_id == workspace_id, ResearchAudit.opportunity_id == opportunity_id)
+            .where(
+                ResearchAudit.workspace_id == workspace_id,
+                ResearchAudit.opportunity_id == opportunity_id,
+            )
             .order_by(ResearchAudit.checked_at.desc())
             .limit(1)
         )
@@ -231,13 +289,24 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
         await session.execute(
             select(
                 func.count(Opportunity.id),
-                func.count(Opportunity.id).filter(Opportunity.audit_gate_status != "not_run"),
-                func.count(Opportunity.id).filter(Opportunity.audit_gate_status == "blocked"),
-            ).where(Opportunity.workspace_id == workspace_id, Opportunity.deleted_at.is_(None))
+                func.count(Opportunity.id).filter(
+                    Opportunity.audit_gate_status != "not_run"
+                ),
+                func.count(Opportunity.id).filter(
+                    Opportunity.audit_gate_status == "blocked"
+                ),
+            ).where(
+                Opportunity.workspace_id == workspace_id,
+                Opportunity.deleted_at.is_(None),
+            )
         )
     ).one()
     schedule = (
-        await session.execute(select(ResearchSchedule).where(ResearchSchedule.workspace_id == workspace_id))
+        await session.execute(
+            select(ResearchSchedule).where(
+                ResearchSchedule.workspace_id == workspace_id
+            )
+        )
     ).scalar_one_or_none()
     cost = sum((Decimal(str(run.actual_cost_usd)) for run in runs), Decimal("0"))
     return {
@@ -250,7 +319,9 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
         "audited_opportunities": int(counts[1] or 0),
         "blocked_findings": int(counts[2] or 0),
         "cost_today_usd": cost,
-        "last_error": (current or last).last_error if (current or last) else "RESEARCH PROVIDER NOT CONFIGURED",
+        "last_error": (current or last).last_error
+        if (current or last)
+        else "RESEARCH PROVIDER NOT CONFIGURED",
         "schedule_enabled": bool(schedule.enabled) if schedule else False,
         "research_data_state": "not_connected",
     }
@@ -289,14 +360,24 @@ async def record_fixture_run(
     )
     session.add(run)
     await session.flush()
-    await _emit_run(session, run, "research.started", {"trigger": "manual_test_fixture", "test_data": True})
+    await _emit_run(
+        session,
+        run,
+        "research.started",
+        {"trigger": "manual_test_fixture", "test_data": True},
+    )
 
     accepted: list[ResearchSource] = []
-    for item in fixture_sources[:run.max_searches]:
+    for item in fixture_sources[: run.max_searches]:
         try:
             url = _canonical_url(str(item.get("url", "")))
         except ValueError as exc:
-            await _emit_run(session, run, "research.source_rejected", {"reason": str(exc), "test_data": True})
+            await _emit_run(
+                session,
+                run,
+                "research.source_rejected",
+                {"reason": str(exc), "test_data": True},
+            )
             continue
         excerpt, rejection_reason = _safe_excerpt(item.get("excerpt"))
         source = ResearchSource(
@@ -311,7 +392,9 @@ async def record_fixture_run(
             claim_supported=item.get("claim_supported"),
             freshness=str(item.get("freshness", "test")),
             confidence=Decimal(str(item.get("confidence", "0.50"))),
-            content_digest=hashlib.sha256((excerpt or rejection_reason or url).encode("utf-8")).hexdigest(),
+            content_digest=hashlib.sha256(
+                (excerpt or rejection_reason or url).encode("utf-8")
+            ).hexdigest(),
             safe_excerpt=excerpt,
             handling_state="rejected" if rejection_reason else "accepted",
             rejection_reason=rejection_reason,
@@ -320,26 +403,55 @@ async def record_fixture_run(
         session.add(source)
         await session.flush()
         if rejection_reason:
-            await _emit_run(session, run, "research.source_rejected", {"source_id": str(source.id), "reason": rejection_reason, "test_data": True})
+            await _emit_run(
+                session,
+                run,
+                "research.source_rejected",
+                {
+                    "source_id": str(source.id),
+                    "reason": rejection_reason,
+                    "test_data": True,
+                },
+            )
         else:
             accepted.append(source)
-            await _emit_run(session, run, "research.source_recorded", {"source_id": str(source.id), "test_data": True})
+            await _emit_run(
+                session,
+                run,
+                "research.source_recorded",
+                {"source_id": str(source.id), "test_data": True},
+            )
 
     run.searches_used = len(fixture_sources)
     if not accepted:
         run.status = "failed"
         run.last_error = "No safe evidence sources were accepted"
-        await _emit_run(session, run, "research.failed", {"reason": run.last_error, "test_data": True})
+        await _emit_run(
+            session,
+            run,
+            "research.failed",
+            {"reason": run.last_error, "test_data": True},
+        )
         return run, None
 
     topic = str(fixture_opportunity["topic"]).strip()
     angle = str(fixture_opportunity["proposed_angle"]).strip()
     platform = fixture_opportunity.get("target_platform")
     format_name = fixture_opportunity.get("suggested_format")
-    key = _dedupe_key(topic=topic, angle=angle, platform=platform, format_name=format_name, source_urls=[s.canonical_url for s in accepted])
+    key = _dedupe_key(
+        topic=topic,
+        angle=angle,
+        platform=platform,
+        format_name=format_name,
+        source_urls=[s.canonical_url for s in accepted],
+    )
     existing = (
         await session.execute(
-            select(Opportunity).where(Opportunity.workspace_id == workspace_id, Opportunity.dedupe_key == key, Opportunity.deleted_at.is_(None))
+            select(Opportunity).where(
+                Opportunity.workspace_id == workspace_id,
+                Opportunity.dedupe_key == key,
+                Opportunity.deleted_at.is_(None),
+            )
         )
     ).scalar_one_or_none()
     if existing is None:
@@ -386,10 +498,20 @@ async def record_fixture_run(
         )
         session.add(link)
     await session.flush()
-    await _emit_run(session, run, event_type, {"opportunity_id": str(opportunity.id), "test_data": True})
+    await _emit_run(
+        session,
+        run,
+        event_type,
+        {"opportunity_id": str(opportunity.id), "test_data": True},
+    )
     run.opportunity_count = 1 if existing is None else 0
     run.status = "succeeded"
-    await _emit_run(session, run, "research.completed", {"opportunity_id": str(opportunity.id), "test_data": True})
+    await _emit_run(
+        session,
+        run,
+        "research.completed",
+        {"opportunity_id": str(opportunity.id), "test_data": True},
+    )
     return run, opportunity
 
 
@@ -400,10 +522,14 @@ async def audit_opportunity(
     opportunity_id: uuid.UUID,
 ) -> ResearchAudit:
     """Independently evaluate stored source properties, never Scout’s conclusion."""
-    opportunity = await get_opportunity(session, workspace_id=workspace_id, opportunity_id=opportunity_id)
+    opportunity = await get_opportunity(
+        session, workspace_id=workspace_id, opportunity_id=opportunity_id
+    )
     if opportunity is None:
         raise LookupError("opportunity not found")
-    evidence = await opportunity_evidence(session, workspace_id=workspace_id, opportunity_id=opportunity_id)
+    evidence = await opportunity_evidence(
+        session, workspace_id=workspace_id, opportunity_id=opportunity_id
+    )
     sources = [source for _, source in evidence]
     findings: list[dict[str, str]] = []
     warnings: list[str] = []
@@ -418,15 +544,20 @@ async def audit_opportunity(
         blocked.append("Duplicate source content detected.")
     if len(accepted) == 1 and not blocked:
         warnings.append("Only one independent accepted source is available.")
-    if any(source.freshness in {"stale", "unknown"} for source in accepted) and not blocked:
+    if (
+        any(source.freshness in {"stale", "unknown"} for source in accepted)
+        and not blocked
+    ):
         warnings.append("At least one accepted source has stale or unknown freshness.")
     for source in accepted:
-        findings.append({
-            "source_id": str(source.id),
-            "legitimacy": "accepted_provenance",
-            "freshness": source.freshness,
-            "claim_support": "present" if source.claim_supported else "missing",
-        })
+        findings.append(
+            {
+                "source_id": str(source.id),
+                "legitimacy": "accepted_provenance",
+                "freshness": source.freshness,
+                "claim_support": "present" if source.claim_supported else "missing",
+            }
+        )
     state = "blocked" if blocked else ("pass_with_warning" if warnings else "pass")
     snapshot = {
         "title": opportunity.title,
@@ -451,34 +582,72 @@ async def audit_opportunity(
     opportunity.audit_gate_status = state
     if state == "blocked":
         opportunity.status = "blocked"
-    run = await get_run(session, workspace_id=workspace_id, run_id=opportunity.research_run_id)
+    run = await get_run(
+        session, workspace_id=workspace_id, run_id=opportunity.research_run_id
+    )
     if run is not None:
         run.audited_opportunity_count += 1
         if state == "blocked":
             run.blocked_opportunity_count += 1
     await session.flush()
     if run is not None:
-        await _emit_run(session, run, f"research.audit.{state}", {
-            "opportunity_id": str(opportunity.id), "audit_id": str(audit.id), "test_data": opportunity.test_data,
-        })
+        await _emit_run(
+            session,
+            run,
+            f"research.audit.{state}",
+            {
+                "opportunity_id": str(opportunity.id),
+                "audit_id": str(audit.id),
+                "test_data": opportunity.test_data,
+            },
+        )
     return audit
 
 
-async def strategist_gate(session: AsyncSession, *, workspace_id: uuid.UUID, opportunity_id: uuid.UUID) -> dict[str, Any]:
-    opportunity = await get_opportunity(session, workspace_id=workspace_id, opportunity_id=opportunity_id)
+async def strategist_gate(
+    session: AsyncSession, *, workspace_id: uuid.UUID, opportunity_id: uuid.UUID
+) -> dict[str, Any]:
+    opportunity = await get_opportunity(
+        session, workspace_id=workspace_id, opportunity_id=opportunity_id
+    )
     if opportunity is None:
         raise LookupError("opportunity not found")
-    audit = await latest_audit(session, workspace_id=workspace_id, opportunity_id=opportunity_id)
+    audit = await latest_audit(
+        session, workspace_id=workspace_id, opportunity_id=opportunity_id
+    )
     if audit is None or audit.state != "pass":
         detail = "Independent Research Auditor PASS is required before Strategist eligibility."
-        run = await get_run(session, workspace_id=workspace_id, run_id=opportunity.research_run_id)
+        run = await get_run(
+            session, workspace_id=workspace_id, run_id=opportunity.research_run_id
+        )
         if run is not None:
-            await _emit_run(session, run, "opportunity.strategist_denied", {
-                "opportunity_id": str(opportunity.id), "audit_state": audit.state if audit else "not_run",
-            })
+            await _emit_run(
+                session,
+                run,
+                "opportunity.strategist_denied",
+                {
+                    "opportunity_id": str(opportunity.id),
+                    "audit_state": audit.state if audit else "not_run",
+                },
+            )
         raise ResearchGateError(detail)
     opportunity.strategist_state = "eligible"
-    run = await get_run(session, workspace_id=workspace_id, run_id=opportunity.research_run_id)
+    run = await get_run(
+        session, workspace_id=workspace_id, run_id=opportunity.research_run_id
+    )
     if run is not None:
-        await _emit_run(session, run, "opportunity.strategist_eligible", {"opportunity_id": str(opportunity.id)})
-    return {"opportunity_id": opportunity.id, "eligible": True, "state": "eligible", "detail": "Approved intelligence is eligible for a future Strategist handoff; no Strategist provider is configured."}
+        await _emit_run(
+            session,
+            run,
+            "opportunity.strategist_eligible",
+            {"opportunity_id": str(opportunity.id)},
+        )
+    return {
+        "opportunity_id": opportunity.id,
+        "eligible": True,
+        "state": "eligible",
+        "detail": (
+            "Approved intelligence is eligible for a future Strategist handoff; "
+            "no Strategist provider is configured."
+        ),
+    }

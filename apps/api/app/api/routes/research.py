@@ -23,14 +23,18 @@ from app.schemas.research import (
 )
 from app.services import research
 
-router = APIRouter(prefix="/workspaces/{workspace_id}/research", tags=["scout-research"])
+router = APIRouter(
+    prefix="/workspaces/{workspace_id}/research", tags=["scout-research"]
+)
 
 
 def _not_found(detail: str = "research record not found") -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
 
 
-@router.post("/runs", response_model=ResearchRunOut, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/runs", response_model=ResearchRunOut, status_code=status.HTTP_201_CREATED
+)
 async def create_run(
     workspace_id: uuid.UUID,
     payload: ResearchRunCreate,
@@ -96,11 +100,17 @@ async def opportunity_detail(
     db: AsyncSession = Depends(get_current_session),
 ) -> OpportunityDetailOut:
     del membership
-    opportunity = await research.get_opportunity(db, workspace_id=workspace_id, opportunity_id=opportunity_id)
+    opportunity = await research.get_opportunity(
+        db, workspace_id=workspace_id, opportunity_id=opportunity_id
+    )
     if opportunity is None:
         raise _not_found("opportunity not found")
-    evidence = await research.opportunity_evidence(db, workspace_id=workspace_id, opportunity_id=opportunity_id)
-    audit = await research.latest_audit(db, workspace_id=workspace_id, opportunity_id=opportunity_id)
+    evidence = await research.opportunity_evidence(
+        db, workspace_id=workspace_id, opportunity_id=opportunity_id
+    )
+    audit = await research.latest_audit(
+        db, workspace_id=workspace_id, opportunity_id=opportunity_id
+    )
     return OpportunityDetailOut(
         opportunity=OpportunityOut.model_validate(opportunity),
         evidence=[
@@ -124,10 +134,14 @@ async def sources(
     db: AsyncSession = Depends(get_current_session),
 ) -> list[EvidenceOut]:
     del membership
-    opportunity = await research.get_opportunity(db, workspace_id=workspace_id, opportunity_id=opportunity_id)
+    opportunity = await research.get_opportunity(
+        db, workspace_id=workspace_id, opportunity_id=opportunity_id
+    )
     if opportunity is None:
         raise _not_found("opportunity not found")
-    evidence = await research.opportunity_evidence(db, workspace_id=workspace_id, opportunity_id=opportunity_id)
+    evidence = await research.opportunity_evidence(
+        db, workspace_id=workspace_id, opportunity_id=opportunity_id
+    )
     return [
         EvidenceOut(
             source=SourceOut.model_validate(source),
@@ -139,7 +153,9 @@ async def sources(
     ]
 
 
-@router.get("/opportunities/{opportunity_id}/audit", response_model=ResearchAuditOut | None)
+@router.get(
+    "/opportunities/{opportunity_id}/audit", response_model=ResearchAuditOut | None
+)
 async def audit_detail(
     workspace_id: uuid.UUID,
     opportunity_id: uuid.UUID,
@@ -147,10 +163,14 @@ async def audit_detail(
     db: AsyncSession = Depends(get_current_session),
 ) -> ResearchAuditOut | None:
     del membership
-    opportunity = await research.get_opportunity(db, workspace_id=workspace_id, opportunity_id=opportunity_id)
+    opportunity = await research.get_opportunity(
+        db, workspace_id=workspace_id, opportunity_id=opportunity_id
+    )
     if opportunity is None:
         raise _not_found("opportunity not found")
-    audit = await research.latest_audit(db, workspace_id=workspace_id, opportunity_id=opportunity_id)
+    audit = await research.latest_audit(
+        db, workspace_id=workspace_id, opportunity_id=opportunity_id
+    )
     return ResearchAuditOut.model_validate(audit) if audit else None
 
 
@@ -163,12 +183,17 @@ async def run_audit(
 ) -> ResearchAuditOut:
     del membership
     try:
-        return await research.audit_opportunity(db, workspace_id=workspace_id, opportunity_id=opportunity_id)
+        return await research.audit_opportunity(
+            db, workspace_id=workspace_id, opportunity_id=opportunity_id
+        )
     except LookupError as exc:
         raise _not_found(str(exc)) from exc
 
 
-@router.post("/opportunities/{opportunity_id}/send-to-strategist", response_model=StrategistGateOut)
+@router.post(
+    "/opportunities/{opportunity_id}/send-to-strategist",
+    response_model=StrategistGateOut,
+)
 async def send_to_strategist(
     workspace_id: uuid.UUID,
     opportunity_id: uuid.UUID,
@@ -177,10 +202,16 @@ async def send_to_strategist(
 ) -> StrategistGateOut:
     del membership
     try:
-        return StrategistGateOut(**(await research.strategist_gate(
-            db, workspace_id=workspace_id, opportunity_id=opportunity_id
-        )))
+        return StrategistGateOut(
+            **(
+                await research.strategist_gate(
+                    db, workspace_id=workspace_id, opportunity_id=opportunity_id
+                )
+            )
+        )
     except LookupError as exc:
         raise _not_found(str(exc)) from exc
     except research.ResearchGateError as exc:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
+        ) from exc

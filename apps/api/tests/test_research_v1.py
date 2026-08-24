@@ -9,10 +9,10 @@ from sqlalchemy import select, text
 
 from app.core.security import rls_scoped_session
 from app.db.session import AsyncSessionLocal
-from tests.conftest import make_token
 from app.models.research import ResearchRun, ResearchSource
 from app.schemas.research import ResearchRunCreate
 from app.services import research
+from tests.conftest import make_token
 
 
 async def _tenant(client, new_user, name: str):
@@ -35,13 +35,18 @@ def _fixture_opportunity(topic: str = "Evidence backed topic") -> dict:
         "confidence": "0.70",
         "risk": "low",
         "component_scores": {"relevance": 0.7, "evidence_quality": 0.8},
-        "score_reasoning": {"relevance": "test fixture", "evidence_quality": "two source records"},
+        "score_reasoning": {
+            "relevance": "test fixture",
+            "evidence_quality": "two source records",
+        },
     }
 
 
 @pytest.mark.asyncio
 async def test_manual_run_is_truthful_when_provider_not_configured(client, new_user):
-    _user_id, headers, workspace_id = await _tenant(client, new_user, "Scout not configured")
+    _user_id, headers, workspace_id = await _tenant(
+        client, new_user, "Scout not configured"
+    )
     response = await client.post(
         f"/workspaces/{workspace_id}/research/runs",
         headers=headers,
@@ -53,7 +58,9 @@ async def test_manual_run_is_truthful_when_provider_not_configured(client, new_u
     assert body["provider_state"] == "not_configured"
     assert body["actual_cost_usd"] in (0, 0.0, "0", "0.0000")
     assert "RESEARCH PROVIDER NOT CONFIGURED" in body["last_error"]
-    summary = await client.get(f"/workspaces/{workspace_id}/research/summary", headers=headers)
+    summary = await client.get(
+        f"/workspaces/{workspace_id}/research/summary", headers=headers
+    )
     assert summary.status_code == 200
     assert summary.json()["research_data_state"] == "not_connected"
     assert summary.json()["opportunities_found"] == 0
@@ -76,7 +83,9 @@ async def test_research_route_is_workspace_isolated(client, new_user):
             {"id": str(outsider_id), "email": outsider_email},
         )
         await session.commit()
-    headers_b = {"Authorization": f"Bearer {make_token(user_id=str(outsider_id), email=outsider_email)}"}
+    headers_b = {
+        "Authorization": f"Bearer {make_token(user_id=str(outsider_id), email=outsider_email)}"
+    }
     cross = await client.get(
         f"/workspaces/{workspace_a}/research/runs/{run.json()['id']}", headers=headers_b
     )
@@ -214,8 +223,12 @@ async def test_prompt_injection_rejected_and_secret_redacted(client, new_user):
 
 
 @pytest.mark.asyncio
-async def test_auditor_blocks_duplicate_evidence_and_denies_strategist(client, new_user):
-    user_id, _headers, workspace_id = await _tenant(client, new_user, "Scout audit block")
+async def test_auditor_blocks_duplicate_evidence_and_denies_strategist(
+    client, new_user
+):
+    user_id, _headers, workspace_id = await _tenant(
+        client, new_user, "Scout audit block"
+    )
     duplicate_excerpt = "Same fixture evidence body used by two different URLs."
     async with rls_scoped_session(str(user_id)) as session:
         _run, opportunity = await research.record_fixture_run(
@@ -224,8 +237,16 @@ async def test_auditor_blocks_duplicate_evidence_and_denies_strategist(client, n
             actor_id=user_id,
             objective="Test duplicate evidence block",
             fixture_sources=[
-                {"url": "https://example.org/duplicate-one", "excerpt": duplicate_excerpt, "claim_supported": "claim one"},
-                {"url": "https://example.net/duplicate-two", "excerpt": duplicate_excerpt, "claim_supported": "claim two"},
+                {
+                    "url": "https://example.org/duplicate-one",
+                    "excerpt": duplicate_excerpt,
+                    "claim_supported": "claim one",
+                },
+                {
+                    "url": "https://example.net/duplicate-two",
+                    "excerpt": duplicate_excerpt,
+                    "claim_supported": "claim two",
+                },
             ],
             fixture_opportunity=_fixture_opportunity("Duplicate evidence"),
         )
@@ -236,4 +257,6 @@ async def test_auditor_blocks_duplicate_evidence_and_denies_strategist(client, n
         assert audit.state == "blocked"
         assert opportunity.status == "blocked"
         with pytest.raises(research.ResearchGateError):
-            await research.strategist_gate(session, workspace_id=workspace_id, opportunity_id=opportunity.id)
+            await research.strategist_gate(
+                session, workspace_id=workspace_id, opportunity_id=opportunity.id
+            )

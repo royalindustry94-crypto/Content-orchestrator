@@ -27,7 +27,9 @@ class ResearchRunCreate(BaseModel):
         for item in value:
             normalized = item.strip()
             if not normalized or len(normalized) > 500:
-                raise ValueError("permitted source entries must be non-empty and at most 500 characters")
+                raise ValueError(
+                    "permitted source entries must be non-empty and at most 500 characters"
+                )
             cleaned.append(normalized)
         return cleaned
 
