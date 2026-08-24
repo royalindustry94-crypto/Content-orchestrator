@@ -348,7 +348,7 @@ function DashboardHome({
         <header className="financial-overview__header">
           <div>
             <p className="financial-overview__eyebrow">Business performance</p>
-            <h3>Money at a glance</h3>
+            <h3>Bankroll</h3>
           </div>
           <p>Connect a financial source to see verified business performance.</p>
         </header>

@@ -3446,3 +3446,42 @@ button.side-link--active {
   .research-evidence__sources p,
   .research-evidence__sources small { grid-column: auto; grid-row: auto; }
 }
+
+/* Founder refinement: center the Home identity and Bankroll context without altering data states. */
+.business-home__intro {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.business-home__intro > div {
+  display: grid;
+  justify-items: center;
+}
+
+.business-home__intro .live-indicator {
+  margin-top: 0.35rem;
+}
+
+.financial-overview__header {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+
+.financial-overview__header > div {
+  display: grid;
+  justify-items: center;
+}
+
+.financial-overview__header > p {
+  max-width: 42rem;
+}
+
+@media (max-width: 520px) {
+  .business-home__intro,
+  .financial-overview__header {
+    align-items: center;
+    text-align: center;
+  }
+}

@@ -234,7 +234,7 @@ describe("dashboard navigation smoke test", () => {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
     for (const label of [
-      "Money at a glance", "Connect a financial source to see verified business performance.",
+      "Bankroll", "Connect a financial source to see verified business performance.",
       "Revenue", "Spending", "Net profit", "Profit margin", "What needs you now", "What do you want sorted?", "AI Workforce",
     ]) {
       // AI Workforce intentionally appears in both primary navigation and the Home section.

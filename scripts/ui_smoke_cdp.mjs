@@ -96,6 +96,9 @@ async function report() {
     conditionRows: document.querySelectorAll('#active-alerts .decision-card').length,
     financialCircles: document.querySelectorAll('.financial-overview__circle').length,
     unavailableFinancialMetrics: [...document.querySelectorAll('.financial-overview__circle strong')].filter(el => el.textContent?.trim() === 'Not connected').length,
+    bankrollHeading: (document.querySelector('.financial-overview__header h3') || {}).textContent?.trim() || null,
+    homeIdentityCentered: getComputedStyle(document.querySelector('.business-home__intro') || document.body).textAlign === 'center',
+    bankrollCentered: getComputedStyle(document.querySelector('.financial-overview__header') || document.body).textAlign === 'center',
     researchProviderNotConfigured: /RESEARCH PROVIDER NOT CONFIGURED/i.test(document.body?.innerText || ''),
     researchOpportunityEmpty: /No opportunities yet/i.test(document.body?.innerText || ''),
     unlabeledControls: [...document.querySelectorAll('input, select, textarea')].filter(el =>
@@ -268,6 +271,7 @@ const footerFailures = results.filter((r) => r.footer !== backendTruth.expectedF
 const dashboardResult = results.find((r) => r.label === "Home");
 const alertParityWorks = dashboardResult?.conditionRows === backendTruth.alertTypes;
 const fourCirclesWork = dashboardResult?.financialCircles === 4 && dashboardResult?.unavailableFinancialMetrics === 4;
+const bankrollWorks = dashboardResult?.bankrollHeading === "Bankroll" && dashboardResult?.homeIdentityCentered && dashboardResult?.bankrollCentered;
 const researchResult = results.find((r) => r.label === "Opportunities");
 const scoutTruthWorks = researchResult?.researchProviderNotConfigured && researchResult?.researchOpportunityEmpty;
 console.log("ROUTES:", results.length);
@@ -281,6 +285,7 @@ console.log("BACKEND TRUTH:", JSON.stringify(backendTruth));
 console.log("FOOTER MISMATCHES:", footerFailures.length);
 console.log("ALERT ROW PARITY:", alertParityWorks);
 console.log("FOUR-CIRCLE FINANCIAL HOME:", fourCirclesWork);
+console.log("CENTERED HOME + BANKROLL:", bankrollWorks);
 console.log("SCOUT TRUTHFUL NOT-CONFIGURED STATE:", scoutTruthWorks);
 for (const r of results) {
   console.log(`  ${r.crash ? "CRASH" : r.textLen === 0 ? "BLANK" : "ok   "} | ${r.label} | textLen=${r.textLen} | footer=${r.footer ?? "-"} | unlabeled=${r.unlabeledControls}`);
@@ -296,6 +301,7 @@ process.exit(
   footerFailures.length === 0 &&
   alertParityWorks &&
   fourCirclesWork &&
+  bankrollWorks &&
   scoutTruthWorks &&
   consoleProblems.length === 0 &&
   uncaughtExceptions.length === 0 &&
