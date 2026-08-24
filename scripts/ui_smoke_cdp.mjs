@@ -94,6 +94,8 @@ async function report() {
     heading: (document.querySelector('main h1, main h2')||{}).innerText || null,
     horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth,
     conditionRows: document.querySelectorAll('#active-alerts .decision-card').length,
+    circularFinancials: document.querySelectorAll('.financial-pie,.financial-hero__donut').length,
+    unavailableFinancialMetrics: [...document.querySelectorAll('.financial-overview__metric strong')].filter(el => el.textContent?.trim() === 'Not connected').length,
     unlabeledControls: [...document.querySelectorAll('input, select, textarea')].filter(el =>
       !el.getAttribute('aria-label') &&
       !el.getAttribute('aria-labelledby') &&
@@ -111,9 +113,9 @@ await send(
   sessionId,
 );
 const loginUxInitial = await evaluate(`(() => {
-  const signInHeading = [...document.querySelectorAll('h1,h2')].some(el => /sign in to the business manager/i.test(el.textContent || ''));
+  const signInHeading = [...document.querySelectorAll('h1,h2')].some(el => /^sign in$/i.test((el.textContent || '').trim()));
   const loginWorkspaceField = [...document.querySelectorAll('label')].some(el => /^workspace name/i.test((el.textContent || '').trim()));
-  const createButton = [...document.querySelectorAll('button')].find(el => /create an account/i.test(el.textContent || ''));
+  const createButton = [...document.querySelectorAll('button')].find(el => /create account/i.test(el.textContent || ''));
   if (createButton) createButton.click();
   return { signInHeading, loginWorkspaceField };
 })()`);
@@ -125,6 +127,7 @@ const signupWorkspaceField = await evaluate(`(() => {
   return found;
 })()`);
 const loginUx = { ...loginUxInitial, signupWorkspaceField };
+await shot("00-auth");
 const loginInfo = await evaluate(`(async () => {
   const r = await fetch('/api/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email:${JSON.stringify(EMAIL)}, password:${JSON.stringify(PASSWORD)}})});
   if (!r.ok) return { ok:false, status:r.status, body: await r.text() };
@@ -159,7 +162,7 @@ const backendTruth = await evaluate(`(async () => {
   };
 })()`);
 
-const routes = ["Home", "AI Workforce", "Content Operations", "Human Review", "Opportunities", "Business Intelligence", "Financial Intelligence", "Audience", "Connections", "Settings"];
+const routes = ["Home", "Ask", "Opportunities", "Content", "Human Review", "Workforce", "Money", "Insights", "Audience", "Connections", "Settings"];
 const missionTabs = ["Overview", "Timeline", "Live logs", "AI assistant", "Content"];
 
 const results = [];
@@ -237,7 +240,7 @@ const mrep = await report();
 results.push({ label: "mobile-dashboard", ...mrep });
 
 const mobileResults = [];
-for (const label of ["Human Review", "AI Workforce", "Settings"]) {
+for (const label of ["Human Review", "Workforce", "Settings"]) {
   await evaluate(`(() => {
     const open = [...document.querySelectorAll('button')].find(x => /open navigation/i.test(x.getAttribute('aria-label') || ''));
     if (open) open.click();
@@ -262,6 +265,7 @@ const mobileFailures = mobileResults.filter((r) => r.crash || r.textLen === 0 ||
 const footerFailures = results.filter((r) => r.footer !== backendTruth.expectedFooter);
 const dashboardResult = results.find((r) => r.label === "Home");
 const alertParityWorks = dashboardResult?.conditionRows === backendTruth.alertTypes;
+const noCirclesWorks = dashboardResult?.circularFinancials === 0 && dashboardResult?.unavailableFinancialMetrics === 4;
 console.log("ROUTES:", results.length);
 console.log("BLANK/CRASH:", crashes.length);
 console.log("SEARCH:", JSON.stringify(searchResult));
@@ -272,6 +276,7 @@ console.log("MOBILE SUPPLEMENTAL:", mobileResults.length, "failures:", mobileFai
 console.log("BACKEND TRUTH:", JSON.stringify(backendTruth));
 console.log("FOOTER MISMATCHES:", footerFailures.length);
 console.log("ALERT ROW PARITY:", alertParityWorks);
+console.log("NO-CIRCLES FINANCIAL HOME:", noCirclesWorks);
 for (const r of results) {
   console.log(`  ${r.crash ? "CRASH" : r.textLen === 0 ? "BLANK" : "ok   "} | ${r.label} | textLen=${r.textLen} | footer=${r.footer ?? "-"} | unlabeled=${r.unlabeledControls}`);
 }
@@ -285,6 +290,7 @@ process.exit(
   mobileFailures.length === 0 &&
   footerFailures.length === 0 &&
   alertParityWorks &&
+  noCirclesWorks &&
   consoleProblems.length === 0 &&
   uncaughtExceptions.length === 0 &&
   searchWorks &&

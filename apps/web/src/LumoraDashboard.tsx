@@ -89,6 +89,7 @@ import {
 
 type NavKey =
   | "dashboard"
+  | "ask"
   | "mission"
   | "review"
   | "pipelines"
@@ -175,12 +176,13 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
 
 const NAV: Array<{ id: NavKey; label: string; icon: IconName }> = [
   { id: "dashboard", label: "Home", icon: "dashboard" },
-  { id: "workers", label: "AI Workforce", icon: "workers" },
-  { id: "pipelines", label: "Content Operations", icon: "pipelines" },
-  { id: "review", label: "Human Review", icon: "review" },
+  { id: "ask", label: "Ask", icon: "mission" },
   { id: "leads", label: "Opportunities", icon: "leads" },
-  { id: "analytics", label: "Business Intelligence", icon: "analytics" },
-  { id: "billing", label: "Financial Intelligence", icon: "billing" },
+  { id: "pipelines", label: "Content", icon: "pipelines" },
+  { id: "review", label: "Human Review", icon: "review" },
+  { id: "workers", label: "Workforce", icon: "workers" },
+  { id: "billing", label: "Money", icon: "billing" },
+  { id: "analytics", label: "Insights", icon: "analytics" },
   { id: "customers", label: "Audience", icon: "customers" },
   { id: "mission", label: "Connections", icon: "mission" },
   { id: "settings", label: "Settings", icon: "settings" },
@@ -293,7 +295,7 @@ function DashboardHome({
   workspaceId: string;
   navigate: (key: NavKey) => void;
 }) {
-  const [range, setRange] = useState<"7D" | "30D" | "90D" | "1Y">("30D");
+  const [askNotice, setAskNotice] = useState<string | null>(null);
   const priority = { critical: 0, warning: 1, info: 2 } as const;
   const decisionTargets: Record<string, NavKey> = {
     review_required: "review",
@@ -331,24 +333,22 @@ function DashboardHome({
         <span className="live-indicator"><i /> Workspace-backed data</span>
       </section>
 
-      <section className="financial-hero" aria-label="Business profitability">
-        <div className="financial-hero__copy">
-          <p className="financial-hero__eyebrow">Business performance</p>
-          <h3>Is my business making money?</h3>
-          <p>Connect your financial data to see profitability.</p>
-          <span className="financial-hero__note">Revenue, expenses, net profit, and margin appear only after a connected workspace source is available.</span>
-          <div className="financial-range" role="group" aria-label="Financial time range">
-            {(["7D", "30D", "90D", "1Y"] as const).map((option) => (
-              <button className={range === option ? "financial-range__option financial-range__option--active" : "financial-range__option"} key={option} onClick={() => setRange(option)} type="button">{option}</button>
-            ))}
+      <section className="financial-overview" aria-label="Business performance">
+        <header className="financial-overview__header">
+          <div>
+            <p className="financial-overview__eyebrow">Business performance</p>
+            <h3>Money at a glance</h3>
           </div>
-        </div>
-        <div className="financial-hero__donut" aria-label={`Financial data unavailable for ${range}`}>
-          <div className="financial-hero__donut-core">
-            <span>Financial data</span>
-            <strong>Not connected</strong>
-            <small>{range} view</small>
-          </div>
+          <p>Connect a financial source to see verified business performance.</p>
+        </header>
+        <div className="financial-overview__grid">
+          {(["Revenue", "Spending", "Net profit", "Profit margin"] as const).map((label) => (
+            <article className="financial-overview__metric" key={label}>
+              <span>{label}</span>
+              <strong>Not connected</strong>
+              <small>Source-backed data required</small>
+            </article>
+          ))}
         </div>
       </section>
 
@@ -371,6 +371,19 @@ function DashboardHome({
             ))}
           </div>
         )}
+      </section>
+
+      <section className="ask-business" aria-labelledby="ask-business-title">
+        <div>
+          <p className="ask-business__eyebrow">Ask My Business</p>
+          <h3 id="ask-business-title">What do you want sorted?</h3>
+          <p>Describe the outcome. The appropriate worker, controls, and audit path will be selected once this command layer is connected.</p>
+        </div>
+        <form className="ask-business__form" onSubmit={(event) => { event.preventDefault(); setAskNotice("Ask My Business is not connected in this Founder Preview."); }}>
+          <input aria-label="What do you want sorted?" placeholder="Prepare a week’s content, explain a profit drop, or find opportunities…" />
+          <button className="button button--primary" type="submit">Ask</button>
+        </form>
+        {askNotice ? <p className="ask-business__notice" role="status">{askNotice}</p> : null}
       </section>
 
       <section className="business-section workforce-summary">
@@ -803,6 +816,8 @@ export default function LumoraDashboard({
           getWorkerMonitor(token, workspaceId),
         ]);
         next = { executive, pipelines, alerts, activity, health, customers, workers };
+      } else if (nav === "ask") {
+        next = null;
       } else if (nav === "mission") {
         if (missionTab === "overview") next = await getExecutiveMode(token, workspaceId);
         else if (missionTab === "timeline") next = await getUniversalTimeline(token, workspaceId);
@@ -925,7 +940,10 @@ export default function LumoraDashboard({
       );
     }
 
-    // The AI assistant manages its own request lifecycle and needs no view data.
+    // Ask My Business and the legacy assistant manage their own request lifecycle.
+    if (nav === "ask") {
+      return <AssistantPanel token={token} workspaceId={workspaceId} />;
+    }
     if (nav === "mission" && missionTab === "assistant") {
       return <AssistantPanel token={token} workspaceId={workspaceId} />;
     }
@@ -1054,26 +1072,26 @@ export default function LumoraDashboard({
         </div>
         <nav aria-label="Primary navigation">
           <p>Business</p>
-          {NAV.slice(0, 2).map((item) => (
+          {NAV.slice(0, 3).map((item) => (
             <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
               <Icon name={item.icon} /><span>{item.label}</span>
             </button>
           ))}
-          <p>Content</p>
-          {NAV.slice(2, 4).map((item) => (
+          <p>Content &amp; workforce</p>
+          {NAV.slice(3, 6).map((item) => (
             <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
               <Icon name={item.icon} /><span>{item.label}</span>
               {item.id === "review" && reviewCount > 0 ? <b>{reviewCount}</b> : null}
             </button>
           ))}
-          <p>Intelligence</p>
-          {NAV.slice(4, 8).map((item) => (
+          <p>Money &amp; insights</p>
+          {NAV.slice(6, 9).map((item) => (
             <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
               <Icon name={item.icon} /><span>{item.label}</span>
             </button>
           ))}
           <p>System</p>
-          {NAV.slice(8).map((item) => (
+          {NAV.slice(9).map((item) => (
             <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
               <Icon name={item.icon} /><span>{item.label}</span>
             </button>

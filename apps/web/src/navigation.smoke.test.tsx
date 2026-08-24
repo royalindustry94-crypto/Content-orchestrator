@@ -217,19 +217,21 @@ describe("dashboard navigation smoke test", () => {
     renderShell();
     await screen.findByRole("heading", { name: "Home" });
     for (const label of [
-      "Home", "AI Workforce", "Content Operations", "Human Review", "Opportunities",
-      "Business Intelligence", "Financial Intelligence", "Audience", "Connections", "Settings",
+      "Home", "Ask", "Opportunities", "Content", "Human Review", "Workforce",
+      "Money", "Insights", "Audience", "Connections", "Settings",
     ]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
     for (const label of [
-      "Is my business making money?", "Connect your financial data to see profitability.",
-      "What needs you now", "AI Workforce", "Not connected",
+      "Money at a glance", "Connect a financial source to see verified business performance.",
+      "Revenue", "Spending", "Net profit", "Profit margin", "What needs you now", "What do you want sorted?", "AI Workforce",
     ]) {
       // AI Workforce intentionally appears in both primary navigation and the Home section.
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
-    expect(screen.queryByText("Revenue")).toBeNull();
+    expect(screen.getAllByText("Not connected").length).toBe(4);
+    expect(screen.getAllByText("Source-backed data required").length).toBe(4);
+    expect(screen.queryByText(/\$0/)).toBeNull();
   });
 
   it("keeps the newest global-search response when an older request resolves late", async () => {
@@ -295,7 +297,7 @@ describe("dashboard navigation smoke test", () => {
     const tabs: Array<[string, RegExp]> = [
       ["Timeline", /No timeline events recorded/i],
       ["Live logs", /No worker logs match/i],
-      ["AI assistant", /Ask live system/i],
+      ["AI assistant", /Ask My Business/i],
       ["Content", /No content activity has been recorded/i],
       ["Overview", /Today's summary/i],
     ];
@@ -311,16 +313,17 @@ describe("dashboard navigation smoke test", () => {
     await screen.findByRole("heading", { name: "Home" });
 
     const routes: Array<[string, RegExp]> = [
-      ["Content Operations", /No active pipelines/i],
-      ["AI Workforce", /No workers registered/i],
-      ["Audience", /No customers yet/i],
+      ["Ask", /Ask My Business/i],
       ["Opportunities", /No leads yet/i],
-      ["Connections", /Today's summary/i],
-      ["Business Intelligence", /Engineering delivery/i],
-      ["Financial Intelligence", /Cost control/i],
-      ["Settings", /Deployment/i],
+      ["Content", /No active pipelines/i],
       ["Human Review", /keeps every publish decision/i],
-      ["Home", /Connect your financial data to see profitability/i],
+      ["Workforce", /No workers registered/i],
+      ["Money", /Cost control/i],
+      ["Insights", /Engineering delivery/i],
+      ["Audience", /No customers yet/i],
+      ["Connections", /Today's summary/i],
+      ["Settings", /Deployment/i],
+      ["Home", /Connect a financial source to see verified business performance/i],
     ];
 
     for (const [label, expected] of routes) {
@@ -362,8 +365,8 @@ describe("dashboard navigation smoke test", () => {
 
     const nav = screen.getByRole("navigation", { name: /primary navigation/i });
 
-    fireEvent.click(within(nav).getByRole("button", { name: /^Content Operations$/i }));
-    fireEvent.click(within(nav).getByRole("button", { name: /^AI Workforce$/i }));
+    fireEvent.click(within(nav).getByRole("button", { name: /^Content$/i }));
+    fireEvent.click(within(nav).getByRole("button", { name: /^Workforce$/i }));
     expect(await screen.findByText(/No workers registered/i)).toBeDefined();
 
     resolvePipeline(pipelines);
