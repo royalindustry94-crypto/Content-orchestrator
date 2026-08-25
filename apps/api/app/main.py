@@ -13,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.auth import router as auth_router
 from app.api.routes.billing import router as billing_router
+from app.api.routes.compliance import router as compliance_router
 from app.api.routes.concurrency import router as concurrency_router
 from app.api.routes.content_department import router as content_department_router
 from app.api.routes.content_jobs import router as content_jobs_router
@@ -212,6 +213,7 @@ app.include_router(memberships_router)
 app.include_router(content_jobs_router)
 app.include_router(content_department_router)
 app.include_router(production_router)
+app.include_router(compliance_router)
 app.include_router(review_gates_router)
 app.include_router(research_router)
 app.include_router(strategy_router)

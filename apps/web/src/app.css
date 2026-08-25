@@ -3615,3 +3615,21 @@ button.side-link--active {
   .producer-boundaries__grid { grid-template-columns: 1fr; }
   .producer-job dl { grid-template-columns: 1fr; }
 }
+
+/* Compliance + Chief Auditor V1 — final machine-audit surface. */
+.compliance-view { gap: 1rem; }
+.compliance-hero { position: relative; overflow: hidden; }
+.compliance-hero::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, rgba(212,175,55,.10), transparent 42%); }
+.compliance-hero > * { position: relative; }
+.compliance-hero h2 { margin: .3rem 0 .55rem; font-size: clamp(1.6rem, 3vw, 2.2rem); }
+.compliance-status-grid, .compliance-chain-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: .65rem; margin-top: 1rem; }
+.compliance-status-grid > div, .compliance-chain-grid > div { min-width: 0; border: 1px solid rgba(212,175,55,.14); border-radius: 12px; padding: .75rem; background: #10141B; }
+.compliance-status-grid span, .compliance-chain-grid span { display: block; color: #9CA3AF; font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+.compliance-status-grid strong, .compliance-chain-grid strong { display: block; color: #F7F8FA; font-size: .94rem; margin-top: .32rem; text-transform: capitalize; overflow-wrap: anywhere; }
+.compliance-not-configured { margin: .8rem 0 0; border-left: 3px solid #D4AF37; background: rgba(212,175,55,.08); color: #F7F8FA; padding: .7rem .8rem; font-size: .85rem; line-height: 1.45; }
+.compliance-evidence .empty-state { min-height: 12rem; }
+@media (max-width: 640px) {
+  .compliance-status-grid, .compliance-chain-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .compliance-hero h2 { font-size: 1.65rem; }
+  .compliance-not-configured { font-size: .78rem; }
+}

@@ -1543,3 +1543,85 @@ export function getArtifactReadiness(
     token,
   );
 }
+
+export type ComplianceSummary = {
+  provider_state: string;
+  policy_state: string;
+  compliance_audits: number;
+  passed: number;
+  blocked: number;
+  human_review_packages: number;
+  publication_eligible: number;
+  provider_cost_usd: string;
+  real_provider_mode: boolean;
+  test_fixture_mode: boolean;
+};
+
+export type ComplianceAudit = {
+  id: string;
+  final_artifact_id: string;
+  artifact_hash: string;
+  content_version_id: string;
+  target_platform: string;
+  status: string;
+  risk_level: string;
+  rights_status: string;
+  provider_state: string;
+  findings: Array<Record<string, unknown>>;
+  required_disclosures: unknown[];
+  cost_usd: string;
+  test_data: boolean;
+};
+
+export type ChiefAudit = {
+  id: string;
+  final_artifact_id: string;
+  artifact_hash: string;
+  status: string;
+  lineage_status: string;
+  version_integrity_status: string;
+  cost_reconciliation_status: string;
+  provider_reconciliation_status: string;
+  blockers: string[];
+  test_data: boolean;
+};
+
+export type HumanReviewPackage = {
+  id: string;
+  final_artifact_id: string;
+  artifact_hash: string;
+  content_version_id: string;
+  target_platform: string;
+  review_gate_id: string | null;
+  warnings: unknown[];
+  required_disclosures: unknown[];
+  total_cost_usd: string;
+  test_data: boolean;
+};
+
+export function getComplianceSummary(token: string, workspaceId: string): Promise<ComplianceSummary> {
+  return apiFetch<ComplianceSummary>(`/workspaces/${workspaceId}/compliance/summary`, token);
+}
+
+export function listComplianceAudits(token: string, workspaceId: string): Promise<ComplianceAudit[]> {
+  return apiFetch<ComplianceAudit[]>(`/workspaces/${workspaceId}/compliance/audits`, token);
+}
+
+export function listChiefAudits(token: string, workspaceId: string): Promise<ChiefAudit[]> {
+  return apiFetch<ChiefAudit[]>(`/workspaces/${workspaceId}/compliance/chief-audits`, token);
+}
+
+export function listHumanReviewPackages(token: string, workspaceId: string): Promise<HumanReviewPackage[]> {
+  return apiFetch<HumanReviewPackage[]>(`/workspaces/${workspaceId}/compliance/human-review-packages`, token);
+}
+
+export function createComplianceRun(
+  token: string,
+  workspaceId: string,
+  payload: { final_artifact_id: string; target_platform: string },
+): Promise<ComplianceAudit> {
+  return apiFetch<ComplianceAudit>(`/workspaces/${workspaceId}/compliance/runs`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

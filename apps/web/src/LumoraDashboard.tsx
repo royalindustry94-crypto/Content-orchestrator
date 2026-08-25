@@ -11,6 +11,7 @@ import { BusinessManagerMark } from "./BusinessManagerMark";
 import { useDialogFocus } from "./useDialogFocus";
 import {
   auditOpportunity,
+  createComplianceRun,
   createContentDepartmentRun,
   createLead,
   createProductionRun,
@@ -19,6 +20,8 @@ import {
   decideReviewGate,
   getActivityFeed,
   getContentCommand,
+  listChiefAudits,
+  getComplianceSummary,
   getContentDepartmentSummary,
   getContentPackageDetail,
   getCostControl,
@@ -44,7 +47,9 @@ import {
   getUniversalTimeline,
   getWorkerMonitor,
   getWorkerTimeline,
+  listComplianceAudits,
   listContentPackages,
+  listHumanReviewPackages,
   listOpportunities,
   listReviewGates,
   listStrategyBriefs,
@@ -54,6 +59,9 @@ import {
   auditStrategyBrief,
   updateLead,
   type ActivityFeed,
+  type ChiefAudit,
+  type ComplianceAudit,
+  type ComplianceSummary,
   type ContentAudit,
   type ContentCommand,
   type ContentDepartmentSummary,
@@ -64,6 +72,7 @@ import {
   type ExecutiveDashboard,
   type ExecutiveInsights,
   type ExecutiveMode,
+  type HumanReviewPackage,
   type GitHubOut,
   type ProducerGate,
   type ProductionRun,
@@ -135,6 +144,7 @@ type NavKey =
   | "strategy"
   | "content_department"
   | "producer"
+  | "compliance"
   | "analytics"
   | "billing"
   | "settings";
@@ -220,6 +230,7 @@ const NAV: Array<{ id: NavKey; label: string; icon: IconName }> = [
   { id: "strategy", label: "Strategy", icon: "mission" },
   { id: "content_department", label: "Content Department", icon: "pipelines" },
   { id: "producer", label: "Producer", icon: "workers" },
+  { id: "compliance", label: "Compliance", icon: "review" },
   { id: "pipelines", label: "Content", icon: "pipelines" },
   { id: "review", label: "Human Review", icon: "review" },
   { id: "workers", label: "Workforce", icon: "workers" },
@@ -1410,6 +1421,78 @@ function ProducerView({
   );
 }
 
+function ComplianceView({
+  data,
+  refresh,
+  token,
+  workspaceId,
+}: {
+  data: { summary: ComplianceSummary; audits: ComplianceAudit[]; chiefAudits: ChiefAudit[]; reviewPackages: HumanReviewPackage[] };
+  refresh: () => void;
+  token: string;
+  workspaceId: string;
+}) {
+  const [artifactId, setArtifactId] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!artifactId.trim()) {
+      setNotice("Select an independently audited final artifact before requesting Compliance.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const audit = await createComplianceRun(token, workspaceId, {
+        final_artifact_id: artifactId.trim(),
+        target_platform: "short_video",
+      });
+      setNotice(`${audit.status.replaceAll("_", " ")} — no provider call or cost was created.`);
+      refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Compliance request could not be created.");
+    } finally { setBusy(false); }
+  };
+  return <div className="compliance-view stack">
+    <section className="compliance-hero surface">
+      <p className="eyebrow">Final machine audit</p>
+      <h2>Compliance & Chief Auditor</h2>
+      <p>Exact-artifact policy, rights, disclosure, audit-chain, cost, and Human Review readiness. A pass can only hand the same artifact to Human Review; it cannot publish.</p>
+      <div className="compliance-status-grid" aria-label="Compliance status">
+        <div><span>Provider</span><strong>{data.summary.provider_state.replaceAll("_", " ")}</strong></div>
+        <div><span>Policy</span><strong>{data.summary.policy_state.replaceAll("_", " ")}</strong></div>
+        <div><span>Compliance passes</span><strong>{data.summary.passed}</strong></div>
+        <div><span>Chief audit packages</span><strong>{data.summary.human_review_packages}</strong></div>
+      </div>
+    </section>
+    <section className="compliance-command surface">
+      <SectionHeader title="Request Compliance" detail="Manual, bounded request: 5 provider calls · 5 verification calls · 4,000 tokens · $0.00 preview budget · 3 attempts." />
+      <form className="producer-command__form" onSubmit={(event) => void run(event)}>
+        <input aria-label="Final artifact ID" placeholder="Final artifact ID from audited Producer output" value={artifactId} onChange={(event) => setArtifactId(event.target.value)} />
+        <button className="primary-action" disabled={busy} type="submit">{busy ? "Requesting…" : "Request Compliance"}</button>
+      </form>
+      <p className="compliance-not-configured" role="status">COMPLIANCE PROVIDER NOT CONFIGURED — no policy retrieval, external rights verification, provider spend, remediation, publication, or fabricated compliance result will be created.</p>
+      {notice ? <p className="producer-notice" role="status">{notice}</p> : null}
+    </section>
+    <section className="surface">
+      <SectionHeader title="Audit chain" detail="Every required machine check must match the exact final artifact hash. Any missing, stale, invalidated, blocked, or errored evidence blocks progression." />
+      <div className="compliance-chain-grid">
+        <div><span>Media QA</span><strong>{data.chiefAudits.length ? "Recorded" : "Not run"}</strong></div>
+        <div><span>Compliance</span><strong>{data.audits.length ? data.audits[0].status.replaceAll("_", " ") : "Not run"}</strong></div>
+        <div><span>Chief Auditor</span><strong>{data.chiefAudits.length ? data.chiefAudits[0].status.replaceAll("_", " ") : "Not run"}</strong></div>
+        <div><span>Human Review</span><strong>{data.reviewPackages.length ? "Package ready" : "Blocked"}</strong></div>
+      </div>
+    </section>
+    <section className="surface compliance-evidence">
+      <SectionHeader title="Evidence and downstream readiness" detail="Policy source, rights evidence, required disclosures, cost reconciliation, and Human Review package evidence appear only when persisted by the backend." />
+      {data.audits.length === 0 && data.chiefAudits.length === 0 ? <EmptyState icon="review" title="No compliance evidence yet" message="Provider and Business Context are not configured, and no final artifact has completed the audited production chain." /> : <div className="producer-job-grid">
+        {data.audits.map((audit) => <article className="producer-job" key={audit.id}><p className="eyebrow">Compliance</p><h3>{audit.status.replaceAll("_", " ")}</h3><p>Rights: {audit.rights_status.replaceAll("_", " ")} · Risk: {audit.risk_level}</p><p>Artifact hash: {audit.artifact_hash.slice(0, 16)}…</p></article>)}
+        {data.chiefAudits.map((audit) => <article className="producer-job" key={audit.id}><p className="eyebrow">Chief Auditor</p><h3>{audit.status.replaceAll("_", " ")}</h3><p>Lineage: {audit.lineage_status} · Cost: {audit.cost_reconciliation_status}</p><p>{audit.blockers.length ? audit.blockers.join(" · ") : "No stored blockers"}</p></article>)}
+      </div>}
+    </section>
+  </div>;
+}
+
 type ViewData =
   | DashboardData
   | ExecutiveMode
@@ -1425,6 +1508,7 @@ type ViewData =
   | { summary: StrategySummary; briefs: StrategyBrief[]; opportunities: Opportunity[] }
   | { summary: ContentDepartmentSummary; packages: ContentPackage[]; briefs: StrategyBrief[] }
   | { summary: ProductionSummary; jobs: ProductionRun[]; packages: ContentPackage[] }
+  | { summary: ComplianceSummary; audits: ComplianceAudit[]; chiefAudits: ChiefAudit[]; reviewPackages: HumanReviewPackage[] }
   | { insights: ExecutiveInsights; activity: ActivityFeed; github: GitHubOut }
   | { spend: SpendDashboard; cost: CostControl }
   | { health: SystemHealth; executive: ExecutiveDashboard }
@@ -1444,6 +1528,10 @@ function isContentDepartmentViewData(value: ViewData): value is { summary: Conte
 
 function isProducerViewData(value: ViewData): value is { summary: ProductionSummary; jobs: ProductionRun[]; packages: ContentPackage[] } {
   return Boolean(value && "summary" in value && "jobs" in value && "packages" in value && "production_jobs" in value.summary);
+}
+
+function isComplianceViewData(value: ViewData): value is { summary: ComplianceSummary; audits: ComplianceAudit[]; chiefAudits: ChiefAudit[]; reviewPackages: HumanReviewPackage[] } {
+  return Boolean(value && "summary" in value && "audits" in value && "chiefAudits" in value && "reviewPackages" in value && "policy_state" in value.summary);
 }
 
 export default function LumoraDashboard({
@@ -1582,6 +1670,14 @@ export default function LumoraDashboard({
           listContentPackages(token, workspaceId),
         ]);
         next = { summary, jobs, packages };
+      } else if (nav === "compliance") {
+        const [summary, audits, chiefAudits, reviewPackages] = await Promise.all([
+          getComplianceSummary(token, workspaceId),
+          listComplianceAudits(token, workspaceId),
+          listChiefAudits(token, workspaceId),
+          listHumanReviewPackages(token, workspaceId),
+        ]);
+        next = { summary, audits, chiefAudits, reviewPackages };
       } else if (nav === "analytics") {
         const [insights, activity, github] = await Promise.all([
           getExecutiveInsights(token, workspaceId),
@@ -1765,6 +1861,10 @@ export default function LumoraDashboard({
     if (nav === "producer") {
       if (!isProducerViewData(data)) return <Loading />;
       return <ProducerView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
+    }
+    if (nav === "compliance") {
+      if (!isComplianceViewData(data)) return <Loading />;
+      return <ComplianceView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
     }
     if (nav === "analytics") {
       if (!isAnalyticsData(data)) return <Loading />;
