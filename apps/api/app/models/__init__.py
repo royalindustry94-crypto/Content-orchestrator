@@ -9,9 +9,6 @@ from app.models.backpressure import (  # noqa: F401
 )
 from app.models.billing import BillingWebhookEvent, WorkspaceBilling  # noqa: F401
 from app.models.claim_audit import StageClaimAudit  # noqa: F401
-
-# Milestone 3 content domain
-from app.models.config import ContentPillar, ProviderCredential, SpendCap  # noqa: F401
 from app.models.compliance import (  # noqa: F401
     ArtifactPublicationEligibility,
     ArtifactRightsEvidence,
@@ -23,6 +20,9 @@ from app.models.compliance import (  # noqa: F401
     HumanReviewPackage,
     PlatformPolicySource,
 )
+
+# Milestone 3 content domain
+from app.models.config import ContentPillar, ProviderCredential, SpendCap  # noqa: F401
 from app.models.content import ContentItem, ContentLineage, ContentVersion  # noqa: F401
 from app.models.content_department import (  # noqa: F401
     ContentAudit,
