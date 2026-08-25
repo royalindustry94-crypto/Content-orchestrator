@@ -102,6 +102,13 @@ EXPORTABLE_TABLES: tuple[str, ...] = (
     "content_audits",
     "content_audit_invalidations",
     "originality_fingerprints",
+    "production_jobs",
+    "production_assets",
+    "final_artifacts",
+    "media_qa_results",
+    "production_repairs",
+    "artifact_invalidations",
+    "production_readiness",
 )
 
 # Customer content tables that carry ``deleted_at`` and whose RLS grants the
@@ -186,6 +193,13 @@ RETAINED_ON_DELETE: tuple[str, ...] = (
     "content_audits",
     "content_audit_invalidations",
     "originality_fingerprints",
+    "production_jobs",
+    "production_assets",
+    "final_artifacts",
+    "media_qa_results",
+    "production_repairs",
+    "artifact_invalidations",
+    "production_readiness",
 )
 
 

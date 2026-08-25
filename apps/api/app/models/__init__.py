@@ -29,6 +29,15 @@ from app.models.leads import Lead  # noqa: F401
 from app.models.local_auth import LocalAuthCredential  # noqa: F401
 from app.models.operations import DeadLetterJob, WebhookEvent  # noqa: F401
 from app.models.pipeline import PipelineRun, PipelineStageRun  # noqa: F401
+from app.models.production import (  # noqa: F401
+    ArtifactInvalidation,
+    FinalArtifact,
+    MediaQaResult,
+    ProductionAsset,
+    ProductionJob,
+    ProductionReadiness,
+    ProductionRepair,
+)
 from app.models.profile import Profile  # noqa: F401
 from app.models.provider_effects import ProviderEffectKey  # noqa: F401
 from app.models.publication_policy import PublicationEligibility  # noqa: F401
@@ -102,6 +111,13 @@ __all__ = [
     "StageClaimAudit",
     "StageRecoveryAudit",
     "ProviderEffectKey",
+    "ProductionJob",
+    "ProductionAsset",
+    "FinalArtifact",
+    "MediaQaResult",
+    "ProductionRepair",
+    "ArtifactInvalidation",
+    "ProductionReadiness",
     "WorkspaceBackpressureState",
     "ProviderConcurrencyBudget",
     "ReviewGate",

@@ -1350,3 +1350,196 @@ export function getProducerGate(
     token,
   );
 }
+
+
+export type ProductionRun = {
+  id: string;
+  content_package_id: string;
+  content_item_id: string;
+  content_version_id: string;
+  status: string;
+  provider_state: string;
+  target_platform: string | null;
+  target_format: string | null;
+  target_duration_seconds: number | null;
+  max_provider_calls: number;
+  max_render_calls: number;
+  max_cost_usd: string;
+  max_attempts: number;
+  max_repair_cycles: number;
+  provider_calls_used: number;
+  render_calls_used: number;
+  repair_cycles_used: number;
+  actual_cost_usd: string;
+  retry_count: number;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProductionAsset = {
+  id: string;
+  asset_id: string;
+  asset_type: string;
+  provider: string;
+  provider_job_id: string | null;
+  file_hash: string | null;
+  duration_seconds: string | null;
+  dimensions: Record<string, unknown>;
+  cost_usd: string;
+  status: string;
+  created_at: string;
+};
+
+export type FinalArtifact = {
+  id: string;
+  production_job_id: string;
+  content_version_id: string;
+  render_provider: string;
+  render_job_id: string | null;
+  artifact_hash: string;
+  duration_seconds: string | null;
+  resolution: Record<string, unknown>;
+  aspect_ratio: string | null;
+  container: string | null;
+  codec: string | null;
+  cost_usd: string;
+  status: string;
+  created_at: string;
+};
+
+export type MediaQaResult = {
+  id: string;
+  final_artifact_id: string;
+  artifact_hash: string;
+  auditor_worker_id: string;
+  status: string;
+  checks_run: unknown[];
+  visual_findings: unknown[];
+  audio_findings: unknown[];
+  subtitle_findings: unknown[];
+  script_alignment: Record<string, unknown>;
+  platform_check: Record<string, unknown>;
+  package_alignment: Record<string, unknown>;
+  evidence: unknown[];
+  recommended_repair: unknown[];
+  cost_usd: string;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+};
+
+export type ProductionRepair = {
+  id: string;
+  production_job_id: string;
+  final_artifact_id: string | null;
+  media_qa_result_id: string | null;
+  affected_component: string;
+  repair_operation: string;
+  repair_cycle: number;
+  status: string;
+  cost_usd: string;
+  provider_calls_used: number;
+  created_at: string;
+};
+
+export type ProductionReadiness = {
+  id: string;
+  final_artifact_id: string;
+  content_version_id: string;
+  media_qa_state: string;
+  compliance_state: string;
+  chief_audit_state: string;
+  human_review_state: string;
+  status: string;
+  blocking_reasons: unknown[];
+  total_cost_usd: string;
+  updated_at: string;
+};
+
+export type ProductionSummary = {
+  provider_state: string;
+  production_jobs: number;
+  active_jobs: number;
+  final_artifacts: number;
+  media_qa_passed: number;
+  media_qa_blocked: number;
+  repair_required: number;
+  compliance_ready: number;
+  provider_cost_usd: string;
+  last_error: string | null;
+  real_provider_mode: boolean;
+  test_fixture_mode: boolean;
+};
+
+export type ProductionDetail = {
+  job: ProductionRun;
+  assets: ProductionAsset[];
+  artifacts: FinalArtifact[];
+  media_qa: MediaQaResult[];
+  repairs: ProductionRepair[];
+  readiness: ProductionReadiness[];
+};
+
+export function getProductionSummary(token: string, workspaceId: string): Promise<ProductionSummary> {
+  return apiFetch<ProductionSummary>(`/workspaces/${workspaceId}/production/summary`, token);
+}
+
+export function listProductionRuns(token: string, workspaceId: string): Promise<ProductionRun[]> {
+  return apiFetch<ProductionRun[]>(`/workspaces/${workspaceId}/production/runs`, token);
+}
+
+export function createProductionRun(
+  token: string,
+  workspaceId: string,
+  payload: {
+    content_package_id: string;
+    target_platform?: string | null;
+    target_format?: string | null;
+    target_duration_seconds?: number | null;
+    max_provider_calls?: number;
+    max_render_calls?: number;
+    max_cost_usd?: string;
+    max_attempts?: number;
+    max_repair_cycles?: number;
+    timeout_seconds?: number;
+  },
+): Promise<ProductionRun> {
+  return apiFetch<ProductionRun>(`/workspaces/${workspaceId}/production/runs`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getProductionDetail(
+  token: string,
+  workspaceId: string,
+  productionJobId: string,
+): Promise<ProductionDetail> {
+  return apiFetch<ProductionDetail>(
+    `/workspaces/${workspaceId}/production/runs/${productionJobId}`,
+    token,
+  );
+}
+
+export function getArtifactMediaQa(
+  token: string,
+  workspaceId: string,
+  artifactId: string,
+): Promise<MediaQaResult[]> {
+  return apiFetch<MediaQaResult[]>(
+    `/workspaces/${workspaceId}/production/artifacts/${artifactId}/media-qa`,
+    token,
+  );
+}
+
+export function getArtifactReadiness(
+  token: string,
+  workspaceId: string,
+  artifactId: string,
+): Promise<ProductionReadiness | null> {
+  return apiFetch<ProductionReadiness | null>(
+    `/workspaces/${workspaceId}/production/artifacts/${artifactId}/readiness`,
+    token,
+  );
+}

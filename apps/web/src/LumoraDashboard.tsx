@@ -13,6 +13,7 @@ import {
   auditOpportunity,
   createContentDepartmentRun,
   createLead,
+  createProductionRun,
   createResearchRun,
   createStrategyRun,
   decideReviewGate,
@@ -36,8 +37,10 @@ import {
   getSpendDashboard,
   getSystemHealth,
   getProducerGate,
+  getProductionSummary,
   getStrategyBriefDetail,
   getStrategySummary,
+  listProductionRuns,
   getUniversalTimeline,
   getWorkerMonitor,
   getWorkerTimeline,
@@ -63,6 +66,8 @@ import {
   type ExecutiveMode,
   type GitHubOut,
   type ProducerGate,
+  type ProductionRun,
+  type ProductionSummary,
   type Leads,
   type LiveLogs,
   type Notifications,
@@ -129,6 +134,7 @@ type NavKey =
   | "research"
   | "strategy"
   | "content_department"
+  | "producer"
   | "analytics"
   | "billing"
   | "settings";
@@ -213,6 +219,7 @@ const NAV: Array<{ id: NavKey; label: string; icon: IconName }> = [
   { id: "research", label: "Opportunities", icon: "leads" },
   { id: "strategy", label: "Strategy", icon: "mission" },
   { id: "content_department", label: "Content Department", icon: "pipelines" },
+  { id: "producer", label: "Producer", icon: "workers" },
   { id: "pipelines", label: "Content", icon: "pipelines" },
   { id: "review", label: "Human Review", icon: "review" },
   { id: "workers", label: "Workforce", icon: "workers" },
@@ -1289,6 +1296,120 @@ function GitHubSummary({ data }: { data: GitHubOut }) {
   );
 }
 
+function ProducerView({
+  data,
+  token,
+  workspaceId,
+  refresh,
+}: {
+  data: { summary: ProductionSummary; jobs: ProductionRun[]; packages: ContentPackage[] };
+  token: string;
+  workspaceId: string;
+  refresh: () => void;
+}) {
+  const [selectedPackageId, setSelectedPackageId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const auditedPackages = data.packages.filter((item) => item.audit_gate_status === "pass");
+  const currentJob = data.jobs[0] ?? null;
+
+  const runProducer = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedPackageId) return;
+    setBusy(true);
+    setActionError(null);
+    setNotice(null);
+    try {
+      const run = await createProductionRun(token, workspaceId, {
+        content_package_id: selectedPackageId,
+        max_provider_calls: 5,
+        max_render_calls: 2,
+        max_cost_usd: "0.00",
+        max_attempts: 3,
+        max_repair_cycles: 2,
+        timeout_seconds: 900,
+      });
+      setNotice(run.last_error ?? "Production request recorded.");
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to create the production request.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="producer-view stack">
+      <section className="producer-hero surface">
+        <div>
+          <p className="page-kicker">Producer + Media QA</p>
+          <h2>Bounded, auditable production</h2>
+          <p>Producer accepts only independently audited Content Packages. Media QA binds its checks to the exact final artifact hash before future Compliance, Chief Auditor, and Human Review gates.</p>
+        </div>
+        <Status value={data.summary.provider_state === "not_configured" ? "Production provider not configured" : data.summary.provider_state} />
+      </section>
+
+      <section className="producer-command surface">
+        <div>
+          <SectionHeader title="Request production" detail="Manual only. Provider calls, render calls, cost, attempts, repair cycles, and timeouts remain bounded." />
+          <p className="producer-limits">Default limits: 5 provider calls · 2 render calls · $0.00 preview budget · 3 attempts · 2 repair cycles.</p>
+        </div>
+        <form className="producer-command__form" onSubmit={(event) => void runProducer(event)}>
+          <select aria-label="Audited Content Package" onChange={(event) => setSelectedPackageId(event.target.value)} value={selectedPackageId}>
+            <option value="">{auditedPackages.length ? "Select an independently audited package" : "No independently audited packages available"}</option>
+            {auditedPackages.map((item) => <option key={item.id} value={item.id}>Package {item.id.slice(0, 8)} · {item.status.replaceAll("_", " ")}</option>)}
+          </select>
+          <button className="button button--primary" disabled={busy || !selectedPackageId} type="submit">{busy ? "Recording…" : "Request production"}</button>
+        </form>
+        {data.summary.provider_state === "not_configured" ? <p className="producer-not-configured" role="status">PRODUCTION PROVIDER NOT CONFIGURED — no asset generation, media rendering, external storage write, spend, callback, or fabricated artifact will be created.</p> : null}
+        {notice ? <p className="producer-notice" role="status">{notice}</p> : null}
+        {actionError ? <p className="error" role="alert">{actionError}</p> : null}
+      </section>
+
+      <section className="producer-status-grid" aria-label="Producer status">
+        <article><span>Current production</span><strong>{currentJob ? currentJob.status.replaceAll("_", " ") : "Not run"}</strong><small>{currentJob ? `Package ${currentJob.content_package_id.slice(0, 8)}` : "No audited package has been submitted."}</small></article>
+        <article><span>Final artifacts</span><strong>{data.summary.final_artifacts}</strong><small>Only immutable, hash-recorded artifacts are counted.</small></article>
+        <article><span>Media QA</span><strong>{data.summary.media_qa_passed} passed</strong><small>{data.summary.media_qa_blocked} blocked · {data.summary.repair_required} repair required.</small></article>
+        <article><span>Provider cost</span><strong>{money(data.summary.provider_cost_usd)}</strong><small>Cost is recorded only when a provider is configured.</small></article>
+      </section>
+
+      <section className="surface producer-artifacts">
+        <SectionHeader title="Artifacts and Media QA" detail="Every generated component, final artifact, provider request, hash, QA result, repair, and invalidation must remain attributable to the exact Content Version." />
+        {data.jobs.length === 0 ? (
+          <EmptyState icon="pipelines" title="No production jobs yet" message="An independently audited Content Package and an approved production provider are required before a real artifact can exist. This preview will not invent media or QA passes." />
+        ) : (
+          <div className="producer-job-grid">
+            {data.jobs.map((job) => (
+              <article className="producer-job" key={job.id}>
+                <header><Status value={job.status} /><span>{job.provider_state.replaceAll("_", " ")}</span></header>
+                <h3>Production job {job.id.slice(0, 8)}</h3>
+                <dl>
+                  <div><dt>Content Version</dt><dd><code>{job.content_version_id.slice(0, 12)}</code></dd></div>
+                  <div><dt>Provider / render calls</dt><dd>{job.provider_calls_used} / {job.render_calls_used}</dd></div>
+                  <div><dt>Repair cycles</dt><dd>{job.repair_cycles_used} / {job.max_repair_cycles}</dd></div>
+                  <div><dt>Cost</dt><dd>{money(job.actual_cost_usd)}</dd></div>
+                </dl>
+                <small>{job.last_error ?? "No provider outcome has been recorded."}</small>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="producer-boundaries surface">
+        <SectionHeader title="Production and Media QA gates" detail="Production remains fail-closed when any provider, artifact, audit, policy, or human gate is absent." />
+        <div className="producer-boundaries__grid">
+          <p><strong>Lineage</strong> Components and final artifacts must reference the package, content item, exact Content Version, provider job, immutable hash, storage reference, and cost.</p>
+          <p><strong>Media QA</strong> An independent worker checks the exact artifact hash for visual, audio, subtitle, script, platform, and package alignment before any future Compliance handoff.</p>
+          <p><strong>Repairs</strong> Repairs are bounded to recorded QA findings and can never overwrite an immutable artifact or clear prior findings.</p>
+          <p><strong>Readiness</strong> Media QA, Compliance, Chief Auditor, and exact-version Human Review are all required; no production record can publish automatically.</p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 type ViewData =
   | DashboardData
   | ExecutiveMode
@@ -1303,6 +1424,7 @@ type ViewData =
   | { summary: ResearchSummary; opportunities: Opportunity[] }
   | { summary: StrategySummary; briefs: StrategyBrief[]; opportunities: Opportunity[] }
   | { summary: ContentDepartmentSummary; packages: ContentPackage[]; briefs: StrategyBrief[] }
+  | { summary: ProductionSummary; jobs: ProductionRun[]; packages: ContentPackage[] }
   | { insights: ExecutiveInsights; activity: ActivityFeed; github: GitHubOut }
   | { spend: SpendDashboard; cost: CostControl }
   | { health: SystemHealth; executive: ExecutiveDashboard }
@@ -1318,6 +1440,10 @@ function isStrategyViewData(value: ViewData): value is { summary: StrategySummar
 
 function isContentDepartmentViewData(value: ViewData): value is { summary: ContentDepartmentSummary; packages: ContentPackage[]; briefs: StrategyBrief[] } {
   return Boolean(value && "summary" in value && "packages" in value && "briefs" in value && "claims_unverified" in value.summary);
+}
+
+function isProducerViewData(value: ViewData): value is { summary: ProductionSummary; jobs: ProductionRun[]; packages: ContentPackage[] } {
+  return Boolean(value && "summary" in value && "jobs" in value && "packages" in value && "production_jobs" in value.summary);
 }
 
 export default function LumoraDashboard({
@@ -1449,6 +1575,13 @@ export default function LumoraDashboard({
           listStrategyBriefs(token, workspaceId),
         ]);
         next = { summary, packages, briefs };
+      } else if (nav === "producer") {
+        const [summary, jobs, packages] = await Promise.all([
+          getProductionSummary(token, workspaceId),
+          listProductionRuns(token, workspaceId),
+          listContentPackages(token, workspaceId),
+        ]);
+        next = { summary, jobs, packages };
       } else if (nav === "analytics") {
         const [insights, activity, github] = await Promise.all([
           getExecutiveInsights(token, workspaceId),
@@ -1628,6 +1761,10 @@ export default function LumoraDashboard({
     if (nav === "content_department") {
       if (!isContentDepartmentViewData(data)) return <Loading />;
       return <ContentDepartmentView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
+    }
+    if (nav === "producer") {
+      if (!isProducerViewData(data)) return <Loading />;
+      return <ProducerView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
     }
     if (nav === "analytics") {
       if (!isAnalyticsData(data)) return <Loading />;
