@@ -17,6 +17,16 @@ speculative platform work.
 5. **Audit logging** — security-relevant mutations emit structured audit events.
 6. **No placeholders** — no TODOs, stubs, or silent fallbacks in production paths.
 
+## Milestone governance
+
+- Every milestone ends with an evidence-backed **PASS**, **CONDITIONAL**, or **FAIL** audit using `docs/MILESTONE_AUDIT_STANDARD.md`.
+- The coding worker/agent must not be the sole certifier of its own milestone. Use an independent auditor where available; otherwise perform a separate adversarial audit pass from fresh evidence.
+- **FAIL blocks merge.** Only the Founder may explicitly override a failed gate after reviewing the documented risks.
+- **CONDITIONAL** is allowed only for non-safety-critical, owner-assigned, time-bounded conditions approved by the Founder.
+- Unknown or missing evidence for workspace isolation, Human Review Gate integrity, spend controls, secrets, destructive migration safety, or critical data integrity is a **FAIL**, not a conditional pass.
+- Preview branches or PRs marked `do not merge` require explicit Founder approval before merge.
+- Re-check the exact PR head SHA, CI state, migration head, unresolved findings, and required external/runtime evidence immediately before merge.
+
 ## Stack
 
 | Area | Tech |
