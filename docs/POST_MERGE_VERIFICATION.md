@@ -47,3 +47,21 @@ The baseline retains all controlled-beta boundaries. `BILLING_ENABLED=false` rem
 ## Verdict
 
 **CONTROLLED BETA BASELINE MERGED.** Deployment is the next gate and remains out of scope for this record.
+
+## Command Center V1 post-merge verification
+
+| Field | Recorded value |
+|---|---|
+| PR | [#46](https://github.com/royalindustry94-crypto/Content-orchestrator/pull/46) |
+| Approved implementation SHA | `210d2b88510d95d144f646835753a55a59c8610f` |
+| PR final head | `210d2b88510d95d144f646835753a55a59c8610f` |
+| Merge SHA and final executable main SHA | `e08d1acedbdd1734048e46437d24df51fb63d601` |
+| Migration head | `0040` |
+| Main CI | [Run 32612343405](https://github.com/royalindustry94-crypto/actions/runs/32612343405) — API, worker, web, security, and Docker succeeded. |
+
+The Command Center change was re-verified as frontend-only before merge. It contained no API, worker, migration, tenancy, billing, or automatic-publication configuration changes. The post-merge control suite passed 83 API tests; the post-merge frontend suite passed 26 tests; and the browser smoke passed 16 route states plus three mobile supplemental routes with zero blank/crash states, console errors, unlabeled controls, or mobile-overflow failures. The Human Review Gate, tenant isolation, spend/idempotency, security controls, real-data mapping, and retained controlled-beta boundaries all passed verification.
+
+**Critical findings:** 0 open in repository scope.
+**High findings:** 0 open in repository scope.
+
+See [Command Center V1 Release Record](COMMAND_CENTER_V1_RELEASE.md) for the full evidence table.
