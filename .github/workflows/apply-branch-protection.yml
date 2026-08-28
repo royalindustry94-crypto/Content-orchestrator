@@ -1,0 +1,127 @@
+name: Apply main branch protection
+
+# Manually triggered by the Founder (or any repo admin).
+# Requires an ADMIN_PAT secret: a GitHub Personal Access Token with
+# `admin:repo` / `repo` scope belonging to a repository admin.
+#
+# After running, verify protection is active by checking:
+#   GET /repos/royalindustry94-crypto/Content-orchestrator/branches/main
+# and confirming protected=true + required status checks present.
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run — print the payload without applying it"
+        type: boolean
+        default: false
+
+jobs:
+  apply-protection:
+    name: Configure main branch protection
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Validate ADMIN_PAT secret is present
+        env:
+          ADMIN_PAT: ${{ secrets.ADMIN_PAT }}
+        run: |
+          if [ -z "$ADMIN_PAT" ]; then
+            echo "::error::ADMIN_PAT secret is not set. Add a GitHub PAT with admin:repo scope as a repository secret named ADMIN_PAT."
+            exit 1
+          fi
+
+      - name: Build protection payload
+        id: payload
+        run: |
+          cat > /tmp/protection.json <<'EOF'
+          {
+            "required_status_checks": {
+              "strict": true,
+              "contexts": [
+                "api",
+                "worker",
+                "web",
+                "security",
+                "docker-build",
+                "browser-smoke"
+              ]
+            },
+            "enforce_admins": true,
+            "required_pull_request_reviews": {
+              "dismiss_stale_reviews": false,
+              "require_code_owner_reviews": false,
+              "required_approving_review_count": 1
+            },
+            "restrictions": null,
+            "allow_force_pushes": false,
+            "allow_deletions": false,
+            "required_linear_history": false,
+            "block_creations": false
+          }
+          EOF
+          echo "Payload:"
+          cat /tmp/protection.json
+
+      - name: Apply branch protection (live)
+        if: ${{ inputs.dry_run != true }}
+        env:
+          ADMIN_PAT: ${{ secrets.ADMIN_PAT }}
+        run: |
+          HTTP_STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
+            -X PUT \
+            -H "Authorization: token $ADMIN_PAT" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/royalindustry94-crypto/Content-orchestrator/branches/main/protection" \
+            -d @/tmp/protection.json)
+          echo "HTTP status: $HTTP_STATUS"
+          cat /tmp/response.json
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "::error::Branch protection update failed (HTTP $HTTP_STATUS)"
+            exit 1
+          fi
+
+      - name: Dry-run output
+        if: ${{ inputs.dry_run == true }}
+        run: |
+          echo "DRY RUN — would PUT the following payload to branches/main/protection:"
+          cat /tmp/protection.json
+
+      - name: Verify protection is active
+        if: ${{ inputs.dry_run != true }}
+        env:
+          ADMIN_PAT: ${{ secrets.ADMIN_PAT }}
+        run: |
+          RESULT=$(curl -s \
+            -H "Authorization: token $ADMIN_PAT" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/royalindustry94-crypto/Content-orchestrator/branches/main")
+          echo "$RESULT" | python3 -c "
+          import json, sys
+          data = json.load(sys.stdin)
+          protected = data.get('protected', False)
+          checks = data.get('protection', {}).get('required_status_checks', {}).get('contexts', [])
+          pr_required = data.get('protection', {}).get('required_pull_request_reviews') is not None
+          force_push_blocked = not data.get('protection', {}).get('allow_force_pushes', {}).get('enabled', True)
+          print(f'protected={protected}')
+          print(f'required_checks={checks}')
+          print(f'pr_required={pr_required}')
+          print(f'force_push_blocked={force_push_blocked}')
+          expected = {'api','worker','web','security','docker-build','browser-smoke'}
+          missing = expected - set(checks)
+          if not protected:
+              print('FAIL: branch not protected')
+              sys.exit(1)
+          if missing:
+              print(f'FAIL: missing required checks: {missing}')
+              sys.exit(1)
+          if not pr_required:
+              print('FAIL: PR reviews not required')
+              sys.exit(1)
+          if not force_push_blocked:
+              print('FAIL: force pushes not blocked')
+              sys.exit(1)
+          print('PASS: all protection gates verified')
+          "

@@ -57,19 +57,30 @@ Safety boundaries remain explicit:
 
 ## Open blockers / conditions
 
-### GOV-001 — Protect `main` — **HIGH / OPEN**
+### GOV-001 — Protect `main` — **HIGH / PENDING FOUNDER ACTION**
 
-Tracked by GitHub issue **#50**.
+Tracked by GitHub issue **#50**.  
+Work package: `docs/work-packages/WP-GOV-001-protect-main.md`
 
-Required before scaling development throughput or relying on repository enforcement:
+Required settings (see work package for full payload):
 
-- Require pull requests before merge.
-- Require relevant CI gates before merge.
-- Block force pushes and branch deletion.
-- Keep emergency bypass Founder-controlled and documented.
-- Independently verify the active branch protection/ruleset after configuration.
+- Require pull requests before merge (1 approving review).
+- Require all six CI gates: `api`, `worker`, `web`, `security`, `docker-build`, `browser-smoke`.
+- Strict mode — branch must be up to date before merge.
+- `enforce_admins: true` — no bypass for routine pushes.
+- Force pushes blocked; branch deletion blocked.
+- Emergency bypass: Founder-controlled and documented only.
 
-Current evidence: GitHub reports `main` as unprotected with no required status checks enforced.
+**Remaining Founder action:** A workflow `.github/workflows/apply-branch-protection.yml`
+has been added to this PR.  To activate protection:
+
+1. Add a repository secret `ADMIN_PAT` (GitHub PAT with `admin:repo` scope).
+2. Run **Actions → Apply main branch protection** with `dry_run` unchecked.
+3. Have an independent auditor re-probe `GET /branches/main` and record
+   `protected: true` + the exact required-checks list as evidence.
+
+Current evidence: GitHub reports `main` as unprotected with no required status
+checks enforced.  Protection will be active once the workflow is executed.
 
 ### RUNTIME-001 — Managed Supabase/runtime verification — **OPEN**
 
