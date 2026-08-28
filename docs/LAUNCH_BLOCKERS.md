@@ -1,50 +1,106 @@
 # Launch Blockers
 
 **Repository:** Content Orchestrator  
-**Updated:** 2026-08-03 — P-002 closed on `cursor/p2-beta-launch-b52d`  
-**Source of truth:** Fresh DR drill + integrated regression (not prior chat claims)
+**Updated:** 2026-08-28  
+**Audited baseline:** `main` after PR #49 governance merge  
+**Source of truth:** exact-head CI, retained browser evidence, repository/runtime probes — not prior chat claims
 
-**Rule:** Nothing ships to private beta while any **P0** item remains open.
-P0 is frozen. P1 Private Beta blockers are closed.
+## Rule
 
----
-
-## Verdict
-
-| Target | Status |
-|--------|--------|
-| Private beta | **READY FOR PRIVATE BETA** |
-| Production | **BLOCKED** (managed PITR / paid Stripe go-live / optional APM — post-beta) |
+Nothing is considered deployable or releasable from documentation alone. The current exact candidate must satisfy `docs/MILESTONE_AUDIT_STANDARD.md` and receive PASS before merge/release.
 
 ---
 
-## P0 — CLOSED (frozen)
+## Current verdict
 
-All P0 checklist items remain CLOSED. Do not modify unless Critical defect.
+| Target | Status | Reason |
+|---|---|---|
+| Product code baseline | **PRIVATE-BETA CAPABLE** | Business Manager + audited Research → Strategy → Content → Production → Compliance preview is merged and fail-closed |
+| Development governance | **CONDITIONAL** | Independent audit standard is merged; GitHub `main` branch protection is still disabled (issue #50) |
+| Operational private beta | **CONDITIONAL / NOT YET RUNTIME-VERIFIED** | Managed deployment/Supabase runtime evidence and current operator verification are not established in this audit |
+| Production | **BLOCKED** | Live providers, production auth/runtime evidence, managed PITR, billing go-live, policy/rights adapters and external publishing remain separate gates |
 
 ---
 
-## P1 — status
+## Merged audited baseline
 
-| ID | Item | Status | Evidence |
-|----|------|--------|----------|
-| P-001 | Stripe / billing | **CLOSED** | `0031` + entitlement gate; default off |
-| P-002 | Hosted/staging backup restore drill | **CLOSED** | `docs/DISASTER_RECOVERY_REPORT.md` |
-| P-003 | CI CVE fail-closed | **CLOSED** | `pip-audit` / `npm audit` fail job |
-| P-004 | Dependency CVE remediation | **CLOSED** | PyJWT + FastAPI/Starlette/Vite floors |
-| P-005 | OpenAPI lockdown | **CLOSED** | Docs only in development |
-| P-006 | Unindexed FK columns | **CLOSED** | `0031_fk`; probe = 0 |
-| P-007 | AGENTS.md / Cursor rules | **CLOSED** | Root `AGENTS.md` + `.cursor/rules` |
-| P-008 | Observability / on-call | **CLOSED** | `/metrics` + `ON_CALL.md` |
-| P-009 | Spend Numeric precision | **CLOSED** | Caps `numeric(12,4)` |
+PR #48 merged the bounded Founder Preview pipeline with these workspace-scoped stages:
 
-**Alembic:** single head `0032_merge_p1` (merge of `0031`, `0031_fk`, `0031_spend_precision`).
+1. Business Manager UI
+2. Scout + Research Auditor
+3. Strategist + Strategy Auditor
+4. Content Department
+5. Producer + Media QA
+6. Compliance + Chief Auditor
+
+Safety boundaries remain explicit:
+
+- Human Review Gate remains mandatory.
+- External publishing remains disabled in the preview path.
+- Unconfigured provider paths are truthful and spend zero provider cost.
+- Workspace/RLS negative tests cover the new domain slices.
+- No autonomous publishing or live-provider execution was enabled by the preview milestone.
+
+### Verified engineering evidence
+
+- API: **299 passed**, **81.09% coverage** (75% gate)
+- Alembic: current audited head **`0050`**
+- Migration lifecycle: upgrade → full downgrade to base → re-upgrade **PASS**
+- Worker: **PASS**
+- Web lint/build/tests/high-severity dependency audit: **PASS**
+- Security: Gitleaks + API/worker dependency audits **PASS**
+- Docker builds: **PASS**
+- Exact-head browser smoke: desktop + exact 390px mobile **PASS**, retained as CI artifact
+- Post-merge CI on PR #48 merge commit: all six jobs **PASS**
+
+---
+
+## Open blockers / conditions
+
+### GOV-001 — Protect `main` — **HIGH / OPEN**
+
+Tracked by GitHub issue **#50**.
+
+Required before scaling development throughput or relying on repository enforcement:
+
+- Require pull requests before merge.
+- Require relevant CI gates before merge.
+- Block force pushes and branch deletion.
+- Keep emergency bypass Founder-controlled and documented.
+- Independently verify the active branch protection/ruleset after configuration.
+
+Current evidence: GitHub reports `main` as unprotected with no required status checks enforced.
+
+### RUNTIME-001 — Managed Supabase/runtime verification — **OPEN**
+
+The Supabase connector is installed but has not exposed a project to the current audit session. No managed database, production-auth, backup/PITR, or deployment claim may be marked verified from this state.
+
+### PROVIDER-001 — Live provider activation — **OPEN / DEFERRED**
+
+Before enabling OpenAI/Anthropic/Gemini/ElevenLabs/Creatomate/n8n or equivalent live effects, require a separate audited milestone covering credentials, provider abstraction, retries/backoff/timeouts, idempotency, spend reserve/commit accounting, redaction/logging, supervised provider tests and failure behavior.
+
+### BILLING-001 — Billing go-live — **OPEN / DEFERRED**
+
+Billing code exists but production billing remains a separate live-secret/reconciliation gate. Do not infer paid-production readiness from the in-repo Stripe implementation.
+
+### PUBLISH-001 — External publishing — **BLOCKED BY DESIGN**
+
+No autonomous/external publishing milestone is authorized. Any future enablement requires current platform policy/rights evidence, exact-artifact compliance, immutable Human Review approval, rollback/kill-switch evidence and Founder authorization.
+
+---
+
+## Historical P0/P1 baseline
+
+Previously closed P0/P1 engineering controls remain closed unless new evidence demonstrates regression. Their historical records remain in release/audit documents; this file now reflects the current `0050` codebase rather than the obsolete `0032_merge_p1` snapshot.
 
 ---
 
 ## Related
 
+- `docs/MILESTONE_AUDIT_STANDARD.md`
+- `docs/EXECUTIVE_STATUS_REPORT.md`
+- `docs/TECHNICAL_DEBT_REGISTER.md`
 - `docs/FINAL_RELEASE_AUDIT.md`
 - `docs/DISASTER_RECOVERY_REPORT.md`
 - `docs/BETA_RELEASE_CHECKLIST.md`
-- `docs/EXECUTIVE_STATUS_REPORT.md`
+- GitHub issue #50 — protect `main`
