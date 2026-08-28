@@ -1,0 +1,8 @@
+part_01.sql 26216 bytes
+part_02.sql 25610 bytes
+part_03.sql 26518 bytes
+part_04.sql 15586 bytes
+part_05.sql 27722 bytes
+part_06.sql 20279 bytes
+part_07.sql 19585 bytes
+part_08.sql 22884 bytes
