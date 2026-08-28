@@ -2,7 +2,6 @@
 
 from pathlib import Path
 
-
 REPO_ROOT = Path(__file__).resolve().parents[3]
 MIGRATION_0001 = REPO_ROOT / "apps/api/alembic/versions/0001_identity_and_access.py"
 LOCAL_BOOTSTRAP = REPO_ROOT / "scripts/bootstrap_local_postgres.sql"
