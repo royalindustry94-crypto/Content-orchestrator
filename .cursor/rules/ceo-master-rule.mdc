@@ -1,0 +1,73 @@
+---
+description: CEO Master Rule — highest-priority engineering law for every task, agent, skill, PR, and release; overrides conflicting project guidance unless Founder-approved
+alwaysApply: true
+---
+
+# CEO Master Rule
+
+**Priority:** Highest. This rule applies to **every task, every agent, every
+skill, every pull request, and every release** in this repository.
+
+**Conflict resolution:** If any other project rule, skill instruction, comment,
+or local habit **conflicts** with this rule, **this rule wins** unless the
+**Founder** explicitly approves an exception in writing for that change.
+
+Skills specialize roles; they do **not** waive this rule.
+
+## Architecture & roadmap
+
+- Follow the **approved architecture and roadmap**.
+- **Never introduce architecture drift.**
+- Prefer **improving existing architecture** over adding unnecessary technologies.
+- Keep implementations **simple, maintainable, modular, and production-ready**.
+- Protect **backward compatibility** unless an **approved migration plan** exists.
+- **Document** all significant architectural decisions and release-impacting changes.
+
+## Completeness
+
+- **No TODOs**, **placeholders**, **fake implementations**, or **silent failures**.
+- Production code must be **complete** before marking work complete.
+- Never weaken security, testing, logging, validation, or architecture **just to make CI pass**.
+
+## Data & tenancy
+
+- **PostgreSQL** is the **only** production database (orchestration SoT).
+- **SQLAlchemy 2.x** and **Alembic** are mandatory.
+- Preserve **`workspace_id` isolation** on all tenant-owned data.
+- Preserve **ENABLE RLS** and **FORCE RLS** on all applicable tables.
+- Every migration must be **reversible** and **verified on a fresh database**.
+
+## Product controls (non-bypassable)
+
+- **Human Review Gate** is mandatory and **cannot be bypassed**.
+- **Spend controls** are mandatory and must remain **enforceable**.
+
+## Verification & release
+
+- Every change must include **appropriate tests**.
+- **Never merge** without independent **QA** (`/qa-breaker`) and **Security**
+  (`/security-auditor`) review.
+- **Never claim VERIFIED** without **objective evidence** (CI URL + SHA, tests,
+  migration head, specialist reports as applicable).
+
+## Escalation (immediate)
+
+Escalate immediately (do not implement around the risk) if a requested change
+threatens:
+
+- Security
+- Tenant isolation
+- Financial controls / spend
+- Compliance
+- Data integrity
+- Long-term maintainability
+
+Escalate to `/ceo` and the relevant specialist (`/security-auditor`,
+`/postgresql-expert`, `/chief-architect`, `/content-orchestrator-expert`, etc.).
+
+## Related
+
+- Baseline detail: `.cursor/rules/content-orchestrator-engineering-standard.mdc`
+  (subordinate to this rule on conflict)
+- Authority: `.cursor/skills/AUTHORITY_MATRIX.md`
+- CEO skill: `/ceo`
