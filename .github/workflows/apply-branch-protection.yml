@@ -23,8 +23,10 @@ jobs:
       contents: read
     steps:
       - name: Validate ADMIN_PAT secret is present
+        env:
+          ADMIN_PAT: ${{ secrets.ADMIN_PAT }}
         run: |
-          if [ -z "${{ secrets.ADMIN_PAT }}" ]; then
+          if [ -z "$ADMIN_PAT" ]; then
             echo "::error::ADMIN_PAT secret is not set. Add a GitHub PAT with admin:repo scope as a repository secret named ADMIN_PAT."
             exit 1
           fi
@@ -63,10 +65,12 @@ jobs:
 
       - name: Apply branch protection (live)
         if: ${{ inputs.dry_run != true }}
+        env:
+          ADMIN_PAT: ${{ secrets.ADMIN_PAT }}
         run: |
           HTTP_STATUS=$(curl -s -o /tmp/response.json -w "%{http_code}" \
             -X PUT \
-            -H "Authorization: ******" \
+            -H "Authorization: token $ADMIN_PAT" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/royalindustry94-crypto/Content-orchestrator/branches/main/protection" \
@@ -86,9 +90,11 @@ jobs:
 
       - name: Verify protection is active
         if: ${{ inputs.dry_run != true }}
+        env:
+          ADMIN_PAT: ${{ secrets.ADMIN_PAT }}
         run: |
           RESULT=$(curl -s \
-            -H "Authorization: ******" \
+            -H "Authorization: token $ADMIN_PAT" \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
             "https://api.github.com/repos/royalindustry94-crypto/Content-orchestrator/branches/main")
