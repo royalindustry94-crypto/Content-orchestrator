@@ -7,12 +7,23 @@ import {
   type ReactNode,
 } from "react";
 import ErrorBoundary from "./ErrorBoundary";
+import { BusinessManagerMark } from "./BusinessManagerMark";
 import { useDialogFocus } from "./useDialogFocus";
 import {
+  auditOpportunity,
+  createComplianceRun,
+  createContentDepartmentRun,
   createLead,
+  createProductionRun,
+  createResearchRun,
+  createStrategyRun,
   decideReviewGate,
   getActivityFeed,
   getContentCommand,
+  listChiefAudits,
+  getComplianceSummary,
+  getContentDepartmentSummary,
+  getContentPackageDetail,
   getCostControl,
   getCustomers,
   getExecutiveDashboard,
@@ -22,31 +33,65 @@ import {
   getLeads,
   getLiveLogs,
   getNotifications,
+  getOpportunityDetail,
+  getResearchSummary,
   getOperationsAlerts,
   getPipelineMonitor,
   getSpendDashboard,
   getSystemHealth,
+  getProducerGate,
+  getProductionSummary,
+  getStrategyBriefDetail,
+  getStrategySummary,
+  listProductionRuns,
   getUniversalTimeline,
   getWorkerMonitor,
   getWorkerTimeline,
+  listComplianceAudits,
+  listContentPackages,
+  listHumanReviewPackages,
+  listOpportunities,
   listReviewGates,
+  listStrategyBriefs,
   listWorkspaces,
+  sendOpportunityToStrategist,
+  sendStrategyBriefToWriter,
+  auditStrategyBrief,
   updateLead,
   type ActivityFeed,
+  type ChiefAudit,
+  type ComplianceAudit,
+  type ComplianceSummary,
+  type ContentAudit,
   type ContentCommand,
+  type ContentDepartmentSummary,
+  type ContentPackage,
+  type ContentPackageDetail,
   type CostControl,
   type Customers,
   type ExecutiveDashboard,
   type ExecutiveInsights,
   type ExecutiveMode,
+  type HumanReviewPackage,
   type GitHubOut,
+  type ProducerGate,
+  type ProductionRun,
+  type ProductionSummary,
   type Leads,
   type LiveLogs,
   type Notifications,
+  type Opportunity,
+  type OpportunityDetail,
+  type ResearchAudit,
+  type ResearchSummary,
   type PipelineMonitor,
   type ReviewGate,
   type SpendDashboard,
   type SystemHealth,
+  type StrategyAudit,
+  type StrategyBrief,
+  type StrategyBriefDetail,
+  type StrategySummary,
   type WorkerMonitor,
   type WorkerTimeline,
   type Workspace,
@@ -88,12 +133,18 @@ import {
 
 type NavKey =
   | "dashboard"
+  | "ask"
   | "mission"
   | "review"
   | "pipelines"
   | "workers"
   | "customers"
   | "leads"
+  | "research"
+  | "strategy"
+  | "content_department"
+  | "producer"
+  | "compliance"
   | "analytics"
   | "billing"
   | "settings";
@@ -173,15 +224,20 @@ function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
 }
 
 const NAV: Array<{ id: NavKey; label: string; icon: IconName }> = [
-  { id: "dashboard", label: "Command Center", icon: "dashboard" },
-  { id: "workers", label: "AI Workers", icon: "workers" },
-  { id: "pipelines", label: "Content Pipeline", icon: "pipelines" },
+  { id: "dashboard", label: "Home", icon: "dashboard" },
+  { id: "ask", label: "Ask", icon: "mission" },
+  { id: "research", label: "Opportunities", icon: "leads" },
+  { id: "strategy", label: "Strategy", icon: "mission" },
+  { id: "content_department", label: "Content Department", icon: "pipelines" },
+  { id: "producer", label: "Producer", icon: "workers" },
+  { id: "compliance", label: "Compliance", icon: "review" },
+  { id: "pipelines", label: "Content", icon: "pipelines" },
   { id: "review", label: "Human Review", icon: "review" },
-  { id: "leads", label: "Opportunities", icon: "leads" },
-  { id: "analytics", label: "Analytics", icon: "analytics" },
-  { id: "billing", label: "Spend & Usage", icon: "billing" },
+  { id: "workers", label: "Workforce", icon: "workers" },
+  { id: "billing", label: "Money", icon: "billing" },
+  { id: "analytics", label: "Insights", icon: "analytics" },
   { id: "customers", label: "Audience", icon: "customers" },
-  { id: "mission", label: "Integrations", icon: "mission" },
+  { id: "mission", label: "Connections", icon: "mission" },
   { id: "settings", label: "Settings", icon: "settings" },
 ];
 
@@ -292,103 +348,132 @@ function DashboardHome({
   workspaceId: string;
   navigate: (key: NavKey) => void;
 }) {
-  const activeAlerts = data.alerts.alerts;
-  const scrollToAlerts = () => {
-    document.getElementById("active-alerts")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  const [askNotice, setAskNotice] = useState<string | null>(null);
+  const priority = { critical: 0, warning: 1, info: 2 } as const;
+  const decisionTargets: Record<string, NavKey> = {
+    review_required: "review",
+    review_waiting: "review",
+    failed_jobs: "pipelines",
+    pipeline_failed: "pipelines",
+    spend_warning: "billing",
+    worker_offline: "workers",
+    failed_webhooks: "mission",
+    queue_backlog: "pipelines",
   };
-  const metrics = [
-    { label: "Active content jobs", value: data.executive.jobs_running, icon: "activity" as IconName, tone: "blue", target: "pipelines" as NavKey },
-    { label: "Awaiting Human Review", value: data.executive.human_reviews_waiting, icon: "review" as IconName, tone: "amber", target: "review" as NavKey },
-    { label: "Publish-ready content", value: data.pipelines.publish_queue, icon: "check" as IconName, tone: "violet", target: "pipelines" as NavKey },
-    { label: "Active workers", value: data.executive.workers_online, icon: "workers" as IconName, tone: "blue", target: "workers" as NavKey },
-    { label: "Failed jobs", value: data.executive.jobs_failed, icon: "alert" as IconName, tone: data.executive.jobs_failed ? "red" : "green", target: "pipelines" as NavKey },
-    { label: "Spend today", value: money(data.executive.spend_today_usd), icon: "billing" as IconName, tone: "violet", target: "billing" as NavKey },
-  ];
-  const flow = [
-    { label: "Queued", value: data.pipelines.jobs_waiting, tone: "muted" },
-    { label: "In progress", value: data.executive.jobs_running, tone: "blue" },
-    { label: "Human review", value: data.executive.human_reviews_waiting, tone: "amber" },
-    { label: "Publish-ready", value: data.pipelines.publish_queue, tone: "violet" },
-  ];
+  const decisions = [...data.alerts.alerts]
+    .filter((alert) => ["critical", "warning"].includes(alert.severity))
+    .sort((left, right) => priority[left.severity] - priority[right.severity]);
+  const departments = [
+    ["Scout", "Research and opportunity discovery"],
+    ["Strategist", "Business and content recommendations"],
+    ["Writer", "Scripts, copy, and content packages"],
+    ["Producer", "Generation and render orchestration"],
+    ["Compliance", "Policy, rights, and originality checks"],
+    ["Chief Auditor", "Independent audit-chain verification"],
+    ["Analyst", "Outcome and performance learning"],
+  ] as const;
+  const realWorkers = data.workers.workers;
+  const activeWorkerCount = realWorkers.filter((worker) => ["online", "busy"].includes(worker.status.toLowerCase())).length;
+
   return (
-    <div className="dashboard-home command-center-home">
-      <section className="hero-row command-center-hero">
+    <div className="dashboard-home business-home">
+      <section className="business-home__intro">
         <div>
-          <p className="page-kicker">Workspace operations</p>
-          <h2>Command Center</h2>
-          <p>Real-time workflow health, review controls, and operational signals for this workspace.</p>
+          <p className="page-kicker">The Business Manager</p>
+          <h2>Home</h2>
+          <p>What happened, what it cost, what it made, and what needs your decision.</p>
         </div>
-        <span className="live-indicator"><i /> Live backend data</span>
+        <span className="live-indicator"><i /> Workspace-backed data</span>
       </section>
 
-      <div className="saas-metrics command-center-metrics">
-        {metrics.map((metric) => (
-          <button
-            className={`saas-metric saas-metric--${metric.tone}`}
-            key={metric.label}
-            onClick={() => navigate(metric.target)}
-            type="button"
-          >
-            <span className="metric-icon"><Icon name={metric.icon} /></span>
-            <span>{metric.label}</span>
-            <strong>{metric.value}</strong>
-            <small>Open view <Icon name="arrow" size={13} /></small>
-          </button>
-        ))}
-      </div>
-
-      <section className="surface command-flow-surface">
-        <SectionHeader
-          title="Content flow"
-          detail={`${data.pipelines.queue_depth} item${data.pipelines.queue_depth === 1 ? "" : "s"} currently in the workspace queue`}
-          action={<button className="text-button" onClick={() => navigate("pipelines")} type="button">Open Content Pipeline</button>}
-        />
-        <div className="command-flow">
-          {flow.map((step, index) => (
-            <div className={`flow-step flow-step--${step.tone}`} key={step.label}>
-              <span className="flow-index">{String(index + 1).padStart(2, "0")}</span>
-              <strong>{step.value}</strong>
-              <small>{step.label}</small>
-            </div>
+      <section className="financial-overview" aria-label="Business performance">
+        <header className="financial-overview__header">
+          <div>
+            <p className="financial-overview__eyebrow">Business performance</p>
+            <h3>Bankroll</h3>
+          </div>
+          <p>Connect a financial source to see verified business performance.</p>
+        </header>
+        <div className="financial-overview__circle-grid">
+          {(["Revenue", "Spending", "Net profit", "Profit margin"] as const).map((label) => (
+            <article className="financial-overview__circle-card" key={label}>
+              <span>{label}</span>
+              <div className="financial-overview__circle" aria-label={`${label}: financial source not connected`}>
+                <div>
+                  <strong>Not connected</strong>
+                  <small>Source-backed data required</small>
+                </div>
+              </div>
+            </article>
           ))}
         </div>
       </section>
 
-      <section className="surface alerts-surface" id="active-alerts">
+      <section className="business-section what-needs-you" id="active-alerts">
         <SectionHeader
-          title="Operational attention"
-          detail={activeAlerts.length ? `${activeAlerts.length} active condition${activeAlerts.length === 1 ? "" : "s"} require attention` : "No active conditions reported by the backend"}
-          action={activeAlerts.length ? <button className="text-button" onClick={scrollToAlerts} type="button">Review alerts</button> : undefined}
+          title="What needs you now"
+          detail={decisions.length ? "High-value human decisions and interventions, ordered by severity." : "No high-value human decisions are currently reported by the backend."}
+          action={decisions.length ? <button className="text-button" onClick={() => navigate("review")} type="button">Open Human Review</button> : undefined}
         />
-        {activeAlerts.length === 0 ? (
-          <EmptyState icon="check" title="No active alerts" message="The currently reported workspace conditions are healthy." />
+        {decisions.length === 0 ? (
+          <EmptyState icon="check" title="Nothing needs your decision" message="No review, failure, spend, or connection condition currently requires a founder action." />
         ) : (
-          <ul className="alerts-list">
-            {activeAlerts.map((alert) => (
-              <li className={`alert-row alert-row--${alert.severity}`} key={alert.key}>
+          <div className="decision-list">
+            {decisions.map((alert) => (
+              <button className={`decision-card decision-card--${alert.severity}`} key={alert.key} onClick={() => navigate(decisionTargets[alert.key] ?? "mission")} type="button">
                 <span className={`severity-tag severity-tag--${alert.severity}`}>{alert.severity}</span>
-                <div>
-                  <strong>{alert.title}</strong>
-                  <small>{alert.message}</small>
-                </div>
-                {alert.count > 1 ? <b className="alert-count">{alert.count}</b> : null}
-              </li>
+                <span className="decision-card__copy"><strong>{alert.title}</strong><small>{alert.message}</small></span>
+                {alert.count > 1 ? <b>{alert.count}</b> : <Icon name="arrow" size={16} />}
+              </button>
             ))}
-          </ul>
+          </div>
         )}
       </section>
 
-      <div className="dashboard-columns">
+      <section className="ask-business" aria-labelledby="ask-business-title">
+        <div>
+          <p className="ask-business__eyebrow">Ask My Business</p>
+          <h3 id="ask-business-title">What do you want sorted?</h3>
+          <p>Describe the outcome. The appropriate worker, controls, and audit path will be selected once this command layer is connected.</p>
+        </div>
+        <form className="ask-business__form" onSubmit={(event) => { event.preventDefault(); setAskNotice("Ask My Business is not connected in this Founder Preview."); }}>
+          <input aria-label="What do you want sorted?" placeholder="Prepare a week’s content, explain a profit drop, or find opportunities…" />
+          <button className="button button--primary" type="submit">Ask</button>
+        </form>
+        {askNotice ? <p className="ask-business__notice" role="status">{askNotice}</p> : null}
+      </section>
+
+      <section className="business-section workforce-summary">
+        <SectionHeader
+          title="AI Workforce"
+          detail={`${realWorkers.length} registered worker process${realWorkers.length === 1 ? "" : "es"}; ${activeWorkerCount} currently live. Department capability is shown only when configured.`}
+          action={<button className="text-button" onClick={() => navigate("workers")} type="button">Open workforce</button>}
+        />
+        <div className="department-grid">
+          {departments.map(([name, responsibility]) => (
+            <article className="department-card" key={name}>
+              <span className="department-card__state">Not configured</span>
+              <h4>{name}</h4>
+              <p>{responsibility}</p>
+              <small>No workspace role binding or executable capability is configured.</small>
+            </article>
+          ))}
+        </div>
+        <div className="workforce-telemetry">
+          <div><span>Registered processes</span><strong>{realWorkers.length}</strong></div>
+          <div><span>Live processes</span><strong>{activeWorkerCount}</strong></div>
+          <div><span>Queue depth</span><strong>{data.pipelines.queue_depth}</strong></div>
+          <div><span>Retries recorded</span><strong>{realWorkers.reduce((total, worker) => total + worker.retry_count, 0)}</strong></div>
+        </div>
+      </section>
+
+      <div className="business-home__signals">
         <section className="surface activity-surface">
-          <SectionHeader
-            title="Recent activity"
-            detail="Backend-recorded events in this workspace"
-            action={<button className="text-button" onClick={() => navigate("analytics")} type="button">Open Analytics</button>}
-          />
-          <ActivityFeedView data={{ ...data.activity, items: data.activity.items.slice(0, 6) }} />
+          <SectionHeader title="What happened" detail="Backend-recorded activity in this workspace" action={<button className="text-button" onClick={() => navigate("analytics")} type="button">Open activity</button>} />
+          <ActivityFeedView data={{ ...data.activity, items: data.activity.items.slice(0, 5) }} />
         </section>
         <section className="surface health-surface">
-          <SectionHeader title="System health" detail="Current service indicators" />
+          <SectionHeader title="System signals" detail="Advanced operational detail" />
           <div className="health-list">
             {data.health.indicators.map((indicator) => (
               <div className="health-row" key={indicator.key}>
@@ -401,8 +486,8 @@ function DashboardHome({
         </section>
       </div>
 
-      <section className="surface quick-surface">
-        <SectionHeader title="Operator controls" detail="Destructive actions require explicit confirmation and are audit-recorded." />
+      <section className="surface quick-surface business-home__controls">
+        <SectionHeader title="Advanced operator controls" detail="Existing audited controls remain available; destructive actions require explicit confirmation." />
         <QuickActionsView token={token} workspaceId={workspaceId} />
       </section>
     </div>
@@ -651,6 +736,546 @@ function LeadsView({
   );
 }
 
+function ResearchView({
+  data,
+  token,
+  workspaceId,
+  refresh,
+}: {
+  data: { summary: ResearchSummary; opportunities: Opportunity[] };
+  token: string;
+  workspaceId: string;
+  refresh: () => void;
+}) {
+  const [objective, setObjective] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<OpportunityDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
+
+  const runResearch = async (event: FormEvent) => {
+    event.preventDefault();
+    setBusy(true);
+    setActionError(null);
+    setNotice(null);
+    try {
+      const run = await createResearchRun(token, workspaceId, {
+        research_objective: objective,
+        max_searches: 5,
+        max_provider_calls: 5,
+        max_tokens: 4000,
+        max_cost_usd: "0.00",
+        max_attempts: 3,
+      });
+      setObjective("");
+      setNotice(run.last_error ?? "Research run recorded.");
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to create the research run.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openEvidence = async (opportunity: Opportunity) => {
+    setLoadingDetail(opportunity.id);
+    setActionError(null);
+    try {
+      setSelected(await getOpportunityDetail(token, workspaceId, opportunity.id));
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to load evidence.");
+    } finally {
+      setLoadingDetail(null);
+    }
+  };
+
+  const runAudit = async (opportunity: Opportunity) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const audit: ResearchAudit = await auditOpportunity(token, workspaceId, opportunity.id);
+      setNotice(`Research Auditor: ${audit.state.replaceAll("_", " ")}.`);
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to run the Research Auditor.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendToStrategist = async (opportunity: Opportunity) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const result = await sendOpportunityToStrategist(token, workspaceId, opportunity.id);
+      setNotice(result.detail);
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Strategist handoff is unavailable.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const current = data.summary.current_research ?? data.summary.last_run;
+  return (
+    <div className="research-view stack">
+      <section className="research-hero surface">
+        <div>
+          <p className="page-kicker">Scout + Research Auditor</p>
+          <h2>Evidence-backed opportunities</h2>
+          <p>Scout records bounded research evidence. Research Auditor independently checks provenance before any future Strategist handoff.</p>
+        </div>
+        <Status value={data.summary.provider_state === "not_configured" ? "Research provider not configured" : data.summary.provider_state} />
+      </section>
+
+      <section className="research-command surface">
+        <div>
+          <SectionHeader title="Run research" detail="Manual only. Daily and custom schedules remain disabled in this Founder Preview." />
+          <p className="research-limits">Default limits: 5 searches · 5 provider calls · 4,000 tokens · $0.00 preview budget · 3 attempts.</p>
+        </div>
+        <form className="research-command__form" onSubmit={(event) => void runResearch(event)}>
+          <input aria-label="Research objective" maxLength={1000} onChange={(event) => setObjective(event.target.value)} placeholder="Describe the opportunity or demand signal to investigate" required value={objective} />
+          <button className="button button--primary" disabled={busy} type="submit">{busy ? "Recording…" : "Run research"}</button>
+        </form>
+        {data.summary.provider_state === "not_configured" ? <p className="research-not-configured" role="status">RESEARCH PROVIDER NOT CONFIGURED — no external research call, spend, or fabricated opportunity will be created.</p> : null}
+        {notice ? <p className="research-notice" role="status">{notice}</p> : null}
+        {actionError ? <p className="error" role="alert">{actionError}</p> : null}
+      </section>
+
+      <section className="research-status-grid" aria-label="Scout status">
+        <article><span>Current research</span><strong>{current ? current.status.replaceAll("_", " ") : "Not run"}</strong><small>{current ? current.research_objective : "No manual research run has been created."}</small></article>
+        <article><span>Opportunities found</span><strong>{data.summary.opportunities_found}</strong><small>Only evidence-backed opportunity records are counted.</small></article>
+        <article><span>Audited findings</span><strong>{data.summary.audited_opportunities}</strong><small>{data.summary.blocked_findings} blocked by independent audit.</small></article>
+        <article><span>Cost today</span><strong>{money(data.summary.cost_today_usd)}</strong><small>Provider usage is attributable only when a provider is configured.</small></article>
+      </section>
+
+      <section className="surface research-opportunities">
+        <SectionHeader title="Opportunities" detail="Auditable observations, not automatic content instructions." />
+        {data.opportunities.length === 0 ? (
+          <EmptyState icon="leads" title="No opportunities yet" message="Connect a research provider or run the explicit test path in automated validation; the preview will not invent trends or demand signals." />
+        ) : (
+          <div className="research-opportunity-grid">
+            {data.opportunities.map((opportunity) => (
+              <article className="research-opportunity" key={opportunity.id}>
+                <header><Status value={opportunity.audit_gate_status} /><span>{opportunity.test_data ? "TEST DATA" : opportunity.freshness}</span></header>
+                <h3>{opportunity.title}</h3>
+                <p>{opportunity.summary}</p>
+                <dl>
+                  <div><dt>Evidence</dt><dd>{opportunity.source_count} source{opportunity.source_count === 1 ? "" : "s"}</dd></div>
+                  <div><dt>Confidence</dt><dd>{Number(opportunity.confidence).toLocaleString(undefined, { style: "percent", maximumFractionDigits: 0 })}</dd></div>
+                  <div><dt>Performance</dt><dd>{opportunity.performance_data_state.replaceAll("_", " ")}</dd></div>
+                </dl>
+                <footer>
+                  <button className="button button--open" disabled={loadingDetail === opportunity.id} onClick={() => void openEvidence(opportunity)} type="button">{loadingDetail === opportunity.id ? "Loading…" : "Inspect evidence"}</button>
+                  <button className="button button--secondary" disabled={busy} onClick={() => void runAudit(opportunity)} type="button">Run auditor</button>
+                  <button className="text-button" disabled={busy || opportunity.audit_gate_status !== "pass"} onClick={() => void sendToStrategist(opportunity)} type="button">Send to Strategist</button>
+                </footer>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="research-boundaries surface">
+        <SectionHeader title="Research boundaries" detail="The system remains fail-closed where evidence, providers, schedules, or performance data are absent." />
+        <div className="research-boundaries__grid">
+          <p><strong>Sources</strong> Provenance, freshness, publisher, author, claim support, and rejection reason are inspectable per opportunity.</p>
+          <p><strong>Auditor</strong> Scout cannot approve its own work. Only an independent <code>pass</code> can make a future Strategist handoff eligible.</p>
+          <p><strong>Performance</strong> NO PERFORMANCE DATA is retained until a real workspace source is configured.</p>
+          <p><strong>Scheduling</strong> {data.summary.schedule_enabled ? "Enabled by an explicit future policy." : "Disabled by default; no autonomous Scout cycle is running."}</p>
+        </div>
+      </section>
+
+      {selected ? (
+        <section aria-label="Opportunity evidence" className="research-evidence surface">
+          <SectionHeader action={<button className="text-button" onClick={() => setSelected(null)} type="button">Close</button>} detail="Immutable source provenance and the latest independent Research Auditor decision." title={selected.opportunity.title} />
+          <div className="research-evidence__sources">
+            {selected.evidence.length ? selected.evidence.map((item) => (
+              <article key={item.source.id}>
+                <Status value={item.source.handling_state} />
+                <a href={item.source.canonical_url} rel="noreferrer" target="_blank">{item.source.publisher ?? item.source.canonical_url}</a>
+                <p>{item.claim_supported}</p>
+                <small>Retrieved {formatDate(item.source.retrieved_at)} · {item.source.freshness} · confidence {Number(item.source.confidence).toLocaleString(undefined, { style: "percent", maximumFractionDigits: 0 })}</small>
+              </article>
+            )) : <p>No source evidence is available.</p>}
+          </div>
+          <div className="research-evidence__audit">
+            <h4>Research Auditor</h4>
+            {selected.latest_audit ? <><Status value={selected.latest_audit.state} /><p>{selected.latest_audit.blocked_reasons.join(" ") || selected.latest_audit.warnings.join(" ") || "Independent audit passed without warnings."}</p></> : <p>NOT RUN — this opportunity is not eligible for Strategist handoff.</p>}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function StrategyView({
+  data,
+  token,
+  workspaceId,
+  refresh,
+}: {
+  data: { summary: StrategySummary; briefs: StrategyBrief[]; opportunities: Opportunity[] };
+  token: string;
+  workspaceId: string;
+  refresh: () => void;
+}) {
+  const [objective, setObjective] = useState("");
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<StrategyBriefDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
+  const eligibleOpportunities = data.opportunities.filter((item) => item.audit_gate_status === "pass");
+  const current = data.summary.current_strategy ?? data.summary.last_run;
+
+  const toggleOpportunity = (opportunityId: string) => {
+    setSelectedIds((currentIds) => currentIds.includes(opportunityId)
+      ? currentIds.filter((item) => item !== opportunityId)
+      : [...currentIds, opportunityId].slice(0, 5));
+  };
+
+  const runStrategy = async (event: FormEvent) => {
+    event.preventDefault();
+    if (selectedIds.length === 0) {
+      setActionError("Select a Research Auditor PASS opportunity before recording a strategy request.");
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
+    setNotice(null);
+    try {
+      const run = await createStrategyRun(token, workspaceId, {
+        strategy_objective: objective,
+        source_opportunity_ids: selectedIds,
+        max_provider_calls: 5,
+        max_tokens: 4000,
+        max_cost_usd: "0.00",
+        max_attempts: 3,
+      });
+      setObjective("");
+      setNotice(run.last_error ?? "Strategy request recorded.");
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to record the strategy request.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openBrief = async (brief: StrategyBrief) => {
+    setLoadingDetail(brief.id);
+    setActionError(null);
+    try {
+      setSelected(await getStrategyBriefDetail(token, workspaceId, brief.id));
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to load the Strategy Brief.");
+    } finally {
+      setLoadingDetail(null);
+    }
+  };
+
+  const runAudit = async (brief: StrategyBrief) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const audit: StrategyAudit = await auditStrategyBrief(token, workspaceId, brief.id);
+      setNotice(`Strategy Auditor: ${audit.state.replaceAll("_", " ")}.`);
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to run the Strategy Auditor.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const sendToWriter = async (brief: StrategyBrief) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const result = await sendStrategyBriefToWriter(token, workspaceId, brief.id);
+      setNotice(result.detail);
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Writer handoff is unavailable.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="strategy-view stack">
+      <section className="strategy-hero surface">
+        <div>
+          <p className="page-kicker">Strategist + Strategy Auditor</p>
+          <h2>Evidence-led strategy, not invented predictions</h2>
+          <p>Only opportunities with a Research Auditor PASS can enter Strategist. An independent Strategy Auditor must PASS before any future Writer eligibility.</p>
+        </div>
+        <Status value={data.summary.provider_state === "not_configured" ? "Strategy provider not configured" : data.summary.provider_state} />
+      </section>
+
+      <section className="strategy-command surface">
+        <div>
+          <SectionHeader title="Record a strategy request" detail="Manual only. A configured provider, Business Brain, and capability profile are required before a real Strategy Brief can be created." />
+          <p className="research-limits">Default limits: up to 5 approved opportunities · 5 provider calls · 4,000 tokens · $0.00 preview budget · 3 attempts.</p>
+        </div>
+        <form className="strategy-command__form" onSubmit={(event) => void runStrategy(event)}>
+          <input aria-label="Strategy objective" maxLength={1000} onChange={(event) => setObjective(event.target.value)} placeholder="What business outcome should this strategy support?" required value={objective} />
+          <fieldset className="strategy-opportunity-picker">
+            <legend>Research Auditor PASS opportunities</legend>
+            {eligibleOpportunities.length ? eligibleOpportunities.map((opportunity) => (
+              <label key={opportunity.id}>
+                <input checked={selectedIds.includes(opportunity.id)} onChange={() => toggleOpportunity(opportunity.id)} type="checkbox" />
+                <span>{opportunity.title}</span>
+              </label>
+            )) : <p>No Research Auditor PASS opportunities are available in this workspace.</p>}
+          </fieldset>
+          <button className="button button--primary" disabled={busy || eligibleOpportunities.length === 0} type="submit">{busy ? "Recording…" : "Record strategy request"}</button>
+        </form>
+        {data.summary.provider_state === "not_configured" ? <p className="research-not-configured" role="status">STRATEGY PROVIDER NOT CONFIGURED — no external strategy call, spend, prediction, or fabricated brief will be created.</p> : null}
+        {data.summary.business_context_state !== "complete" ? <p className="strategy-context" role="status">BUSINESS CONTEXT INCOMPLETE — no workspace objective, audience rules, or capability profile is configured.</p> : null}
+        {notice ? <p className="research-notice" role="status">{notice}</p> : null}
+        {actionError ? <p className="error" role="alert">{actionError}</p> : null}
+      </section>
+
+      <section className="research-status-grid" aria-label="Strategist status">
+        <article><span>Current strategy</span><strong>{current ? current.status.replaceAll("_", " ") : "Not run"}</strong><small>{current ? current.strategy_objective : "No strategy request has been recorded."}</small></article>
+        <article><span>Approved intelligence</span><strong>{data.summary.opportunities_received}</strong><small>Only Research Auditor PASS opportunities are counted.</small></article>
+        <article><span>Strategy Briefs</span><strong>{data.summary.briefs_created}</strong><small>{data.summary.briefs_passed} passed · {data.summary.briefs_blocked} blocked by independent audit.</small></article>
+        <article><span>Cost today</span><strong>{money(data.summary.cost_today_usd)}</strong><small>{data.summary.performance_data_state === "no_data" ? "NO DATA for performance attribution." : "Source-backed state required."}</small></article>
+      </section>
+
+      <section className="surface strategy-briefs">
+        <SectionHeader title="Strategy Briefs" detail="Structured recommendations with source opportunity links, feasibility state, and independent audit results." />
+        {data.briefs.length === 0 ? (
+          <EmptyState icon="mission" title="No Strategy Briefs yet" message="The preview will not invent briefs. Configure approved intelligence, Business Brain, provider capability, and spend controls before live strategy generation." />
+        ) : (
+          <div className="strategy-brief-grid">
+            {data.briefs.map((brief) => (
+              <article className="strategy-brief" key={brief.id}>
+                <header><Status value={brief.audit_gate_status} /><span>{brief.test_data ? "TEST DATA" : brief.priority.replaceAll("_", " ")}</span></header>
+                <h3>{brief.objective}</h3>
+                <p>{brief.evidence_summary}</p>
+                <dl>
+                  <div><dt>Source state</dt><dd>{brief.audit_gate_status.replaceAll("_", " ")}</dd></div>
+                  <div><dt>Cost</dt><dd>{brief.cost_state.replaceAll("_", " ")}</dd></div>
+                  <div><dt>Capability</dt><dd>{brief.capability_state.replaceAll("_", " ")}</dd></div>
+                </dl>
+                <footer>
+                  <button className="button button--open" disabled={loadingDetail === brief.id} onClick={() => void openBrief(brief)} type="button">{loadingDetail === brief.id ? "Loading…" : "Inspect brief"}</button>
+                  <button className="button button--secondary" disabled={busy} onClick={() => void runAudit(brief)} type="button">Run auditor</button>
+                  <button className="text-button" disabled={busy || brief.audit_gate_status !== "pass"} onClick={() => void sendToWriter(brief)} type="button">Check Writer eligibility</button>
+                </footer>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="research-boundaries surface">
+        <SectionHeader title="Strategy boundaries" detail="The system remains fail-closed when intelligence, business context, cost, capability, or independent review is incomplete." />
+        <div className="research-boundaries__grid">
+          <p><strong>Intelligence</strong> Only Research Auditor <code>pass</code> opportunities can enter a bounded Strategy run.</p>
+          <p><strong>Business Brain</strong> {data.summary.business_context_state === "complete" ? "Configured state reported by the backend." : "BUSINESS CONTEXT INCOMPLETE — no goal, audience, or rule is assumed."}</p>
+          <p><strong>Auditor</strong> Strategy Auditor independently checks provenance, feasibility, repetition, and unsupported claims before Writer eligibility.</p>
+          <p><strong>Scheduling</strong> {data.summary.schedule_enabled ? "Enabled by an explicit future policy." : "Disabled by default; no autonomous strategy cycle is running."}</p>
+        </div>
+      </section>
+
+      {selected ? (
+        <section aria-label="Strategy Brief detail" className="strategy-detail surface">
+          <SectionHeader action={<button className="text-button" onClick={() => setSelected(null)} type="button">Close</button>} detail="Stored brief fields and the latest independent Strategy Auditor result." title={selected.brief.objective} />
+          <div className="strategy-detail__grid">
+            <p><strong>Audience</strong>{selected.brief.target_audience ?? "Not configured"}</p>
+            <p><strong>Platform / format</strong>{selected.brief.target_platform ?? "Not configured"} · {selected.brief.content_format ?? "Not configured"}</p>
+            <p><strong>Angle</strong>{selected.brief.creative_angle ?? "Not configured"}</p>
+            <p><strong>Business goal</strong>{selected.brief.business_goal ?? "BUSINESS CONTEXT INCOMPLETE"}</p>
+            <p><strong>Source opportunities</strong>{selected.source_opportunity_ids.length}</p>
+            <p><strong>Writer handoff</strong>{selected.brief.writer_handoff_state.replaceAll("_", " ")}</p>
+          </div>
+          <div className="research-evidence__audit">
+            <h4>Strategy Auditor</h4>
+            {selected.latest_audit ? <><Status value={selected.latest_audit.state} /><p>{selected.latest_audit.blocked_reasons.join(" ") || selected.latest_audit.warnings.join(" ") || "Independent audit passed without warnings."}</p></> : <p>NOT RUN — Writer handoff remains blocked.</p>}
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function ContentDepartmentView({
+  data,
+  token,
+  workspaceId,
+  refresh,
+}: {
+  data: { summary: ContentDepartmentSummary; packages: ContentPackage[]; briefs: StrategyBrief[] };
+  token: string;
+  workspaceId: string;
+  refresh: () => void;
+}) {
+  const [selectedBriefId, setSelectedBriefId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<ContentPackageDetail | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState<string | null>(null);
+  const approvedBriefs = data.briefs.filter((brief) => brief.audit_gate_status === "pass");
+  const current = data.summary.current_run ?? data.summary.last_run;
+
+  const runContentDepartment = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedBriefId) {
+      setActionError("Select a Strategy Auditor PASS brief before recording a Content Department request.");
+      return;
+    }
+    setBusy(true);
+    setActionError(null);
+    setNotice(null);
+    try {
+      const run = await createContentDepartmentRun(token, workspaceId, {
+        strategy_brief_id: selectedBriefId,
+        max_provider_calls: 5,
+        max_tokens: 4000,
+        max_cost_usd: "0.00",
+        max_attempts: 3,
+        timeout_seconds: 900,
+      });
+      setNotice(run.last_error ?? "Content Department request recorded.");
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to record the Content Department request.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openPackage = async (pkg: ContentPackage) => {
+    setLoadingDetail(pkg.id);
+    setActionError(null);
+    try {
+      setSelected(await getContentPackageDetail(token, workspaceId, pkg.id));
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to load the Creative Package.");
+    } finally {
+      setLoadingDetail(null);
+    }
+  };
+
+  const checkProducer = async (pkg: ContentPackage) => {
+    setBusy(true);
+    setActionError(null);
+    try {
+      const gate: ProducerGate = await getProducerGate(token, workspaceId, pkg.id);
+      setNotice(gate.detail);
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Producer eligibility remains blocked.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="content-department-view stack">
+      <section className="content-department-hero surface">
+        <div>
+          <p className="page-kicker">Creative Director + Writer + Independent Auditors</p>
+          <h2>Build complete creative packages, not unreviewed drafts</h2>
+          <p>Only Strategy Auditor PASS briefs may enter. Every Content Version is immutable; Language, Fact, Brand, and Originality audits must independently pass before future Producer eligibility.</p>
+        </div>
+        <Status value={data.summary.provider_state === "not_configured" ? "Content provider not configured" : data.summary.provider_state} />
+      </section>
+
+      <section className="content-department-command surface">
+        <div>
+          <SectionHeader title="Record a content package request" detail="Manual only. A configured content provider, complete Business Brain context, and explicit capability policy are required before a real Creative Direction or Content Version can be created." />
+          <p className="research-limits">Default limits: 1 approved Strategy Brief · 5 provider calls · 4,000 tokens · $0.00 preview budget · 3 attempts.</p>
+        </div>
+        <form className="content-department-command__form" onSubmit={(event) => void runContentDepartment(event)}>
+          <label>
+            <span>Strategy Auditor PASS brief</span>
+            <select aria-label="Strategy Auditor PASS brief" onChange={(event) => setSelectedBriefId(event.target.value)} value={selectedBriefId}>
+              <option value="">Select an approved strategy brief</option>
+              {approvedBriefs.map((brief) => <option key={brief.id} value={brief.id}>{brief.objective}</option>)}
+            </select>
+          </label>
+          <button className="button button--primary" disabled={busy || approvedBriefs.length === 0} type="submit">{busy ? "Recording…" : "Record content request"}</button>
+        </form>
+        {data.summary.provider_state === "not_configured" ? <p className="research-not-configured" role="status">CONTENT PROVIDER NOT CONFIGURED — no Creative Direction, content version, claim, audit, provider cost, or fabricated package will be created.</p> : null}
+        {data.summary.business_context_state !== "complete" ? <p className="strategy-context" role="status">BUSINESS CONTEXT INCOMPLETE — brand rules, audience constraints, and capability policy are not assumed.</p> : null}
+        {notice ? <p className="research-notice" role="status">{notice}</p> : null}
+        {actionError ? <p className="error" role="alert">{actionError}</p> : null}
+      </section>
+
+      <section className="research-status-grid" aria-label="Content Department status">
+        <article><span>Current request</span><strong>{current ? current.status.replaceAll("_", " ") : "Not run"}</strong><small>{current?.last_error ?? "No Content Department request has been recorded."}</small></article>
+        <article><span>Creative directions</span><strong>{data.summary.creative_directions}</strong><small>Derived only from Strategy Auditor PASS briefs.</small></article>
+        <article><span>Creative packages</span><strong>{data.summary.packages_ready}</strong><small>{data.summary.packages_in_progress} awaiting audit · {data.summary.packages_blocked} blocked.</small></article>
+        <article><span>Claims awaiting evidence</span><strong>{data.summary.claims_unverified}</strong><small>{money(data.summary.cost_today_usd)} provider cost today.</small></article>
+      </section>
+
+      <section className="surface content-package-list">
+        <SectionHeader title="Creative Packages" detail="Each package links its Strategy Brief, Creative Direction, immutable Content Version, structured claims, audit evidence, originality record, and producer state." />
+        {data.packages.length === 0 ? (
+          <EmptyState icon="pipelines" title="No Creative Packages yet" message="The preview will not invent content. Configure approved content capability, Business Brain, evidence rules, and spend policy before live generation." />
+        ) : (
+          <div className="content-package-grid">
+            {data.packages.map((pkg) => (
+              <article className="content-package" key={pkg.id}>
+                <header><Status value={pkg.audit_gate_status} /><span>{pkg.test_data ? "TEST DATA" : pkg.status.replaceAll("_", " ")}</span></header>
+                <h3>{String(pkg.package_fields.title ?? "Creative Package")}</h3>
+                <p>Writer: {pkg.writer_worker_id.replaceAll("_", " ")} · Version {pkg.content_version_id.slice(0, 8)}</p>
+                <dl>
+                  <div><dt>Audits</dt><dd>{pkg.audit_gate_status.replaceAll("_", " ")}</dd></div>
+                  <div><dt>Originality</dt><dd>{pkg.status === "audited_blocked" ? "Requires differentiation" : "Not run"}</dd></div>
+                  <div><dt>Producer</dt><dd>{pkg.producer_handoff_state.replaceAll("_", " ")}</dd></div>
+                </dl>
+                <footer>
+                  <button className="button button--open" disabled={loadingDetail === pkg.id} onClick={() => void openPackage(pkg)} type="button">{loadingDetail === pkg.id ? "Loading…" : "Inspect package"}</button>
+                  <button className="text-button" disabled={busy || pkg.audit_gate_status !== "pass"} onClick={() => void checkProducer(pkg)} type="button">Check Producer eligibility</button>
+                </footer>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="research-boundaries surface">
+        <SectionHeader title="Content Department boundaries" detail="Content creation is evidence-led, versioned, independently audited, and never self-approved." />
+        <div className="research-boundaries__grid">
+          <p><strong>Creative Direction</strong> Only Strategy Auditor <code>pass</code> briefs may initiate a bounded content request.</p>
+          <p><strong>Claims</strong> Number, comparative, product, quote, price, and health/finance/legal-style claims require independent evidence; Writer text is never its own verification source.</p>
+          <p><strong>Auditors</strong> Language, Fact, Brand, and Originality operate independently. Any block, error, or missing audit stops the package.</p>
+          <p><strong>Human Review</strong> Producer readiness never publishes. The existing Human Review Gate must still approve the exact current Content Version before any publication policy can pass.</p>
+          <p><strong>Scheduling</strong> {data.summary.schedule_enabled ? "Enabled by an explicit future policy." : "Disabled by default; no autonomous content cycle is running."}</p>
+        </div>
+      </section>
+
+      {selected ? (
+        <section aria-label="Creative Package detail" className="content-package-detail surface">
+          <SectionHeader action={<button className="text-button" onClick={() => setSelected(null)} type="button">Close</button>} detail="Immutable Creative Direction, version-linked claims, independent audit evidence, originality status, and revision invalidation history." title={String(selected.package.package_fields.title ?? "Creative Package")} />
+          <div className="content-package-detail__grid">
+            <p><strong>Strategy Brief</strong>{selected.package.strategy_brief_id.slice(0, 8)}</p>
+            <p><strong>Creative concept</strong>{selected.direction.creative_concept}</p>
+            <p><strong>Hook direction</strong>{selected.direction.hook_direction ?? "Not configured"}</p>
+            <p><strong>Version</strong>{selected.package.content_version_id.slice(0, 8)}</p>
+            <p><strong>Revision lineage</strong>{selected.package.prior_content_version_id ? `Revision of ${selected.package.prior_content_version_id.slice(0, 8)}` : "Original version"}</p>
+            <p><strong>Invalidations</strong>{selected.invalidation_count}</p>
+          </div>
+          <div className="content-package-detail__panels">
+            <article><h4>Claims</h4>{selected.claims.length ? selected.claims.map((claim) => <p key={claim.id}><Status value={claim.verification_status} /> {claim.claim_text} <small>{claim.claim_type} · {claim.risk}</small></p>) : <p>No claims were extracted.</p>}</article>
+            <article><h4>Independent audits</h4>{selected.audits.length ? selected.audits.map((audit: ContentAudit) => <p key={audit.id}><Status value={audit.state} /> {audit.auditor_type} · {audit.blocked_reasons.join(" ") || audit.warnings.join(" ") || "No findings recorded."}</p>) : <p>NOT RUN — Producer remains blocked.</p>}</article>
+            <article><h4>Originality</h4><p>{selected.originality ? selected.originality.state.replaceAll("_", " ") : "NOT RUN"}</p><small>{selected.originality?.similarity_findings.length ? "Similarity findings require differentiation." : "No originality evaluation has been recorded."}</small></article>
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
 function BillingView({ spend, cost }: { spend: SpendDashboard; cost: CostControl }) {
   return (
     <>
@@ -682,6 +1307,192 @@ function GitHubSummary({ data }: { data: GitHubOut }) {
   );
 }
 
+function ProducerView({
+  data,
+  token,
+  workspaceId,
+  refresh,
+}: {
+  data: { summary: ProductionSummary; jobs: ProductionRun[]; packages: ContentPackage[] };
+  token: string;
+  workspaceId: string;
+  refresh: () => void;
+}) {
+  const [selectedPackageId, setSelectedPackageId] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const auditedPackages = data.packages.filter((item) => item.audit_gate_status === "pass");
+  const currentJob = data.jobs[0] ?? null;
+
+  const runProducer = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedPackageId) return;
+    setBusy(true);
+    setActionError(null);
+    setNotice(null);
+    try {
+      const run = await createProductionRun(token, workspaceId, {
+        content_package_id: selectedPackageId,
+        max_provider_calls: 5,
+        max_render_calls: 2,
+        max_cost_usd: "0.00",
+        max_attempts: 3,
+        max_repair_cycles: 2,
+        timeout_seconds: 900,
+      });
+      setNotice(run.last_error ?? "Production request recorded.");
+      refresh();
+    } catch (cause) {
+      setActionError(cause instanceof Error ? cause.message : "Unable to create the production request.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="producer-view stack">
+      <section className="producer-hero surface">
+        <div>
+          <p className="page-kicker">Producer + Media QA</p>
+          <h2>Bounded, auditable production</h2>
+          <p>Producer accepts only independently audited Content Packages. Media QA binds its checks to the exact final artifact hash before future Compliance, Chief Auditor, and Human Review gates.</p>
+        </div>
+        <Status value={data.summary.provider_state === "not_configured" ? "Production provider not configured" : data.summary.provider_state} />
+      </section>
+
+      <section className="producer-command surface">
+        <div>
+          <SectionHeader title="Request production" detail="Manual only. Provider calls, render calls, cost, attempts, repair cycles, and timeouts remain bounded." />
+          <p className="producer-limits">Default limits: 5 provider calls · 2 render calls · $0.00 preview budget · 3 attempts · 2 repair cycles.</p>
+        </div>
+        <form className="producer-command__form" onSubmit={(event) => void runProducer(event)}>
+          <select aria-label="Audited Content Package" onChange={(event) => setSelectedPackageId(event.target.value)} value={selectedPackageId}>
+            <option value="">{auditedPackages.length ? "Select an independently audited package" : "No independently audited packages available"}</option>
+            {auditedPackages.map((item) => <option key={item.id} value={item.id}>Package {item.id.slice(0, 8)} · {item.status.replaceAll("_", " ")}</option>)}
+          </select>
+          <button className="button button--primary" disabled={busy || !selectedPackageId} type="submit">{busy ? "Recording…" : "Request production"}</button>
+        </form>
+        {data.summary.provider_state === "not_configured" ? <p className="producer-not-configured" role="status">PRODUCTION PROVIDER NOT CONFIGURED — no asset generation, media rendering, external storage write, spend, callback, or fabricated artifact will be created.</p> : null}
+        {notice ? <p className="producer-notice" role="status">{notice}</p> : null}
+        {actionError ? <p className="error" role="alert">{actionError}</p> : null}
+      </section>
+
+      <section className="producer-status-grid" aria-label="Producer status">
+        <article><span>Current production</span><strong>{currentJob ? currentJob.status.replaceAll("_", " ") : "Not run"}</strong><small>{currentJob ? `Package ${currentJob.content_package_id.slice(0, 8)}` : "No audited package has been submitted."}</small></article>
+        <article><span>Final artifacts</span><strong>{data.summary.final_artifacts}</strong><small>Only immutable, hash-recorded artifacts are counted.</small></article>
+        <article><span>Media QA</span><strong>{data.summary.media_qa_passed} passed</strong><small>{data.summary.media_qa_blocked} blocked · {data.summary.repair_required} repair required.</small></article>
+        <article><span>Provider cost</span><strong>{money(data.summary.provider_cost_usd)}</strong><small>Cost is recorded only when a provider is configured.</small></article>
+      </section>
+
+      <section className="surface producer-artifacts">
+        <SectionHeader title="Artifacts and Media QA" detail="Every generated component, final artifact, provider request, hash, QA result, repair, and invalidation must remain attributable to the exact Content Version." />
+        {data.jobs.length === 0 ? (
+          <EmptyState icon="pipelines" title="No production jobs yet" message="An independently audited Content Package and an approved production provider are required before a real artifact can exist. This preview will not invent media or QA passes." />
+        ) : (
+          <div className="producer-job-grid">
+            {data.jobs.map((job) => (
+              <article className="producer-job" key={job.id}>
+                <header><Status value={job.status} /><span>{job.provider_state.replaceAll("_", " ")}</span></header>
+                <h3>Production job {job.id.slice(0, 8)}</h3>
+                <dl>
+                  <div><dt>Content Version</dt><dd><code>{job.content_version_id.slice(0, 12)}</code></dd></div>
+                  <div><dt>Provider / render calls</dt><dd>{job.provider_calls_used} / {job.render_calls_used}</dd></div>
+                  <div><dt>Repair cycles</dt><dd>{job.repair_cycles_used} / {job.max_repair_cycles}</dd></div>
+                  <div><dt>Cost</dt><dd>{money(job.actual_cost_usd)}</dd></div>
+                </dl>
+                <small>{job.last_error ?? "No provider outcome has been recorded."}</small>
+              </article>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="producer-boundaries surface">
+        <SectionHeader title="Production and Media QA gates" detail="Production remains fail-closed when any provider, artifact, audit, policy, or human gate is absent." />
+        <div className="producer-boundaries__grid">
+          <p><strong>Lineage</strong> Components and final artifacts must reference the package, content item, exact Content Version, provider job, immutable hash, storage reference, and cost.</p>
+          <p><strong>Media QA</strong> An independent worker checks the exact artifact hash for visual, audio, subtitle, script, platform, and package alignment before any future Compliance handoff.</p>
+          <p><strong>Repairs</strong> Repairs are bounded to recorded QA findings and can never overwrite an immutable artifact or clear prior findings.</p>
+          <p><strong>Readiness</strong> Media QA, Compliance, Chief Auditor, and exact-version Human Review are all required; no production record can publish automatically.</p>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ComplianceView({
+  data,
+  refresh,
+  token,
+  workspaceId,
+}: {
+  data: { summary: ComplianceSummary; audits: ComplianceAudit[]; chiefAudits: ChiefAudit[]; reviewPackages: HumanReviewPackage[] };
+  refresh: () => void;
+  token: string;
+  workspaceId: string;
+}) {
+  const [artifactId, setArtifactId] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!artifactId.trim()) {
+      setNotice("Select an independently audited final artifact before requesting Compliance.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const audit = await createComplianceRun(token, workspaceId, {
+        final_artifact_id: artifactId.trim(),
+        target_platform: "short_video",
+      });
+      setNotice(`${audit.status.replaceAll("_", " ")} — no provider call or cost was created.`);
+      refresh();
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "Compliance request could not be created.");
+    } finally { setBusy(false); }
+  };
+  return <div className="compliance-view stack">
+    <section className="compliance-hero surface">
+      <p className="eyebrow">Final machine audit</p>
+      <h2>Compliance & Chief Auditor</h2>
+      <p>Exact-artifact policy, rights, disclosure, audit-chain, cost, and Human Review readiness. A pass can only hand the same artifact to Human Review; it cannot publish.</p>
+      <div className="compliance-status-grid" aria-label="Compliance status">
+        <div><span>Provider</span><strong>{data.summary.provider_state.replaceAll("_", " ")}</strong></div>
+        <div><span>Policy</span><strong>{data.summary.policy_state.replaceAll("_", " ")}</strong></div>
+        <div><span>Compliance passes</span><strong>{data.summary.passed}</strong></div>
+        <div><span>Chief audit packages</span><strong>{data.summary.human_review_packages}</strong></div>
+      </div>
+    </section>
+    <section className="compliance-command surface">
+      <SectionHeader title="Request Compliance" detail="Manual, bounded request: 5 provider calls · 5 verification calls · 4,000 tokens · $0.00 preview budget · 3 attempts." />
+      <form className="producer-command__form" onSubmit={(event) => void run(event)}>
+        <input aria-label="Final artifact ID" placeholder="Final artifact ID from audited Producer output" value={artifactId} onChange={(event) => setArtifactId(event.target.value)} />
+        <button className="primary-action" disabled={busy} type="submit">{busy ? "Requesting…" : "Request Compliance"}</button>
+      </form>
+      <p className="compliance-not-configured" role="status">COMPLIANCE PROVIDER NOT CONFIGURED — no policy retrieval, external rights verification, provider spend, remediation, publication, or fabricated compliance result will be created.</p>
+      {notice ? <p className="producer-notice" role="status">{notice}</p> : null}
+    </section>
+    <section className="surface">
+      <SectionHeader title="Audit chain" detail="Every required machine check must match the exact final artifact hash. Any missing, stale, invalidated, blocked, or errored evidence blocks progression." />
+      <div className="compliance-chain-grid">
+        <div><span>Media QA</span><strong>{data.chiefAudits.length ? "Recorded" : "Not run"}</strong></div>
+        <div><span>Compliance</span><strong>{data.audits.length ? data.audits[0].status.replaceAll("_", " ") : "Not run"}</strong></div>
+        <div><span>Chief Auditor</span><strong>{data.chiefAudits.length ? data.chiefAudits[0].status.replaceAll("_", " ") : "Not run"}</strong></div>
+        <div><span>Human Review</span><strong>{data.reviewPackages.length ? "Package ready" : "Blocked"}</strong></div>
+      </div>
+    </section>
+    <section className="surface compliance-evidence">
+      <SectionHeader title="Evidence and downstream readiness" detail="Policy source, rights evidence, required disclosures, cost reconciliation, and Human Review package evidence appear only when persisted by the backend." />
+      {data.audits.length === 0 && data.chiefAudits.length === 0 ? <EmptyState icon="review" title="No compliance evidence yet" message="Provider and Business Context are not configured, and no final artifact has completed the audited production chain." /> : <div className="producer-job-grid">
+        {data.audits.map((audit) => <article className="producer-job" key={audit.id}><p className="eyebrow">Compliance</p><h3>{audit.status.replaceAll("_", " ")}</h3><p>Rights: {audit.rights_status.replaceAll("_", " ")} · Risk: {audit.risk_level}</p><p>Artifact hash: {audit.artifact_hash.slice(0, 16)}…</p></article>)}
+        {data.chiefAudits.map((audit) => <article className="producer-job" key={audit.id}><p className="eyebrow">Chief Auditor</p><h3>{audit.status.replaceAll("_", " ")}</h3><p>Lineage: {audit.lineage_status} · Cost: {audit.cost_reconciliation_status}</p><p>{audit.blockers.length ? audit.blockers.join(" · ") : "No stored blockers"}</p></article>)}
+      </div>}
+    </section>
+  </div>;
+}
+
 type ViewData =
   | DashboardData
   | ExecutiveMode
@@ -693,10 +1504,35 @@ type ViewData =
   | { monitor: WorkerMonitor; timeline: WorkerTimeline }
   | Customers
   | Leads
+  | { summary: ResearchSummary; opportunities: Opportunity[] }
+  | { summary: StrategySummary; briefs: StrategyBrief[]; opportunities: Opportunity[] }
+  | { summary: ContentDepartmentSummary; packages: ContentPackage[]; briefs: StrategyBrief[] }
+  | { summary: ProductionSummary; jobs: ProductionRun[]; packages: ContentPackage[] }
+  | { summary: ComplianceSummary; audits: ComplianceAudit[]; chiefAudits: ChiefAudit[]; reviewPackages: HumanReviewPackage[] }
   | { insights: ExecutiveInsights; activity: ActivityFeed; github: GitHubOut }
   | { spend: SpendDashboard; cost: CostControl }
   | { health: SystemHealth; executive: ExecutiveDashboard }
   | null;
+
+function isResearchViewData(value: ViewData): value is { summary: ResearchSummary; opportunities: Opportunity[] } {
+  return Boolean(value && "summary" in value && "opportunities" in value && "research_data_state" in value.summary);
+}
+
+function isStrategyViewData(value: ViewData): value is { summary: StrategySummary; briefs: StrategyBrief[]; opportunities: Opportunity[] } {
+  return Boolean(value && "summary" in value && "briefs" in value && "opportunities" in value && "business_context_state" in value.summary);
+}
+
+function isContentDepartmentViewData(value: ViewData): value is { summary: ContentDepartmentSummary; packages: ContentPackage[]; briefs: StrategyBrief[] } {
+  return Boolean(value && "summary" in value && "packages" in value && "briefs" in value && "claims_unverified" in value.summary);
+}
+
+function isProducerViewData(value: ViewData): value is { summary: ProductionSummary; jobs: ProductionRun[]; packages: ContentPackage[] } {
+  return Boolean(value && "summary" in value && "jobs" in value && "packages" in value && "production_jobs" in value.summary);
+}
+
+function isComplianceViewData(value: ViewData): value is { summary: ComplianceSummary; audits: ComplianceAudit[]; chiefAudits: ChiefAudit[]; reviewPackages: HumanReviewPackage[] } {
+  return Boolean(value && "summary" in value && "audits" in value && "chiefAudits" in value && "reviewPackages" in value && "policy_state" in value.summary);
+}
 
 export default function LumoraDashboard({
   token,
@@ -778,15 +1614,18 @@ export default function LumoraDashboard({
     try {
       let next: ViewData;
       if (nav === "dashboard") {
-        const [executive, pipelines, alerts, activity, health, customers] = await Promise.all([
+        const [executive, pipelines, alerts, activity, health, customers, workers] = await Promise.all([
           getExecutiveDashboard(token, workspaceId),
           getPipelineMonitor(token, workspaceId),
           getOperationsAlerts(token, workspaceId),
           getActivityFeed(token, workspaceId),
           getSystemHealth(token, workspaceId),
           getCustomers(token, workspaceId),
+          getWorkerMonitor(token, workspaceId),
         ]);
-        next = { executive, pipelines, alerts, activity, health, customers };
+        next = { executive, pipelines, alerts, activity, health, customers, workers };
+      } else if (nav === "ask") {
+        next = null;
       } else if (nav === "mission") {
         if (missionTab === "overview") next = await getExecutiveMode(token, workspaceId);
         else if (missionTab === "timeline") next = await getUniversalTimeline(token, workspaceId);
@@ -804,7 +1643,42 @@ export default function LumoraDashboard({
       }
       else if (nav === "customers") next = await getCustomers(token, workspaceId);
       else if (nav === "leads") next = await getLeads(token, workspaceId);
-      else if (nav === "analytics") {
+      else if (nav === "research") {
+        const [summary, opportunities] = await Promise.all([
+          getResearchSummary(token, workspaceId),
+          listOpportunities(token, workspaceId),
+        ]);
+        next = { summary, opportunities };
+      } else if (nav === "strategy") {
+        const [summary, briefs, opportunities] = await Promise.all([
+          getStrategySummary(token, workspaceId),
+          listStrategyBriefs(token, workspaceId),
+          listOpportunities(token, workspaceId),
+        ]);
+        next = { summary, briefs, opportunities };
+      } else if (nav === "content_department") {
+        const [summary, packages, briefs] = await Promise.all([
+          getContentDepartmentSummary(token, workspaceId),
+          listContentPackages(token, workspaceId),
+          listStrategyBriefs(token, workspaceId),
+        ]);
+        next = { summary, packages, briefs };
+      } else if (nav === "producer") {
+        const [summary, jobs, packages] = await Promise.all([
+          getProductionSummary(token, workspaceId),
+          listProductionRuns(token, workspaceId),
+          listContentPackages(token, workspaceId),
+        ]);
+        next = { summary, jobs, packages };
+      } else if (nav === "compliance") {
+        const [summary, audits, chiefAudits, reviewPackages] = await Promise.all([
+          getComplianceSummary(token, workspaceId),
+          listComplianceAudits(token, workspaceId),
+          listChiefAudits(token, workspaceId),
+          listHumanReviewPackages(token, workspaceId),
+        ]);
+        next = { summary, audits, chiefAudits, reviewPackages };
+      } else if (nav === "analytics") {
         const [insights, activity, github] = await Promise.all([
           getExecutiveInsights(token, workspaceId),
           getActivityFeed(token, workspaceId),
@@ -909,7 +1783,10 @@ export default function LumoraDashboard({
       );
     }
 
-    // The AI assistant manages its own request lifecycle and needs no view data.
+    // Ask My Business and the legacy assistant manage their own request lifecycle.
+    if (nav === "ask") {
+      return <AssistantPanel token={token} workspaceId={workspaceId} />;
+    }
     if (nav === "mission" && missionTab === "assistant") {
       return <AssistantPanel token={token} workspaceId={workspaceId} />;
     }
@@ -968,6 +1845,26 @@ export default function LumoraDashboard({
     if (nav === "leads") {
       if (!isLeads(data)) return <Loading />;
       return <LeadsView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
+    }
+    if (nav === "research") {
+      if (!isResearchViewData(data)) return <Loading />;
+      return <ResearchView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
+    }
+    if (nav === "strategy") {
+      if (!isStrategyViewData(data)) return <Loading />;
+      return <StrategyView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
+    }
+    if (nav === "content_department") {
+      if (!isContentDepartmentViewData(data)) return <Loading />;
+      return <ContentDepartmentView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
+    }
+    if (nav === "producer") {
+      if (!isProducerViewData(data)) return <Loading />;
+      return <ProducerView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
+    }
+    if (nav === "compliance") {
+      if (!isComplianceViewData(data)) return <Loading />;
+      return <ComplianceView data={data} refresh={() => void load()} token={token} workspaceId={workspaceId} />;
     }
     if (nav === "analytics") {
       if (!isAnalyticsData(data)) return <Loading />;
@@ -1032,25 +1929,31 @@ export default function LumoraDashboard({
         tabIndex={-1}
       >
         <div className="brand">
-          <span className="brand-mark">L</span>
-          <div><strong>Lumora</strong><small>Command Center</small></div>
+          <BusinessManagerMark className="brand-mark" />
+          <div className="brand-copy"><strong>The Business Manager</strong><small>Business Operating System</small></div>
           <button aria-label="Close navigation" className="mobile-close" onClick={() => setMobileOpen(false)} type="button"><Icon name="close" /></button>
         </div>
         <nav aria-label="Primary navigation">
-          <p>Command</p>
-          {NAV.slice(0, 4).map((item) => (
+          <p>Business</p>
+          {NAV.slice(0, 3).map((item) => (
+            <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
+              <Icon name={item.icon} /><span>{item.label}</span>
+            </button>
+          ))}
+          <p>Content &amp; workforce</p>
+          {NAV.slice(3, 6).map((item) => (
             <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
               <Icon name={item.icon} /><span>{item.label}</span>
               {item.id === "review" && reviewCount > 0 ? <b>{reviewCount}</b> : null}
             </button>
           ))}
-          <p>Operations</p>
-          {NAV.slice(4, 9).map((item) => (
+          <p>Money &amp; insights</p>
+          {NAV.slice(6, 9).map((item) => (
             <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
               <Icon name={item.icon} /><span>{item.label}</span>
             </button>
           ))}
-          <p>Workspace</p>
+          <p>System</p>
           {NAV.slice(9).map((item) => (
             <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
               <Icon name={item.icon} /><span>{item.label}</span>
@@ -1074,13 +1977,20 @@ export default function LumoraDashboard({
 
       <div className="lumora-workspace">
         <header className="topbar">
-          <button aria-label="Open navigation" className="mobile-menu" onClick={() => setMobileOpen(true)} type="button"><Icon name="menu" /></button>
-          <label className="workspace-switcher">
-            <span className="workspace-avatar">{(currentWorkspace?.name ?? "W").slice(0, 1).toUpperCase()}</span>
-            <select aria-label="Workspace" onChange={(event) => onWorkspaceChange(event.target.value)} value={workspaceId}>
-              {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
-            </select>
-          </label>
+          <div className="topbar-identity">
+            <button aria-label="Open navigation" className="mobile-menu" onClick={() => setMobileOpen(true)} type="button"><Icon name="menu" /></button>
+            <div className="mobile-brand" aria-label="The Business Manager">
+              <BusinessManagerMark className="mobile-brand__mark" />
+              <span><strong>The Business Manager</strong><small>Business Operating System</small></span>
+            </div>
+          </div>
+          <div className="topbar-utilities">
+            <label className="workspace-switcher">
+              <span className="workspace-avatar">{(currentWorkspace?.name ?? "W").slice(0, 1).toUpperCase()}</span>
+              <select aria-label="Workspace" onChange={(event) => onWorkspaceChange(event.target.value)} value={workspaceId}>
+                {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
+              </select>
+            </label>
           <div className={mobileSearchOpen ? "topbar-search topbar-search--open" : "topbar-search"}>
             <Icon name="search" size={17} />
             <GlobalSearchBar
@@ -1144,12 +2054,13 @@ export default function LumoraDashboard({
               ) : null}
             </div>
           </div>
+          </div>
         </header>
 
         <main className="lumora-main">
           {nav !== "dashboard" ? (
             <header className="view-header">
-              <div><p>Lumora / {title}</p><h1>{title}</h1></div>
+              <div><p>The Business Manager / {title}</p><h1>{title}</h1></div>
               <button aria-label="Refresh data" className="icon-button refresh-button" disabled={loading} onClick={() => void load()} type="button"><Icon name="refresh" /></button>
             </header>
           ) : null}

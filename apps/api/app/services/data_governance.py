@@ -84,6 +84,40 @@ EXPORTABLE_TABLES: tuple[str, ...] = (
     "workflow_stages",
     "workflow_transitions",
     "leads",
+    "research_runs",
+    "research_sources",
+    "opportunities",
+    "opportunity_evidence",
+    "research_audits",
+    "research_schedules",
+    "strategy_runs",
+    "strategy_briefs",
+    "strategy_brief_opportunities",
+    "strategy_audits",
+    "strategy_schedules",
+    "content_department_runs",
+    "creative_directions",
+    "content_packages",
+    "content_claims",
+    "content_audits",
+    "content_audit_invalidations",
+    "originality_fingerprints",
+    "production_jobs",
+    "production_assets",
+    "final_artifacts",
+    "media_qa_results",
+    "production_repairs",
+    "artifact_invalidations",
+    "production_readiness",
+    "platform_policy_sources",
+    "artifact_rights_evidence",
+    "audit_gate_manifests",
+    "compliance_audits",
+    "compliance_invalidations",
+    "chief_audits",
+    "chief_audit_invalidations",
+    "human_review_packages",
+    "artifact_publication_eligibility",
 )
 
 # Customer content tables that carry ``deleted_at`` and whose RLS grants the
@@ -150,6 +184,40 @@ RETAINED_ON_DELETE: tuple[str, ...] = (
     "provider_credentials",
     "workspace_memberships",
     "workspaces",
+    "research_runs",
+    "research_sources",
+    "opportunities",
+    "opportunity_evidence",
+    "research_audits",
+    "research_schedules",
+    "strategy_runs",
+    "strategy_briefs",
+    "strategy_brief_opportunities",
+    "strategy_audits",
+    "strategy_schedules",
+    "content_department_runs",
+    "creative_directions",
+    "content_packages",
+    "content_claims",
+    "content_audits",
+    "content_audit_invalidations",
+    "originality_fingerprints",
+    "production_jobs",
+    "production_assets",
+    "final_artifacts",
+    "media_qa_results",
+    "production_repairs",
+    "artifact_invalidations",
+    "production_readiness",
+    "platform_policy_sources",
+    "artifact_rights_evidence",
+    "audit_gate_manifests",
+    "compliance_audits",
+    "compliance_invalidations",
+    "chief_audits",
+    "chief_audit_invalidations",
+    "human_review_packages",
+    "artifact_publication_eligibility",
 )
 
 
@@ -184,10 +252,7 @@ class DeletionOutcome:
 async def _existing_tables(session: AsyncSession) -> set[str]:
     rows = (
         await session.execute(
-            text(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema = 'public'"
-            )
+            text("SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'")
         )
     ).all()
     return {r[0] for r in rows}
@@ -207,9 +272,7 @@ async def _table_has_workspace_column(session: AsyncSession, table: str) -> bool
     return found is not None
 
 
-async def export_workspace(
-    session: AsyncSession, *, workspace_id: uuid.UUID
-) -> ExportBundle:
+async def export_workspace(session: AsyncSession, *, workspace_id: uuid.UUID) -> ExportBundle:
     """Export the workspace's own eligible records.
 
     Credential and service-only tables are excluded by name and reported.

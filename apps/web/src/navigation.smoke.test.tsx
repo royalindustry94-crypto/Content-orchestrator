@@ -111,6 +111,17 @@ vi.mock("./api", () => ({
   getWorkerMonitor: vi.fn(async () => ({ workers: [], generated_at: "" })),
   getWorkerTimeline: vi.fn(async () => ({ workers: [], generated_at: "" })),
   getLeads: vi.fn(async () => ({ leads: [], total: 0, generated_at: "" })),
+  getResearchSummary: vi.fn(async () => ({
+    provider_state: "not_configured", status: "not_run", current_research: null, last_run: null,
+    next_run_at: null, opportunities_found: 0, audited_opportunities: 0, blocked_findings: 0,
+    cost_today_usd: "0", last_error: "RESEARCH PROVIDER NOT CONFIGURED", schedule_enabled: false,
+    research_data_state: "not_connected",
+  })),
+  listOpportunities: vi.fn(async () => []),
+  createResearchRun: vi.fn(async () => ({})),
+  getOpportunityDetail: vi.fn(async () => ({})),
+  auditOpportunity: vi.fn(async () => ({})),
+  sendOpportunityToStrategist: vi.fn(async () => ({})),
   getSpendDashboard: vi.fn(async () => ({
     today_usd: "0", week_usd: "0", month_usd: "0", by_provider: [],
     daily_cap_usd: null, monthly_cap_usd: null, budget_remaining_daily_usd: null,
@@ -197,38 +208,41 @@ describe("Mission Control destructive-action interlock", () => {
 });
 
 describe("dashboard navigation smoke test", () => {
-  it("loads Command Center with a truthful health footer (not a fake 'operational')", async () => {
+  it("loads Home with a truthful health footer (not a fake 'operational')", async () => {
     renderShell();
-    expect(await screen.findByRole("heading", { name: "Command Center" })).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeDefined();
     // Health footer must reflect the red worker indicator — never "operational".
     expect(await screen.findByText(/Service disruption detected/i)).toBeDefined();
     expect(screen.queryByText("All systems operational")).toBeNull();
   });
 
-  it("shows real operational attention without a synthetic alert-count metric", async () => {
+  it("shows real founder decisions without a synthetic alert-count metric", async () => {
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
-    expect(await screen.findByText("Operational attention")).toBeDefined();
+    await screen.findByRole("heading", { name: "Home" });
+    expect(await screen.findByText("What needs you now")).toBeDefined();
     expect(await screen.findByText("Worker Offline")).toBeDefined();
     expect(await screen.findByText("Review Waiting")).toBeDefined();
   });
 
   it("renders the requested primary navigation and summary from existing backend fields", async () => {
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
     for (const label of [
-      "Command Center", "AI Workers", "Content Pipeline", "Human Review", "Opportunities",
-      "Analytics", "Spend & Usage", "Audience", "Integrations", "Settings",
+      "Home", "Ask", "Opportunities", "Content", "Human Review", "Workforce",
+      "Money", "Insights", "Audience", "Connections", "Settings",
     ]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
     for (const label of [
-      "Active content jobs", "Awaiting Human Review", "Publish-ready content",
-      "Active workers", "Failed jobs", "Spend today",
+      "Bankroll", "Connect a financial source to see verified business performance.",
+      "Revenue", "Spending", "Net profit", "Profit margin", "What needs you now", "What do you want sorted?", "AI Workforce",
     ]) {
-      expect(screen.getByText(label)).toBeDefined();
+      // AI Workforce intentionally appears in both primary navigation and the Home section.
+      expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
-    expect(screen.queryByText("Revenue")).toBeNull();
+    expect(screen.getAllByText("Not connected").length).toBe(4);
+    expect(screen.getAllByText("Source-backed data required").length).toBe(4);
+    expect(screen.queryByText(/\$0/)).toBeNull();
   });
 
   it("keeps the newest global-search response when an older request resolves late", async () => {
@@ -246,7 +260,7 @@ describe("dashboard navigation smoke test", () => {
           }),
     );
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
     const input = screen.getByRole("textbox", { name: /global search/i });
 
     fireEvent.change(input, { target: { value: "ab" } });
@@ -267,7 +281,7 @@ describe("dashboard navigation smoke test", () => {
 
   it("opens the keyboard command palette and closes it with Escape", async () => {
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     expect(await screen.findByRole("dialog", { name: /command palette/i })).toBeDefined();
     fireEvent.keyDown(document, { key: "Escape" });
@@ -276,7 +290,7 @@ describe("dashboard navigation smoke test", () => {
 
   it("routes command palette deep links to the intended destination", async () => {
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
     fireEvent.keyDown(window, { key: "k", ctrlKey: true });
     const palette = await screen.findByRole("dialog", { name: /command palette/i });
     fireEvent.click(within(palette).getByRole("button", { name: /open logs/i }));
@@ -284,42 +298,43 @@ describe("dashboard navigation smoke test", () => {
     expect(await screen.findByText(/No worker logs match/i)).toBeDefined();
   });
 
-  it("loads every Integrations view tab safely", async () => {
+  it("loads every Connections view tab safely", async () => {
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
     const nav = screen.getByRole("navigation", { name: /primary navigation/i });
-    fireEvent.click(within(nav).getByRole("button", { name: /^Integrations$/i }));
+    fireEvent.click(within(nav).getByRole("button", { name: /^Connections$/i }));
     await screen.findByText(/Today's summary/i);
 
     const tabs: Array<[string, RegExp]> = [
       ["Timeline", /No timeline events recorded/i],
       ["Live logs", /No worker logs match/i],
-      ["AI assistant", /Ask live system/i],
+      ["AI assistant", /Ask My Business/i],
       ["Content", /No content activity has been recorded/i],
       ["Overview", /Today's summary/i],
     ];
     for (const [label, expected] of tabs) {
       fireEvent.click(screen.getByRole("tab", { name: label }));
       expect(await screen.findByText(expected)).toBeDefined();
-      expect(screen.queryByText(/Lumora hit an unexpected error/i)).toBeNull();
+      expect(screen.queryByText(/The Business Manager hit an unexpected error/i)).toBeNull();
     }
   });
 
   it("navigates across every route without a blank-screen crash", async () => {
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
 
     const routes: Array<[string, RegExp]> = [
-      ["Content Pipeline", /No active pipelines/i],
-      ["AI Workers", /No workers registered/i],
-      ["Audience", /No customers yet/i],
-      ["Opportunities", /No leads yet/i],
-      ["Integrations", /Today's summary/i],
-      ["Analytics", /Engineering delivery/i],
-      ["Spend & Usage", /Cost control/i],
-      ["Settings", /Deployment/i],
+      ["Ask", /Ask My Business/i],
+      ["Opportunities", /No opportunities yet/i],
+      ["Content", /No active pipelines/i],
       ["Human Review", /keeps every publish decision/i],
-      ["Command Center", /Real-time workflow health/i],
+      ["Workforce", /No workers registered/i],
+      ["Money", /Cost control/i],
+      ["Insights", /Engineering delivery/i],
+      ["Audience", /No customers yet/i],
+      ["Connections", /Today's summary/i],
+      ["Settings", /Deployment/i],
+      ["Home", /Connect a financial source to see verified business performance/i],
     ];
 
     for (const [label, expected] of routes) {
@@ -327,30 +342,30 @@ describe("dashboard navigation smoke test", () => {
       fireEvent.click(within(nav).getByRole("button", { name: new RegExp(`^${label}$`, "i") }));
       await waitFor(() => expect(screen.getByText(expected)).toBeDefined());
       // The shell must survive: brand is always present, crash fallback is not.
-      expect(screen.getByText("Lumora")).toBeDefined();
-      expect(screen.queryByText(/Lumora hit an unexpected error/i)).toBeNull();
+      expect(screen.getAllByText("The Business Manager").length).toBeGreaterThan(0);
+      expect(screen.queryByText(/The Business Manager hit an unexpected error/i)).toBeNull();
     }
   });
 
   it("surfaces a retryable error state instead of crashing when a route fails", async () => {
     const api = await import("./api");
     // Reject a route-only endpoint so the initial dashboard load still succeeds.
-    (api.getLeads as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+    (api.getResearchSummary as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
       new Error("503: backend unavailable"),
     );
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
     const nav = screen.getByRole("navigation", { name: /primary navigation/i });
     fireEvent.click(within(nav).getByRole("button", { name: /^Opportunities$/i }));
     expect(await screen.findByText(/We couldn’t load this view|We couldn't load this view/i)).toBeDefined();
     // Shell still intact.
-    expect(screen.getByText("Lumora")).toBeDefined();
+    expect(screen.getAllByText("The Business Manager").length).toBeGreaterThan(0);
   });
 
   it("ignores a late response from a route that is no longer active", async () => {
     const api = await import("./api");
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
 
     let resolvePipeline!: (value: typeof pipelines) => void;
     const delayedPipeline = new Promise<typeof pipelines>((resolve) => {
@@ -361,21 +376,21 @@ describe("dashboard navigation smoke test", () => {
 
     const nav = screen.getByRole("navigation", { name: /primary navigation/i });
 
-    fireEvent.click(within(nav).getByRole("button", { name: /^Content Pipeline$/i }));
-    fireEvent.click(within(nav).getByRole("button", { name: /^AI Workers$/i }));
+    fireEvent.click(within(nav).getByRole("button", { name: /^Content$/i }));
+    fireEvent.click(within(nav).getByRole("button", { name: /^Workforce$/i }));
     expect(await screen.findByText(/No workers registered/i)).toBeDefined();
 
     resolvePipeline(pipelines);
     await waitFor(() => expect(screen.getByText(/No workers registered/i)).toBeDefined());
     expect(screen.queryByText(/No active pipelines/i)).toBeNull();
-    expect(screen.queryByText(/Lumora hit an unexpected error/i)).toBeNull();
+    expect(screen.queryByText(/The Business Manager hit an unexpected error/i)).toBeNull();
   });
 });
 
 describe("mobile smoke test", () => {
   it("opens the mobile navigation drawer and reveals a search affordance", async () => {
     renderShell();
-    await screen.findByRole("heading", { name: "Command Center" });
+    await screen.findByRole("heading", { name: "Home" });
     // Mobile menu + search buttons exist for small screens.
     expect(screen.getByRole("button", { name: /open navigation/i })).toBeDefined();
     const searchToggle = screen.getByRole("button", { name: /^Search$/i });

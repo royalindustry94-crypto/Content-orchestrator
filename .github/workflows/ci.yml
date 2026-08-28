@@ -91,6 +91,109 @@ jobs:
       - name: npm audit (high+)
         run: npm audit --audit-level=high
 
+  browser-smoke:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: content_orchestrator_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/content_orchestrator_test
+      APP_DATABASE_URL: postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test
+      SUPABASE_JWT_SECRET: ci-browser-smoke-supabase-jwt-secret
+      ENVIRONMENT: development
+      AUTH_MODE: local
+      CORS_ALLOW_ORIGINS: '["http://127.0.0.1:5173","http://localhost:5173"]'
+      OPS_PREVIEW_EMAIL: browser-smoke@example.com
+      OPS_PREVIEW_PASSWORD: browser-smoke-password-2026
+      DEMO_EMAIL: browser-smoke@example.com
+      DEMO_PASSWORD: browser-smoke-password-2026
+      UI_SMOKE_BASE: http://127.0.0.1:5173
+      UI_SMOKE_OUT: /tmp/content-orchestrator-browser-smoke
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: apps/web/package-lock.json
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+      - name: Install API dependencies
+        working-directory: apps/api
+        run: pip install -e ".[dev]"
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: npm ci
+      - name: Migrate preview database
+        working-directory: apps/api
+        run: alembic upgrade head
+      - name: Start API and web
+        run: |
+          mkdir -p "$UI_SMOKE_OUT"
+          (cd apps/api && uvicorn app.main:app --host 127.0.0.1 --port 8000 >"$UI_SMOKE_OUT/api.log" 2>&1 & echo $! >"$UI_SMOKE_OUT/api.pid")
+          (cd apps/web && npm run dev -- --host 127.0.0.1 --port 5173 --strictPort >"$UI_SMOKE_OUT/web.log" 2>&1 & echo $! >"$UI_SMOKE_OUT/web.pid")
+          for i in $(seq 1 60); do
+            if curl -sf http://127.0.0.1:8000/health/ready >/dev/null && curl -sf http://127.0.0.1:5173/ >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Preview services failed readiness" >&2
+          cat "$UI_SMOKE_OUT/api.log" || true
+          cat "$UI_SMOKE_OUT/web.log" || true
+          exit 1
+      - name: Seed browser-smoke workspace
+        run: API_BASE_URL=http://127.0.0.1:8000 python3 scripts/seed_ops_preview.py >"$UI_SMOKE_OUT/seed.log" 2>&1
+      - name: Start headless Chrome with CDP
+        run: |
+          CHROME_BIN="$(command -v google-chrome || command -v chromium || command -v chromium-browser || true)"
+          if [ -z "$CHROME_BIN" ]; then
+            echo "No Chrome/Chromium binary found on runner" >&2
+            exit 1
+          fi
+          "$CHROME_BIN" --headless=new --no-sandbox --disable-dev-shm-usage --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 about:blank >"$UI_SMOKE_OUT/chrome.log" 2>&1 &
+          echo $! >"$UI_SMOKE_OUT/chrome.pid"
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:9222/json/version >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "Chrome CDP failed readiness" >&2
+          cat "$UI_SMOKE_OUT/chrome.log" || true
+          exit 1
+      - name: Run exact desktop and 390px smoke
+        run: node scripts/ui_smoke_cdp.mjs 2>&1 | tee "$UI_SMOKE_OUT/smoke.log"
+      - name: Record candidate identity
+        if: always()
+        run: |
+          printf 'candidate_sha=%s\nchecked_out_sha=%s\nworkflow_head_sha=%s\nrun_id=%s\nrun_attempt=%s\n' "$CANDIDATE_SHA" "$(git rev-parse HEAD)" "${{ github.event.pull_request.head.sha || github.sha }}" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >"$UI_SMOKE_OUT/candidate.txt"
+      - name: Upload browser-smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-smoke-${{ env.CANDIDATE_SHA }}
+          path: /tmp/content-orchestrator-browser-smoke
+          if-no-files-found: error
+          retention-days: 30
+
   security:
     runs-on: ubuntu-latest
     steps:

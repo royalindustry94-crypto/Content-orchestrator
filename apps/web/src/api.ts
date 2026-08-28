@@ -775,3 +775,853 @@ export function decideReviewGate(
     },
   );
 }
+
+export type ResearchRun = {
+  id: string;
+  workspace_id: string;
+  trigger: string;
+  research_objective: string;
+  permitted_sources: string[];
+  started_at: string;
+  deadline: string;
+  max_searches: number;
+  max_provider_calls: number;
+  max_tokens: number;
+  max_cost_usd: string;
+  max_attempts: number;
+  status: string;
+  provider_state: string;
+  searches_used: number;
+  provider_calls_used: number;
+  tokens_used: number;
+  reserved_cost_usd: string;
+  actual_cost_usd: string;
+  opportunity_count: number;
+  audited_opportunity_count: number;
+  blocked_opportunity_count: number;
+  last_error: string | null;
+  correlation_id: string;
+  trace_id: string | null;
+  test_data: boolean;
+};
+
+export type ResearchSource = {
+  id: string;
+  research_run_id: string;
+  canonical_url: string;
+  source_type: string;
+  retrieved_at: string;
+  published_at: string | null;
+  publisher: string | null;
+  author: string | null;
+  claim_supported: string | null;
+  freshness: string;
+  confidence: string;
+  handling_state: string;
+  rejection_reason: string | null;
+  test_data: boolean;
+};
+
+export type Opportunity = {
+  id: string;
+  research_run_id: string;
+  title: string;
+  topic: string;
+  summary: string;
+  proposed_angle: string;
+  target_audience: string | null;
+  target_platform: string | null;
+  suggested_format: string | null;
+  discovered_at: string;
+  freshness: string;
+  source_count: number;
+  confidence: string;
+  risk: string;
+  status: string;
+  created_by_worker: string;
+  component_scores: Record<string, number>;
+  score_reasoning: Record<string, string>;
+  audit_gate_status: string;
+  performance_data_state: string;
+  strategist_state: string;
+  test_data: boolean;
+};
+
+export type OpportunityEvidence = {
+  source: ResearchSource;
+  claim_supported: string;
+  relevance: string;
+  contradiction_flag: boolean;
+};
+
+export type ResearchAudit = {
+  id: string;
+  opportunity_id: string;
+  research_run_id: string;
+  state: string;
+  evaluator_context_version: string;
+  findings: Array<Record<string, string>>;
+  warnings: string[];
+  blocked_reasons: string[];
+  checked_at: string;
+  test_data: boolean;
+};
+
+export type OpportunityDetail = {
+  opportunity: Opportunity;
+  evidence: OpportunityEvidence[];
+  latest_audit: ResearchAudit | null;
+};
+
+export type ResearchSummary = {
+  provider_state: string;
+  status: string;
+  current_research: ResearchRun | null;
+  last_run: ResearchRun | null;
+  next_run_at: string | null;
+  opportunities_found: number;
+  audited_opportunities: number;
+  blocked_findings: number;
+  cost_today_usd: string;
+  last_error: string | null;
+  schedule_enabled: boolean;
+  research_data_state: string;
+};
+
+export type StrategistGate = {
+  opportunity_id: string;
+  eligible: boolean;
+  state: string;
+  detail: string;
+};
+
+export function getResearchSummary(token: string, workspaceId: string): Promise<ResearchSummary> {
+  return apiFetch<ResearchSummary>(`/workspaces/${workspaceId}/research/summary`, token);
+}
+
+export function listResearchRuns(token: string, workspaceId: string): Promise<ResearchRun[]> {
+  return apiFetch<ResearchRun[]>(`/workspaces/${workspaceId}/research/runs`, token);
+}
+
+export function createResearchRun(
+  token: string,
+  workspaceId: string,
+  payload: {
+    research_objective: string;
+    permitted_sources?: string[];
+    max_searches?: number;
+    max_provider_calls?: number;
+    max_tokens?: number;
+    max_cost_usd?: string;
+    max_attempts?: number;
+  },
+): Promise<ResearchRun> {
+  return apiFetch<ResearchRun>(`/workspaces/${workspaceId}/research/runs`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listOpportunities(token: string, workspaceId: string): Promise<Opportunity[]> {
+  return apiFetch<Opportunity[]>(`/workspaces/${workspaceId}/research/opportunities`, token);
+}
+
+export function getOpportunityDetail(
+  token: string,
+  workspaceId: string,
+  opportunityId: string,
+): Promise<OpportunityDetail> {
+  return apiFetch<OpportunityDetail>(
+    `/workspaces/${workspaceId}/research/opportunities/${opportunityId}`,
+    token,
+  );
+}
+
+export function auditOpportunity(
+  token: string,
+  workspaceId: string,
+  opportunityId: string,
+): Promise<ResearchAudit> {
+  return apiFetch<ResearchAudit>(
+    `/workspaces/${workspaceId}/research/opportunities/${opportunityId}/audit`,
+    token,
+    { method: "POST" },
+  );
+}
+
+export function sendOpportunityToStrategist(
+  token: string,
+  workspaceId: string,
+  opportunityId: string,
+): Promise<StrategistGate> {
+  return apiFetch<StrategistGate>(
+    `/workspaces/${workspaceId}/research/opportunities/${opportunityId}/send-to-strategist`,
+    token,
+    { method: "POST" },
+  );
+}
+
+
+export type StrategyRun = {
+  id: string;
+  workspace_id: string;
+  trigger: string;
+  strategy_objective: string;
+  source_opportunity_ids: string[];
+  started_at: string;
+  deadline: string;
+  max_provider_calls: number;
+  max_tokens: number;
+  max_cost_usd: string;
+  max_attempts: number;
+  status: string;
+  provider_state: string;
+  business_context_state: string;
+  provider_calls_used: number;
+  tokens_used: number;
+  reserved_cost_usd: string;
+  actual_cost_usd: string;
+  briefs_created: number;
+  briefs_passed: number;
+  briefs_blocked: number;
+  last_error: string | null;
+  correlation_id: string;
+  trace_id: string | null;
+  test_data: boolean;
+};
+
+export type StrategyBrief = {
+  id: string;
+  strategy_run_id: string;
+  objective: string;
+  target_audience: string | null;
+  target_platform: string | null;
+  content_format: string | null;
+  creative_angle: string | null;
+  core_message: string | null;
+  hook_direction: string | null;
+  cta_direction: string | null;
+  business_goal: string | null;
+  success_metric: string | null;
+  commercial_goal: string | null;
+  estimated_complexity: string;
+  risk_level: string;
+  evidence_summary: string;
+  reasoning: string;
+  confidence: string;
+  priority: string;
+  component_scores: Record<string, number>;
+  score_reasoning: Record<string, string>;
+  recommended_length: string | null;
+  recommended_posting_window: string | null;
+  required_assets: string[];
+  production_requirements: string[];
+  rights_requirements: string[];
+  compliance_requirements: string[];
+  estimated_provider_usage: Record<string, unknown>;
+  estimated_cost_range: Record<string, unknown>;
+  cost_state: string;
+  capability_state: string;
+  business_context_state: string;
+  performance_data_state: string;
+  structural_fingerprint: string;
+  repetition_state: string;
+  repetition_reasons: string[];
+  audit_gate_status: string;
+  writer_handoff_state: string;
+  created_by_worker: string;
+  status: string;
+  test_data: boolean;
+};
+
+export type StrategyAudit = {
+  id: string;
+  strategy_brief_id: string;
+  strategy_run_id: string;
+  state: string;
+  evaluator_context_version: string;
+  findings: Array<Record<string, string>>;
+  warnings: string[];
+  blocked_reasons: string[];
+  checked_at: string;
+  test_data: boolean;
+};
+
+export type StrategyBriefDetail = {
+  brief: StrategyBrief;
+  source_opportunity_ids: string[];
+  latest_audit: StrategyAudit | null;
+};
+
+export type StrategySummary = {
+  provider_state: string;
+  status: string;
+  current_strategy: StrategyRun | null;
+  last_run: StrategyRun | null;
+  next_run_at: string | null;
+  opportunities_received: number;
+  briefs_created: number;
+  briefs_passed: number;
+  briefs_blocked: number;
+  cost_today_usd: string;
+  last_error: string | null;
+  schedule_enabled: boolean;
+  business_context_state: string;
+  performance_data_state: string;
+};
+
+export type WriterGate = {
+  strategy_brief_id: string;
+  eligible: boolean;
+  state: string;
+  detail: string;
+};
+
+export function getStrategySummary(token: string, workspaceId: string): Promise<StrategySummary> {
+  return apiFetch<StrategySummary>(`/workspaces/${workspaceId}/strategy/summary`, token);
+}
+
+export function listStrategyRuns(token: string, workspaceId: string): Promise<StrategyRun[]> {
+  return apiFetch<StrategyRun[]>(`/workspaces/${workspaceId}/strategy/runs`, token);
+}
+
+export function createStrategyRun(
+  token: string,
+  workspaceId: string,
+  payload: {
+    strategy_objective: string;
+    source_opportunity_ids: string[];
+    max_provider_calls?: number;
+    max_tokens?: number;
+    max_cost_usd?: string;
+    max_attempts?: number;
+  },
+): Promise<StrategyRun> {
+  return apiFetch<StrategyRun>(`/workspaces/${workspaceId}/strategy/runs`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function listStrategyBriefs(token: string, workspaceId: string): Promise<StrategyBrief[]> {
+  return apiFetch<StrategyBrief[]>(`/workspaces/${workspaceId}/strategy/briefs`, token);
+}
+
+export function getStrategyBriefDetail(
+  token: string,
+  workspaceId: string,
+  briefId: string,
+): Promise<StrategyBriefDetail> {
+  return apiFetch<StrategyBriefDetail>(
+    `/workspaces/${workspaceId}/strategy/briefs/${briefId}`,
+    token,
+  );
+}
+
+export function auditStrategyBrief(
+  token: string,
+  workspaceId: string,
+  briefId: string,
+): Promise<StrategyAudit> {
+  return apiFetch<StrategyAudit>(
+    `/workspaces/${workspaceId}/strategy/briefs/${briefId}/audit`,
+    token,
+    { method: "POST" },
+  );
+}
+
+export function sendStrategyBriefToWriter(
+  token: string,
+  workspaceId: string,
+  briefId: string,
+): Promise<WriterGate> {
+  return apiFetch<WriterGate>(
+    `/workspaces/${workspaceId}/strategy/briefs/${briefId}/send-to-writer`,
+    token,
+    { method: "POST" },
+  );
+}
+
+
+export type ContentDepartmentRun = {
+  id: string;
+  strategy_brief_id: string;
+  trigger: string;
+  status: string;
+  provider_state: string;
+  business_context_state: string;
+  max_provider_calls: number;
+  max_tokens: number;
+  max_cost_usd: string;
+  max_attempts: number;
+  timeout_seconds: number;
+  provider_calls_used: number;
+  tokens_used: number;
+  actual_cost_usd: string;
+  creative_directions_created: number;
+  packages_ready: number;
+  packages_blocked: number;
+  last_error: string | null;
+  correlation_id: string;
+  trace_id: string | null;
+  test_data: boolean;
+};
+
+export type CreativeDirection = {
+  id: string;
+  strategy_brief_id: string;
+  objective: string;
+  target_platform: string | null;
+  target_audience: string | null;
+  creative_concept: string;
+  hook_direction: string | null;
+  story_structure: string | null;
+  tone: string | null;
+  visual_direction: string | null;
+  cta_direction: string | null;
+  required_claims: unknown[];
+  prohibited_claims: unknown[];
+  required_assets: unknown[];
+  production_complexity: string;
+  risk_notes: unknown[];
+  worker_id: string;
+  provider: string;
+  prompt_version: string;
+  status: string;
+  test_data: boolean;
+};
+
+export type ContentPackage = {
+  id: string;
+  content_department_run_id: string;
+  creative_direction_id: string;
+  strategy_brief_id: string;
+  content_item_id: string;
+  content_version_id: string;
+  prior_content_version_id: string | null;
+  revision_reason: string | null;
+  writer_worker_id: string;
+  provider: string;
+  model: string | null;
+  prompt_version: string;
+  input_references: Record<string, unknown>;
+  package_fields: Record<string, unknown>;
+  status: string;
+  audit_gate_status: string;
+  producer_handoff_state: string;
+  invalidated_at: string | null;
+  test_data: boolean;
+};
+
+export type ContentClaim = {
+  id: string;
+  content_package_id: string;
+  content_version_id: string;
+  claim_text: string;
+  claim_type: string;
+  source_required: boolean;
+  supporting_evidence: unknown[];
+  verification_status: string;
+  confidence: string;
+  risk: string;
+  freshness: string | null;
+  evidence_reasoning: string | null;
+  test_data: boolean;
+};
+
+export type ContentAudit = {
+  id: string;
+  content_package_id: string;
+  content_version_id: string;
+  auditor_type: "language" | "fact" | "brand" | "originality";
+  auditor_worker_id: string;
+  state: "not_run" | "pass" | "pass_with_warning" | "blocked" | "error";
+  findings: unknown[];
+  warnings: unknown[];
+  blocked_reasons: unknown[];
+  evidence: unknown[];
+  checked_at: string;
+  cost_usd: string;
+  retry_history: unknown[];
+  test_data: boolean;
+};
+
+export type OriginalityFingerprint = {
+  id: string;
+  content_package_id: string;
+  content_version_id: string;
+  text_fingerprint: string;
+  hook_fingerprint: string;
+  structure_fingerprint: string;
+  semantic_reference: string | null;
+  comparison_set: unknown[];
+  similarity_findings: unknown[];
+  state: string;
+  test_data: boolean;
+};
+
+export type ContentPackageDetail = {
+  package: ContentPackage;
+  direction: CreativeDirection;
+  claims: ContentClaim[];
+  audits: ContentAudit[];
+  originality: OriginalityFingerprint | null;
+  invalidation_count: number;
+};
+
+export type ContentDepartmentSummary = {
+  provider_state: string;
+  status: string;
+  current_run: ContentDepartmentRun | null;
+  last_run: ContentDepartmentRun | null;
+  creative_directions: number;
+  packages_ready: number;
+  packages_blocked: number;
+  packages_in_progress: number;
+  claims_unverified: number;
+  cost_today_usd: string;
+  last_error: string | null;
+  schedule_enabled: boolean;
+  business_context_state: string;
+  performance_data_state: string;
+};
+
+export type ProducerGate = {
+  content_package_id: string;
+  eligible: boolean;
+  state: string;
+  detail: string;
+};
+
+export function getContentDepartmentSummary(
+  token: string,
+  workspaceId: string,
+): Promise<ContentDepartmentSummary> {
+  return apiFetch<ContentDepartmentSummary>(
+    `/workspaces/${workspaceId}/content-department/summary`,
+    token,
+  );
+}
+
+export function createContentDepartmentRun(
+  token: string,
+  workspaceId: string,
+  payload: {
+    strategy_brief_id: string;
+    max_provider_calls?: number;
+    max_tokens?: number;
+    max_cost_usd?: string;
+    max_attempts?: number;
+    timeout_seconds?: number;
+  },
+): Promise<ContentDepartmentRun> {
+  return apiFetch<ContentDepartmentRun>(
+    `/workspaces/${workspaceId}/content-department/runs`,
+    token,
+    { method: "POST", body: JSON.stringify(payload) },
+  );
+}
+
+export function listContentPackages(token: string, workspaceId: string): Promise<ContentPackage[]> {
+  return apiFetch<ContentPackage[]>(
+    `/workspaces/${workspaceId}/content-department/packages`,
+    token,
+  );
+}
+
+export function getContentPackageDetail(
+  token: string,
+  workspaceId: string,
+  packageId: string,
+): Promise<ContentPackageDetail> {
+  return apiFetch<ContentPackageDetail>(
+    `/workspaces/${workspaceId}/content-department/packages/${packageId}`,
+    token,
+  );
+}
+
+export function getProducerGate(
+  token: string,
+  workspaceId: string,
+  packageId: string,
+): Promise<ProducerGate> {
+  return apiFetch<ProducerGate>(
+    `/workspaces/${workspaceId}/content-department/packages/${packageId}/producer-gate`,
+    token,
+  );
+}
+
+
+export type ProductionRun = {
+  id: string;
+  content_package_id: string;
+  content_item_id: string;
+  content_version_id: string;
+  status: string;
+  provider_state: string;
+  target_platform: string | null;
+  target_format: string | null;
+  target_duration_seconds: number | null;
+  max_provider_calls: number;
+  max_render_calls: number;
+  max_cost_usd: string;
+  max_attempts: number;
+  max_repair_cycles: number;
+  provider_calls_used: number;
+  render_calls_used: number;
+  repair_cycles_used: number;
+  actual_cost_usd: string;
+  retry_count: number;
+  last_error: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ProductionAsset = {
+  id: string;
+  asset_id: string;
+  asset_type: string;
+  provider: string;
+  provider_job_id: string | null;
+  file_hash: string | null;
+  duration_seconds: string | null;
+  dimensions: Record<string, unknown>;
+  cost_usd: string;
+  status: string;
+  created_at: string;
+};
+
+export type FinalArtifact = {
+  id: string;
+  production_job_id: string;
+  content_version_id: string;
+  render_provider: string;
+  render_job_id: string | null;
+  artifact_hash: string;
+  duration_seconds: string | null;
+  resolution: Record<string, unknown>;
+  aspect_ratio: string | null;
+  container: string | null;
+  codec: string | null;
+  cost_usd: string;
+  status: string;
+  created_at: string;
+};
+
+export type MediaQaResult = {
+  id: string;
+  final_artifact_id: string;
+  artifact_hash: string;
+  auditor_worker_id: string;
+  status: string;
+  checks_run: unknown[];
+  visual_findings: unknown[];
+  audio_findings: unknown[];
+  subtitle_findings: unknown[];
+  script_alignment: Record<string, unknown>;
+  platform_check: Record<string, unknown>;
+  package_alignment: Record<string, unknown>;
+  evidence: unknown[];
+  recommended_repair: unknown[];
+  cost_usd: string;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+};
+
+export type ProductionRepair = {
+  id: string;
+  production_job_id: string;
+  final_artifact_id: string | null;
+  media_qa_result_id: string | null;
+  affected_component: string;
+  repair_operation: string;
+  repair_cycle: number;
+  status: string;
+  cost_usd: string;
+  provider_calls_used: number;
+  created_at: string;
+};
+
+export type ProductionReadiness = {
+  id: string;
+  final_artifact_id: string;
+  content_version_id: string;
+  media_qa_state: string;
+  compliance_state: string;
+  chief_audit_state: string;
+  human_review_state: string;
+  status: string;
+  blocking_reasons: unknown[];
+  total_cost_usd: string;
+  updated_at: string;
+};
+
+export type ProductionSummary = {
+  provider_state: string;
+  production_jobs: number;
+  active_jobs: number;
+  final_artifacts: number;
+  media_qa_passed: number;
+  media_qa_blocked: number;
+  repair_required: number;
+  compliance_ready: number;
+  provider_cost_usd: string;
+  last_error: string | null;
+  real_provider_mode: boolean;
+  test_fixture_mode: boolean;
+};
+
+export type ProductionDetail = {
+  job: ProductionRun;
+  assets: ProductionAsset[];
+  artifacts: FinalArtifact[];
+  media_qa: MediaQaResult[];
+  repairs: ProductionRepair[];
+  readiness: ProductionReadiness[];
+};
+
+export function getProductionSummary(token: string, workspaceId: string): Promise<ProductionSummary> {
+  return apiFetch<ProductionSummary>(`/workspaces/${workspaceId}/production/summary`, token);
+}
+
+export function listProductionRuns(token: string, workspaceId: string): Promise<ProductionRun[]> {
+  return apiFetch<ProductionRun[]>(`/workspaces/${workspaceId}/production/runs`, token);
+}
+
+export function createProductionRun(
+  token: string,
+  workspaceId: string,
+  payload: {
+    content_package_id: string;
+    target_platform?: string | null;
+    target_format?: string | null;
+    target_duration_seconds?: number | null;
+    max_provider_calls?: number;
+    max_render_calls?: number;
+    max_cost_usd?: string;
+    max_attempts?: number;
+    max_repair_cycles?: number;
+    timeout_seconds?: number;
+  },
+): Promise<ProductionRun> {
+  return apiFetch<ProductionRun>(`/workspaces/${workspaceId}/production/runs`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
+export function getProductionDetail(
+  token: string,
+  workspaceId: string,
+  productionJobId: string,
+): Promise<ProductionDetail> {
+  return apiFetch<ProductionDetail>(
+    `/workspaces/${workspaceId}/production/runs/${productionJobId}`,
+    token,
+  );
+}
+
+export function getArtifactMediaQa(
+  token: string,
+  workspaceId: string,
+  artifactId: string,
+): Promise<MediaQaResult[]> {
+  return apiFetch<MediaQaResult[]>(
+    `/workspaces/${workspaceId}/production/artifacts/${artifactId}/media-qa`,
+    token,
+  );
+}
+
+export function getArtifactReadiness(
+  token: string,
+  workspaceId: string,
+  artifactId: string,
+): Promise<ProductionReadiness | null> {
+  return apiFetch<ProductionReadiness | null>(
+    `/workspaces/${workspaceId}/production/artifacts/${artifactId}/readiness`,
+    token,
+  );
+}
+
+export type ComplianceSummary = {
+  provider_state: string;
+  policy_state: string;
+  compliance_audits: number;
+  passed: number;
+  blocked: number;
+  human_review_packages: number;
+  publication_eligible: number;
+  provider_cost_usd: string;
+  real_provider_mode: boolean;
+  test_fixture_mode: boolean;
+};
+
+export type ComplianceAudit = {
+  id: string;
+  final_artifact_id: string;
+  artifact_hash: string;
+  content_version_id: string;
+  target_platform: string;
+  status: string;
+  risk_level: string;
+  rights_status: string;
+  provider_state: string;
+  findings: Array<Record<string, unknown>>;
+  required_disclosures: unknown[];
+  cost_usd: string;
+  test_data: boolean;
+};
+
+export type ChiefAudit = {
+  id: string;
+  final_artifact_id: string;
+  artifact_hash: string;
+  status: string;
+  lineage_status: string;
+  version_integrity_status: string;
+  cost_reconciliation_status: string;
+  provider_reconciliation_status: string;
+  blockers: string[];
+  test_data: boolean;
+};
+
+export type HumanReviewPackage = {
+  id: string;
+  final_artifact_id: string;
+  artifact_hash: string;
+  content_version_id: string;
+  target_platform: string;
+  review_gate_id: string | null;
+  warnings: unknown[];
+  required_disclosures: unknown[];
+  total_cost_usd: string;
+  test_data: boolean;
+};
+
+export function getComplianceSummary(token: string, workspaceId: string): Promise<ComplianceSummary> {
+  return apiFetch<ComplianceSummary>(`/workspaces/${workspaceId}/compliance/summary`, token);
+}
+
+export function listComplianceAudits(token: string, workspaceId: string): Promise<ComplianceAudit[]> {
+  return apiFetch<ComplianceAudit[]>(`/workspaces/${workspaceId}/compliance/audits`, token);
+}
+
+export function listChiefAudits(token: string, workspaceId: string): Promise<ChiefAudit[]> {
+  return apiFetch<ChiefAudit[]>(`/workspaces/${workspaceId}/compliance/chief-audits`, token);
+}
+
+export function listHumanReviewPackages(token: string, workspaceId: string): Promise<HumanReviewPackage[]> {
+  return apiFetch<HumanReviewPackage[]>(`/workspaces/${workspaceId}/compliance/human-review-packages`, token);
+}
+
+export function createComplianceRun(
+  token: string,
+  workspaceId: string,
+  payload: { final_artifact_id: string; target_platform: string },
+): Promise<ComplianceAudit> {
+  return apiFetch<ComplianceAudit>(`/workspaces/${workspaceId}/compliance/runs`, token, {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}

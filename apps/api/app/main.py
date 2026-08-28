@@ -13,16 +13,21 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes.auth import router as auth_router
 from app.api.routes.billing import router as billing_router
+from app.api.routes.compliance import router as compliance_router
 from app.api.routes.concurrency import router as concurrency_router
+from app.api.routes.content_department import router as content_department_router
 from app.api.routes.content_jobs import router as content_jobs_router
 from app.api.routes.data_governance import router as data_governance_router
 from app.api.routes.health import router as health_router
 from app.api.routes.memberships import router as memberships_router
 from app.api.routes.metrics import router as metrics_router
 from app.api.routes.operations_dashboard import router as operations_dashboard_router
+from app.api.routes.production import router as production_router
 from app.api.routes.profiles import router as profiles_router
+from app.api.routes.research import router as research_router
 from app.api.routes.review_gates import router as review_gates_router
 from app.api.routes.spend import router as spend_router
+from app.api.routes.strategy import router as strategy_router
 from app.api.routes.webhooks import router as webhooks_router
 from app.api.routes.workers import admin_router as workers_admin_router
 from app.api.routes.workers import worker_router as workers_machine_router
@@ -206,7 +211,12 @@ app.include_router(profiles_router)
 app.include_router(workspaces_router)
 app.include_router(memberships_router)
 app.include_router(content_jobs_router)
+app.include_router(content_department_router)
+app.include_router(production_router)
+app.include_router(compliance_router)
 app.include_router(review_gates_router)
+app.include_router(research_router)
+app.include_router(strategy_router)
 app.include_router(spend_router)
 app.include_router(billing_router)
 app.include_router(concurrency_router)

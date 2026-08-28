@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import {
   createWorkspace,
   listWorkspaces,
@@ -6,6 +6,7 @@ import {
   signup,
 } from "./api";
 import LumoraDashboard from "./LumoraDashboard";
+import { BusinessManagerMark } from "./BusinessManagerMark";
 
 type Session = {
   token: string;
@@ -29,20 +30,38 @@ function loadSession(): Session | null {
 
 export default function App() {
   const [session, setSession] = useState<Session | null>(() => loadSession());
+  const [launchState, setLaunchState] = useState<"hidden" | "visible" | "exiting">(() => loadSession() ? "visible" : "hidden");
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [workspaceName, setWorkspaceName] = useState("My Agency Desk");
   const [error, setError] = useState<string | null>(null);
+  const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  async function authenticate(mode: "login" | "signup", event: FormEvent) {
+  useEffect(() => {
+    if (!session || launchState !== "visible") return;
+    const reduceMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (reduceMotion) {
+      setLaunchState("hidden");
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => setLaunchState("exiting"));
+    const timeout = window.setTimeout(() => setLaunchState("hidden"), 420);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timeout);
+    };
+  }, [launchState, session]);
+
+  async function authenticate(nextMode: "login" | "signup", event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError(null);
+    setRecoveryNotice(null);
     try {
       const auth =
-        mode === "signup"
+        nextMode === "signup"
           ? await signup(email.trim(), password)
           : await login(email.trim(), password);
       const existing = await listWorkspaces(auth.access_token);
@@ -59,7 +78,10 @@ export default function App() {
         workspaceId,
         email: auth.email,
       };
+      // Tokens live only in this browser tab. The preview does not persist passwords
+      // or claim refresh-token, device-management, or revocation support it lacks.
       sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+      setLaunchState("visible");
       setSession(next);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Authentication failed");
@@ -70,56 +92,49 @@ export default function App() {
 
   if (session) {
     return (
-      <LumoraDashboard
-        token={session.token}
-        workspaceId={session.workspaceId}
-        email={session.email}
-        onWorkspaceChange={(workspaceId) => {
-          const next = { ...session, workspaceId };
-          sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-          setSession(next);
-        }}
-        onSignOut={() => {
-          sessionStorage.removeItem(STORAGE_KEY);
-          setSession(null);
-        }}
-      />
+      <>
+        <LumoraDashboard
+          token={session.token}
+          workspaceId={session.workspaceId}
+          email={session.email}
+          onWorkspaceChange={(workspaceId) => {
+            const next = { ...session, workspaceId };
+            sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+            setSession(next);
+          }}
+          onSignOut={() => {
+            sessionStorage.removeItem(STORAGE_KEY);
+            setLaunchState("hidden");
+            setSession(null);
+          }}
+        />
+        {launchState !== "hidden" ? (
+          <div aria-label="The Business Manager launch" className={launchState === "exiting" ? "business-launch business-launch--exiting" : "business-launch"} role="status">
+            <BusinessManagerMark className="business-launch__mark" />
+            <p>The Business Manager</p>
+            <span>We get it sorted.</span>
+          </div>
+        ) : null}
+      </>
     );
   }
 
   return (
-    <div className="auth-shell">
-      <section className="auth-brand">
-        <div className="auth-brand__logo"><span>L</span>Lumora</div>
-        <div>
-          <p className="page-kicker">Mission Control</p>
-          <h1>Run your content operation with clarity.</h1>
-          <p>
-            One calm, intelligent workspace for every pipeline, worker,
-            customer and Human Review Gate.
-          </p>
+    <main className="auth-shell auth-shell--approved">
+      <section className="auth-card" aria-labelledby="auth-title">
+        <div className="auth-lockup" aria-label="The Business Manager — Business Operating System">
+          <BusinessManagerMark className="auth-lockup__mark" />
+          <strong className="auth-lockup__name">The Business Manager</strong>
+          <small className="auth-lockup__subtitle">Business Operating System</small>
         </div>
-        <div className="auth-signal">
-          <span>Secure workspace access</span>
-        </div>
-      </section>
-      <section className="auth-panel">
-        <form className="auth-form" onSubmit={(e) => void authenticate(mode, e)}>
-          <header>
-            <p className="page-kicker">{mode === "login" ? "Welcome back" : "Get started"}</p>
-            <h2>{mode === "login" ? "Sign in to Lumora" : "Create your Lumora account"}</h2>
-            <span>
-              {mode === "login"
-                ? "Enter your credentials to continue."
-                : "Set up your account and first workspace."}
-            </span>
-          </header>
+        <form className="auth-form auth-form--approved" onSubmit={(event) => void authenticate(mode, event)}>
+          <h1 id="auth-title">{mode === "login" ? "Sign in" : "Create account"}</h1>
           <label>
-            Work email
+            Email address
             <input
               type="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(event) => setEmail(event.target.value)}
               required
               autoComplete="username"
             />
@@ -129,7 +144,7 @@ export default function App() {
             <input
               type="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(event) => setPassword(event.target.value)}
               required
               minLength={mode === "signup" ? 12 : 1}
               autoComplete={mode === "login" ? "current-password" : "new-password"}
@@ -140,41 +155,47 @@ export default function App() {
               Workspace name
               <input
                 value={workspaceName}
-                onChange={(e) => setWorkspaceName(e.target.value)}
+                onChange={(event) => setWorkspaceName(event.target.value)}
                 maxLength={200}
                 required
                 placeholder="e.g. Acme Content Team"
               />
             </label>
           ) : null}
-          <div className="auth-actions">
-            <button className="button button--primary" type="submit" disabled={busy}>
-              {busy
-                ? mode === "login"
-                  ? "Signing in…"
-                  : "Creating account…"
-                : mode === "login"
-                  ? "Sign in"
-                  : "Create account"}
-            </button>
-            <button
-              className="auth-create"
-              type="button"
-              disabled={busy}
-              onClick={() => {
-                setError(null);
-                setMode((current) => (current === "login" ? "signup" : "login"));
-              }}
-            >
-              {mode === "login"
-                ? "New to Lumora? Create an account"
-                : "Already have an account? Sign in"}
-            </button>
-          </div>
+          {mode === "login" ? (
+            <div className="auth-security-row">
+              <label className="auth-remember" title="Secure persistent sessions are not configured for this disposable preview.">
+                <input type="checkbox" disabled />
+                <span>Remember me <small>Unavailable in preview</small></span>
+              </label>
+              <button
+                className="auth-link"
+                type="button"
+                onClick={() => setRecoveryNotice("Password recovery is not configured for this disposable preview.")}
+              >
+                Forgot password?
+              </button>
+            </div>
+          ) : null}
+          <button className="button button--primary auth-submit" type="submit" disabled={busy}>
+            {busy ? (mode === "login" ? "Signing in…" : "Creating account…") : mode === "login" ? "SIGN IN" : "CREATE ACCOUNT"}
+          </button>
+          <button
+            className="auth-create"
+            type="button"
+            disabled={busy}
+            onClick={() => {
+              setError(null);
+              setRecoveryNotice(null);
+              setMode((current) => (current === "login" ? "signup" : "login"));
+            }}
+          >
+            {mode === "login" ? "New to The Business Manager? Create account" : "Already have an account? Sign in"}
+          </button>
+          {recoveryNotice ? <p className="auth-notice" role="status">{recoveryNotice}</p> : null}
           {error ? <p className="error" role="alert">{error}</p> : null}
         </form>
-        <footer>Protected by workspace-scoped access controls.</footer>
       </section>
-    </div>
+    </main>
   );
 }

@@ -93,7 +93,25 @@ async function report() {
     footer: (document.querySelector('.sidebar-foot strong')||{}).innerText || null,
     heading: (document.querySelector('main h1, main h2')||{}).innerText || null,
     horizontalOverflow: document.documentElement.scrollWidth > window.innerWidth,
-    conditionRows: document.querySelectorAll('#active-alerts .alert-row').length,
+    conditionRows: document.querySelectorAll('#active-alerts .decision-card').length,
+    financialCircles: document.querySelectorAll('.financial-overview__circle').length,
+    unavailableFinancialMetrics: [...document.querySelectorAll('.financial-overview__circle strong')].filter(el => el.textContent?.trim() === 'Not connected').length,
+    bankrollHeading: (document.querySelector('.financial-overview__header h3') || {}).textContent?.trim() || null,
+    homeIdentityCentered: getComputedStyle(document.querySelector('.business-home__intro') || document.body).textAlign === 'center',
+    bankrollCentered: getComputedStyle(document.querySelector('.financial-overview__header') || document.body).textAlign === 'center',
+    researchProviderNotConfigured: /RESEARCH PROVIDER NOT CONFIGURED/i.test(document.body?.innerText || ''),
+    researchOpportunityEmpty: /No opportunities yet/i.test(document.body?.innerText || ''),
+    strategyProviderNotConfigured: /STRATEGY PROVIDER NOT CONFIGURED/i.test(document.body?.innerText || ''),
+    strategyBusinessContextIncomplete: /BUSINESS CONTEXT INCOMPLETE/i.test(document.body?.innerText || ''),
+    strategyBriefEmpty: /No Strategy Briefs yet/i.test(document.body?.innerText || ''),
+    contentProviderNotConfigured: /CONTENT PROVIDER NOT CONFIGURED/i.test(document.body?.innerText || ''),
+    contentBusinessContextIncomplete: /BUSINESS CONTEXT INCOMPLETE/i.test(document.body?.innerText || ''),
+    contentPackageEmpty: /No Creative Packages yet/i.test(document.body?.innerText || ''),
+    productionProviderNotConfigured: /PRODUCTION PROVIDER NOT CONFIGURED/i.test(document.body?.innerText || ''),
+    productionJobEmpty: /No production jobs yet/i.test(document.body?.innerText || ''),
+    complianceProviderNotConfigured: /COMPLIANCE PROVIDER NOT CONFIGURED/i.test(document.body?.innerText || ''),
+    complianceEvidenceEmpty: /No compliance evidence yet/i.test(document.body?.innerText || ''),
+    compliancePolicyFreshnessUnverified: /Policy[\\s\\S]+freshness[\\s\\S]+unverified/i.test(document.body?.innerText || ''),
     unlabeledControls: [...document.querySelectorAll('input, select, textarea')].filter(el =>
       !el.getAttribute('aria-label') &&
       !el.getAttribute('aria-labelledby') &&
@@ -111,9 +129,9 @@ await send(
   sessionId,
 );
 const loginUxInitial = await evaluate(`(() => {
-  const signInHeading = [...document.querySelectorAll('h1,h2')].some(el => /sign in to lumora/i.test(el.textContent || ''));
+  const signInHeading = [...document.querySelectorAll('h1,h2')].some(el => /^sign in$/i.test((el.textContent || '').trim()));
   const loginWorkspaceField = [...document.querySelectorAll('label')].some(el => /^workspace name/i.test((el.textContent || '').trim()));
-  const createButton = [...document.querySelectorAll('button')].find(el => /create an account/i.test(el.textContent || ''));
+  const createButton = [...document.querySelectorAll('button')].find(el => /create account/i.test(el.textContent || ''));
   if (createButton) createButton.click();
   return { signInHeading, loginWorkspaceField };
 })()`);
@@ -125,6 +143,7 @@ const signupWorkspaceField = await evaluate(`(() => {
   return found;
 })()`);
 const loginUx = { ...loginUxInitial, signupWorkspaceField };
+await shot("00-auth");
 const loginInfo = await evaluate(`(async () => {
   const r = await fetch('/api/auth/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({email:${JSON.stringify(EMAIL)}, password:${JSON.stringify(PASSWORD)}})});
   if (!r.ok) return { ok:false, status:r.status, body: await r.text() };
@@ -137,8 +156,12 @@ console.log("login:", JSON.stringify(loginInfo));
 console.log("LOGIN UX:", JSON.stringify(loginUx));
 if (!loginInfo.ok) { console.log("LOGIN FAILED"); process.exit(2); }
 
-await navigate(BASE);
-await sleep(1200);
+await send("Page.navigate", { url: BASE }, sessionId);
+await sleep(80);
+const launchObserved = await evaluate(`!!document.querySelector('.business-launch')`);
+console.log("LAUNCH OBSERVED:", launchObserved);
+if (launchObserved) await shot("00-launch");
+await sleep(760);
 const backendTruth = await evaluate(`(async () => {
   const session = JSON.parse(sessionStorage.getItem('lumora.missionControl.session'));
   const headers = { Authorization: 'Bearer ' + session.token };
@@ -155,7 +178,7 @@ const backendTruth = await evaluate(`(async () => {
   };
 })()`);
 
-const routes = ["Command Center", "AI Workers", "Content Pipeline", "Human Review", "Opportunities", "Analytics", "Spend & Usage", "Audience", "Integrations", "Settings"];
+const routes = ["Home", "Ask", "Opportunities", "Strategy", "Content Department", "Producer", "Compliance", "Content", "Human Review", "Workforce", "Money", "Insights", "Audience", "Connections", "Settings"];
 const missionTabs = ["Overview", "Timeline", "Live logs", "AI assistant", "Content"];
 
 const results = [];
@@ -188,7 +211,10 @@ for (const label of routes) {
   const clicked = await evaluate(`(() => {
     const nav = document.querySelector('nav[aria-label="Primary navigation"]');
     if (!nav) return false;
-    const btn = [...nav.querySelectorAll('button')].find(b => b.innerText.trim().startsWith(${JSON.stringify(label)}));
+    const btn = [...nav.querySelectorAll('button')].find(b => {
+      const text = b.innerText.trim();
+      return text === ${JSON.stringify(label)} || text.startsWith(${JSON.stringify(label + "\n")});
+    });
     if (!btn) return false;
     btn.click();
     return true;
@@ -199,7 +225,7 @@ for (const label of routes) {
   results.push({ label, clicked, ...rep });
   index++;
 
-  if (label === "Integrations") {
+  if (label === "Connections") {
     for (const tab of missionTabs) {
       await evaluate(`(() => {
         const tabs = document.querySelector('.view-tabs');
@@ -211,7 +237,7 @@ for (const label of routes) {
       await sleep(1200);
       const trep = await report();
       await shot(`${String(index).padStart(2, "0")}-mission-${tab.replace(/\s+/g, "-").toLowerCase()}`);
-      results.push({ label: `Integrations/${tab}`, ...trep });
+      results.push({ label: `Connections/${tab}`, ...trep });
       index++;
     }
   }
@@ -225,6 +251,7 @@ await send(
 );
 await navigate(BASE);
 await sleep(1200);
+await shot("89-mobile-home");
 await evaluate(`(() => { const b=[...document.querySelectorAll('button')].find(x=>/open navigation/i.test(x.getAttribute('aria-label')||'')); if(b)b.click(); return !!b; })()`);
 await sleep(500);
 await shot("90-mobile-nav-open");
@@ -232,7 +259,7 @@ const mrep = await report();
 results.push({ label: "mobile-dashboard", ...mrep });
 
 const mobileResults = [];
-for (const label of ["Human Review", "AI Workers", "Settings"]) {
+for (const label of ["Opportunities", "Strategy", "Content Department", "Producer", "Compliance", "Human Review", "Workforce", "Settings"]) {
   await evaluate(`(() => {
     const open = [...document.querySelectorAll('button')].find(x => /open navigation/i.test(x.getAttribute('aria-label') || ''));
     if (open) open.click();
@@ -240,7 +267,10 @@ for (const label of ["Human Review", "AI Workers", "Settings"]) {
   await sleep(100);
   await evaluate(`(() => {
     const nav = document.querySelector('nav[aria-label="Primary navigation"]');
-    const btn = nav && [...nav.querySelectorAll('button')].find(b => b.innerText.trim().startsWith(${JSON.stringify(label)}));
+    const btn = nav && [...nav.querySelectorAll('button')].find(b => {
+      const text = b.innerText.trim();
+      return text === ${JSON.stringify(label)} || text.startsWith(${JSON.stringify(label + "\n")});
+    });
     if (btn) btn.click();
     return !!btn;
   })()`);
@@ -250,13 +280,25 @@ for (const label of ["Human Review", "AI Workers", "Settings"]) {
   await shot(`9${mobileResults.length}-${label.replace(/\s+/g, "-").toLowerCase()}`);
 }
 
-writeFileSync(`${OUT}/results.json`, JSON.stringify({ results, mobileResults, loginUx, searchResult, consoleProblems, uncaughtExceptions }, null, 2));
+writeFileSync(`${OUT}/results.json`, JSON.stringify({ results, mobileResults, loginUx, launchObserved, searchResult, consoleProblems, uncaughtExceptions }, null, 2));
 const crashes = results.filter((r) => r.crash || r.textLen === 0);
 const accessibilityFailures = results.filter((r) => r.unlabeledControls > 0);
 const mobileFailures = mobileResults.filter((r) => r.crash || r.textLen === 0 || r.horizontalOverflow || r.unlabeledControls > 0);
 const footerFailures = results.filter((r) => r.footer !== backendTruth.expectedFooter);
-const dashboardResult = results.find((r) => r.label === "Command Center");
+const dashboardResult = results.find((r) => r.label === "Home");
 const alertParityWorks = dashboardResult?.conditionRows === backendTruth.alertTypes;
+const fourCirclesWork = dashboardResult?.financialCircles === 4 && dashboardResult?.unavailableFinancialMetrics === 4;
+const bankrollWorks = dashboardResult?.bankrollHeading === "Bankroll" && dashboardResult?.homeIdentityCentered && dashboardResult?.bankrollCentered;
+const researchResult = results.find((r) => r.label === "Opportunities");
+const scoutTruthWorks = researchResult?.researchProviderNotConfigured && researchResult?.researchOpportunityEmpty;
+const strategyResult = results.find((r) => r.label === "Strategy");
+const strategistTruthWorks = strategyResult?.strategyProviderNotConfigured && strategyResult?.strategyBusinessContextIncomplete && strategyResult?.strategyBriefEmpty;
+const contentDepartmentResult = results.find((r) => r.label === "Content Department");
+const contentDepartmentTruthWorks = contentDepartmentResult?.contentProviderNotConfigured && contentDepartmentResult?.contentBusinessContextIncomplete && contentDepartmentResult?.contentPackageEmpty;
+const producerResult = results.find((r) => r.label === "Producer");
+const producerTruthWorks = producerResult?.productionProviderNotConfigured && producerResult?.productionJobEmpty;
+const complianceResult = results.find((r) => r.label === "Compliance");
+const complianceTruthWorks = complianceResult?.complianceProviderNotConfigured && complianceResult?.complianceEvidenceEmpty && complianceResult?.compliancePolicyFreshnessUnverified;
 console.log("ROUTES:", results.length);
 console.log("BLANK/CRASH:", crashes.length);
 console.log("SEARCH:", JSON.stringify(searchResult));
@@ -267,6 +309,13 @@ console.log("MOBILE SUPPLEMENTAL:", mobileResults.length, "failures:", mobileFai
 console.log("BACKEND TRUTH:", JSON.stringify(backendTruth));
 console.log("FOOTER MISMATCHES:", footerFailures.length);
 console.log("ALERT ROW PARITY:", alertParityWorks);
+console.log("FOUR-CIRCLE FINANCIAL HOME:", fourCirclesWork);
+console.log("CENTERED HOME + BANKROLL:", bankrollWorks);
+console.log("SCOUT TRUTHFUL NOT-CONFIGURED STATE:", scoutTruthWorks);
+console.log("STRATEGIST TRUTHFUL NOT-CONFIGURED STATE:", strategistTruthWorks);
+console.log("CONTENT DEPARTMENT TRUTHFUL NOT-CONFIGURED STATE:", contentDepartmentTruthWorks);
+console.log("PRODUCER TRUTHFUL NOT-CONFIGURED STATE:", producerTruthWorks);
+console.log("COMPLIANCE + CHIEF AUDITOR TRUTHFUL NOT-CONFIGURED STATE:", complianceTruthWorks);
 for (const r of results) {
   console.log(`  ${r.crash ? "CRASH" : r.textLen === 0 ? "BLANK" : "ok   "} | ${r.label} | textLen=${r.textLen} | footer=${r.footer ?? "-"} | unlabeled=${r.unlabeledControls}`);
 }
@@ -280,6 +329,13 @@ process.exit(
   mobileFailures.length === 0 &&
   footerFailures.length === 0 &&
   alertParityWorks &&
+  fourCirclesWork &&
+  bankrollWorks &&
+  scoutTruthWorks &&
+  strategistTruthWorks &&
+  contentDepartmentTruthWorks &&
+  producerTruthWorks &&
+  complianceTruthWorks &&
   consoleProblems.length === 0 &&
   uncaughtExceptions.length === 0 &&
   searchWorks &&

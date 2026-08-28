@@ -369,13 +369,13 @@ export function AssistantPanel({
     <div className="assistant-panel">
       <form onSubmit={(event) => void submit(event)}>
         <textarea
-          aria-label="Question for the live system"
+          aria-label="What do you want sorted?"
           required
           value={question}
           onChange={(event) => setQuestion(event.target.value)}
-          placeholder="Ask: What failed today? Why is worker 4 idle? Show today's spend. Show blocked reviews."
+          placeholder="Prepare a week’s content, explain a profit drop, find opportunities, or identify the best-performing content."
         />
-        <button type="submit" disabled={busy}>{busy ? "Analyzing…" : "Ask live system"}</button>
+        <button type="submit" disabled={busy}>{busy ? "Checking your workspace…" : "Ask My Business"}</button>
       </form>
       {error ? <p className="error" role="alert">{error}</p> : null}
       {answer ? (
