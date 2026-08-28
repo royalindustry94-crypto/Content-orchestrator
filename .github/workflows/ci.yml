@@ -108,6 +108,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
+      CANDIDATE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/content_orchestrator_test
       APP_DATABASE_URL: postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test
       SUPABASE_JWT_SECRET: ci-browser-smoke-supabase-jwt-secret
@@ -122,6 +123,8 @@ jobs:
       UI_SMOKE_OUT: /tmp/content-orchestrator-browser-smoke
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -130,6 +133,8 @@ jobs:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: apps/web/package-lock.json
+      - name: Verify exact candidate checkout
+        run: test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
       - name: Install API dependencies
         working-directory: apps/api
         run: pip install -e ".[dev]"
@@ -179,12 +184,12 @@ jobs:
       - name: Record candidate identity
         if: always()
         run: |
-          printf 'head_sha=%s\nrun_id=%s\nrun_attempt=%s\n' "$GITHUB_SHA" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >"$UI_SMOKE_OUT/candidate.txt"
+          printf 'candidate_sha=%s\nchecked_out_sha=%s\nworkflow_head_sha=%s\nrun_id=%s\nrun_attempt=%s\n' "$CANDIDATE_SHA" "$(git rev-parse HEAD)" "${{ github.event.pull_request.head.sha || github.sha }}" "$GITHUB_RUN_ID" "$GITHUB_RUN_ATTEMPT" >"$UI_SMOKE_OUT/candidate.txt"
       - name: Upload browser-smoke evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: browser-smoke-${{ github.sha }}
+          name: browser-smoke-${{ env.CANDIDATE_SHA }}
           path: /tmp/content-orchestrator-browser-smoke
           if-no-files-found: error
           retention-days: 30
