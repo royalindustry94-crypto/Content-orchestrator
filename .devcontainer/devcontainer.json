@@ -1,0 +1,31 @@
+{
+  "name": "Content Orchestrator Founder Test",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.12"
+    },
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "4gb",
+    "storage": "16gb"
+  },
+  "forwardPorts": [5173, 8000],
+  "portsAttributes": {
+    "5173": {
+      "label": "Content Orchestrator",
+      "onAutoForward": "openBrowser"
+    },
+    "8000": {
+      "label": "Content Orchestrator API",
+      "onAutoForward": "silent"
+    }
+  },
+  "postStartCommand": "bash .devcontainer/start-test-stack.sh",
+  "remoteUser": "vscode"
+}
