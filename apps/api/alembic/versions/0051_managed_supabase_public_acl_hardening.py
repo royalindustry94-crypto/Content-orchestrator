@@ -85,16 +85,14 @@ def upgrade() -> None:
     for role in _API_ROLES:
         _revoke_api_role_access(role)
 
-    # PostgreSQL grants EXECUTE on newly-created functions to PUBLIC unless the
-    # creator's default privileges say otherwise. Remove that inherited RPC
-    # path for both existing and future app functions.
+    # PostgreSQL grants EXECUTE on newly-created functions to PUBLIC through a
+    # global default privilege. A schema-scoped REVOKE cannot override that
+    # global default, so remove it at the creator-role level. Existing app
+    # functions are revoked explicitly below as well.
     for signature in _APP_FUNCTIONS:
         op.execute(f"REVOKE EXECUTE ON FUNCTION {signature} FROM PUBLIC;")
 
-    op.execute(
-        "ALTER DEFAULT PRIVILEGES IN SCHEMA public "
-        "REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;"
-    )
+    op.execute("ALTER DEFAULT PRIVILEGES REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC;")
 
     # RLS policy helpers are called by app_runtime and need explicit EXECUTE
     # once PUBLIC execution is removed. Trigger-only helpers stay uncallable by
