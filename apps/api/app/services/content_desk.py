@@ -187,6 +187,12 @@ async def open_review_gate(
         raise SpendBudgetExceededError(
             "workspace spend cap exceeded; pipeline run paused on spend_hold"
         )
+
+    # Reserve the normal bounded estimate before work begins so simulation
+    # exercises the same fail-closed spend gate as a live provider. The
+    # simulation provider itself is explicitly zero-cost, however, so the
+    # immutable actual-spend ledger must record 0 rather than the estimate.
+    actual_cost = Decimal("0.00") if provider == "simulation" else estimate
     await controller.handle_stage_success(
         session,
         run=run,
@@ -194,6 +200,7 @@ async def open_review_gate(
         result_context={
             "draft_version_id": str(version.id),
             "estimated_cost_usd": str(estimate),
+            "actual_cost_usd": str(actual_cost),
             "provider": provider,
         },
     )
@@ -201,7 +208,7 @@ async def open_review_gate(
         session,
         run=run,
         reservation=reservation,
-        actual_cost_usd=estimate,
+        actual_cost_usd=actual_cost,
     )
 
     # start_run enqueued a STAGE job for scripting; the caller completed that
