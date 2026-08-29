@@ -54,7 +54,9 @@ def test_alembic_behaviorally_fails_without_auth_users() -> None:
         pytest.skip("behavioral migration guard requires psql and DATABASE_URL")
 
     parsed = urlsplit(database_url)
-    admin_url = urlunsplit((parsed.scheme, parsed.netloc, "/postgres", parsed.query, parsed.fragment))
+    admin_url = urlunsplit(
+        (parsed.scheme, parsed.netloc, "/postgres", parsed.query, parsed.fragment)
+    )
     db_name = f"missing_auth_guard_{uuid4().hex[:12]}"
     guarded_url = urlunsplit(
         (parsed.scheme, parsed.netloc, f"/{db_name}", parsed.query, parsed.fragment)
@@ -81,8 +83,16 @@ def test_alembic_behaviorally_fails_without_auth_users() -> None:
         assert result.returncode != 0
         assert "auth.users is required" in output
     finally:
+        drop_database = [
+            psql,
+            admin_url,
+            "-v",
+            "ON_ERROR_STOP=1",
+            "-c",
+            f'DROP DATABASE IF EXISTS "{db_name}"',
+        ]
         subprocess.run(
-            [psql, admin_url, "-v", "ON_ERROR_STOP=1", "-c", f'DROP DATABASE IF EXISTS "{db_name}"'],
+            drop_database,
             check=True,
             capture_output=True,
             text=True,
