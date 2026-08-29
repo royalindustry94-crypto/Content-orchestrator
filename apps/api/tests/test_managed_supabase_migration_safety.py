@@ -27,10 +27,12 @@ def test_signup_trigger_is_namespaced_and_security_definer_is_hardened() -> None
     assert "SECURITY DEFINER SET search_path = public, pg_temp" in source
 
 
-def test_local_bootstrap_is_explicitly_local_only() -> None:
+def test_local_bootstrap_is_explicitly_local_only_and_self_refuses_managed() -> None:
     source = LOCAL_BOOTSTRAP.read_text()
     assert "LOCAL / CI ONLY" in source
     assert "Never apply this file" in source
     assert "managed Supabase project" in source
+    assert "supabase_auth_admin" in source
+    assert "Refusing local bootstrap on managed Supabase" in source
     assert "CREATE TABLE IF NOT EXISTS auth.users" in source
     assert "PASSWORD 'app_runtime'" in source
