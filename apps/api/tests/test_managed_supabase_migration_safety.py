@@ -1,9 +1,9 @@
 """Regression guards for managed-Supabase migration safety."""
 
 import os
-from pathlib import Path
 import shutil
 import subprocess
+from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
 from uuid import uuid4
 
