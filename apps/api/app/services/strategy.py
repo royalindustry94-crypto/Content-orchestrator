@@ -1,7 +1,9 @@
 """Bounded Strategist and independent Strategy Auditor V1 service.
 
-Live preview runs persist limits and return provider-not-configured truthfully. The
-fixture path is test-only and is the only path that can create a Strategy Brief.
+Strategy execution goes through the configured pipeline provider. Without one,
+runs persist their limits and return provider-not-configured truthfully. The
+independent Strategy Auditor always runs for real against whatever was stored,
+regardless of which provider produced it.
 """
 
 from __future__ import annotations
@@ -26,6 +28,12 @@ from app.models.strategy import (
     StrategySchedule,
 )
 from app.orchestration.outbox import emit
+from app.providers import (
+    ProviderExecutionError,
+    StrategyBriefDraft,
+    StrategyRequest,
+    get_pipeline_provider,
+)
 from app.schemas.strategy import StrategyRunCreate
 from app.services import research
 
@@ -218,10 +226,15 @@ async def create_manual_run(
     actor_id: uuid.UUID,
     payload: StrategyRunCreate,
 ) -> StrategyRun:
-    """Persist a bounded live request without a provider, spend, or brief claim."""
+    """Persist a bounded request and execute it through the configured provider.
+
+    Without a configured provider no brief is claimed, no provider is called,
+    and nothing is spent.
+    """
+    provider = get_pipeline_provider()
     objective = _safe_text(payload.strategy_objective, field="strategy objective", maximum=1000)
     opportunity_ids = list(payload.source_opportunity_ids)
-    await _require_research_pass(
+    opportunities = await _require_research_pass(
         session, workspace_id=workspace_id, opportunity_ids=opportunity_ids
     )
     now = _utcnow()
@@ -236,10 +249,14 @@ async def create_manual_run(
         max_tokens=payload.max_tokens,
         max_cost_usd=payload.max_cost_usd,
         max_attempts=payload.max_attempts,
-        status="provider_not_configured",
-        provider_state="not_configured",
-        business_context_state="incomplete",
-        last_error="STRATEGY PROVIDER NOT CONFIGURED; BUSINESS CONTEXT INCOMPLETE",
+        status="running" if provider.is_configured else "provider_not_configured",
+        provider_state=provider.state_label,
+        business_context_state="complete" if provider.is_configured else "incomplete",
+        last_error=(
+            None
+            if provider.is_configured
+            else "STRATEGY PROVIDER NOT CONFIGURED; BUSINESS CONTEXT INCOMPLETE"
+        ),
         created_by=actor_id,
         updated_by=actor_id,
     )
@@ -251,6 +268,7 @@ async def create_manual_run(
         "strategy.started",
         {
             "trigger": "manual",
+            "provider": provider.name,
             "source_opportunity_ids": [str(item) for item in opportunity_ids],
             "limits": {
                 "max_provider_calls": run.max_provider_calls,
@@ -262,13 +280,181 @@ async def create_manual_run(
             "business_context_state": run.business_context_state,
         },
     )
+    if not provider.is_configured:
+        await _emit_run(
+            session,
+            run,
+            "strategy.provider_not_configured",
+            {"detail": run.last_error},
+        )
+        return run
+
+    try:
+        result = await provider.strategy(
+            StrategyRequest(
+                workspace_id=workspace_id,
+                objective=objective,
+                opportunity_topics=[item.topic for item in opportunities],
+                opportunity_angles=[item.proposed_angle for item in opportunities],
+                opportunity_summaries=[item.summary for item in opportunities],
+                target_platform=next(
+                    (item.target_platform for item in opportunities if item.target_platform),
+                    None,
+                ),
+            )
+        )
+    except Exception as exc:  # a failed provider call is a failed run, not an unconfigured one
+        run.status = "failed"
+        run.last_error = f"strategy provider '{provider.name}' failed: {exc}"
+        await _emit_run(session, run, "strategy.failed", {"reason": run.last_error})
+        return run
+
+    await _persist_strategy_brief(
+        session,
+        run=run,
+        actor_id=actor_id,
+        opportunities=opportunities,
+        draft=result.brief,
+        states={
+            "cost_state": "known",
+            "capability_state": "configured",
+            "business_context_state": "complete",
+            "performance_data_state": "no_data",
+            "repetition_state": "clear",
+            "repetition_reasons": [],
+        },
+        worker_id=f"strategist_{provider.name}",
+    )
+    run.provider_calls_used = result.usage.calls
+    run.tokens_used = result.usage.tokens
+    run.actual_cost_usd = result.usage.cost_usd
+    if Decimal(str(run.actual_cost_usd)) > Decimal(str(run.max_cost_usd)):
+        raise ProviderExecutionError(
+            "strategy provider reported cost above the run's persisted ceiling"
+        )
+    return run
+
+
+async def _persist_strategy_brief(
+    session: AsyncSession,
+    *,
+    run: StrategyRun,
+    actor_id: uuid.UUID,
+    opportunities: list[Opportunity],
+    draft: StrategyBriefDraft,
+    states: dict[str, Any],
+    worker_id: str,
+) -> tuple[StrategyBrief, bool]:
+    """Store a brief with the same validation and dedupe for every producer.
+
+    Returns the brief and whether it was an existing structural duplicate.
+    Provider text is sanitised here rather than at the provider boundary, so a
+    future vendor cannot bypass the untrusted-instruction and secret checks.
+    """
+    workspace_id = run.workspace_id
+    test_data = run.test_data
+    opportunity_ids = [item.id for item in opportunities]
+
+    def clean(value: str | None, field: str) -> str | None:
+        return _safe_text(str(value), field=field) if value is not None else None
+
+    objective = _safe_text(draft.objective, field="brief objective")
+    evidence_summary = _safe_text(draft.evidence_summary, field="evidence summary")
+    reasoning = _safe_text(draft.reasoning, field="reasoning")
+    fingerprint = _structural_fingerprint(
+        source_opportunity_ids=opportunity_ids,
+        objective=objective,
+        target_platform=draft.target_platform,
+        content_format=draft.content_format,
+        creative_angle=draft.creative_angle,
+        hook_direction=draft.hook_direction,
+        cta_direction=draft.cta_direction,
+        business_goal=draft.business_goal,
+    )
+    existing = (
+        await session.execute(
+            select(StrategyBrief).where(
+                StrategyBrief.workspace_id == workspace_id,
+                StrategyBrief.structural_fingerprint == fingerprint,
+                StrategyBrief.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is not None:
+        run.status = "duplicate"
+        run.last_error = "DUPLICATE — REUSE OR REVISE"
+        await _emit_run(
+            session,
+            run,
+            "strategy.duplicate_detected",
+            {"strategy_brief_id": str(existing.id), "test_data": test_data},
+        )
+        return existing, True
+
+    brief = StrategyBrief(
+        workspace_id=workspace_id,
+        strategy_run_id=run.id,
+        objective=objective,
+        target_audience=clean(draft.target_audience, "target_audience"),
+        target_platform=clean(draft.target_platform, "target_platform"),
+        content_format=clean(draft.content_format, "content_format"),
+        creative_angle=clean(draft.creative_angle, "creative_angle"),
+        core_message=clean(draft.core_message, "core_message"),
+        hook_direction=clean(draft.hook_direction, "hook_direction"),
+        cta_direction=clean(draft.cta_direction, "cta_direction"),
+        business_goal=clean(draft.business_goal, "business_goal"),
+        success_metric=clean(draft.success_metric, "success_metric"),
+        commercial_goal=clean(draft.commercial_goal, "commercial_goal"),
+        estimated_complexity=draft.estimated_complexity,
+        risk_level=draft.risk_level,
+        evidence_summary=evidence_summary,
+        reasoning=reasoning,
+        confidence=draft.confidence,
+        priority=draft.priority,
+        component_scores=dict(draft.component_scores),
+        score_reasoning=dict(draft.score_reasoning),
+        recommended_length=clean(draft.recommended_length, "recommended_length"),
+        recommended_posting_window=clean(
+            draft.recommended_posting_window, "recommended_posting_window"
+        ),
+        required_assets=list(draft.required_assets),
+        production_requirements=list(draft.production_requirements),
+        rights_requirements=list(draft.rights_requirements),
+        compliance_requirements=list(draft.compliance_requirements),
+        estimated_provider_usage=dict(draft.estimated_provider_usage),
+        estimated_cost_range=dict(draft.estimated_cost_range),
+        cost_state=str(states.get("cost_state", "known")),
+        capability_state=str(states.get("capability_state", "configured")),
+        business_context_state=str(states.get("business_context_state", "complete")),
+        performance_data_state=str(states.get("performance_data_state", "no_data")),
+        structural_fingerprint=fingerprint,
+        repetition_state=str(states.get("repetition_state", "clear")),
+        repetition_reasons=list(states.get("repetition_reasons", [])),
+        created_by_worker=worker_id,
+        status="draft",
+        test_data=test_data,
+        created_by=actor_id,
+        updated_by=actor_id,
+    )
+    session.add(brief)
+    await session.flush()
+    for opportunity in opportunities:
+        session.add(
+            StrategyBriefOpportunity(
+                workspace_id=workspace_id,
+                strategy_brief_id=brief.id,
+                opportunity_id=opportunity.id,
+            )
+        )
+    run.briefs_created = 1
+    run.status = "succeeded"
     await _emit_run(
         session,
         run,
-        "strategy.provider_not_configured",
-        {"detail": run.last_error},
+        "strategy.brief_created",
+        {"strategy_brief_id": str(brief.id), "test_data": test_data},
     )
-    return run
+    return brief, False
 
 
 async def record_fixture_brief(
@@ -280,7 +466,7 @@ async def record_fixture_brief(
     source_opportunity_ids: list[uuid.UUID],
     fixture_brief: dict[str, Any],
 ) -> tuple[StrategyRun, StrategyBrief, bool]:
-    """Test-only persistence path for brief/audit state transitions."""
+    """Test-only entry point onto the shared brief persistence path."""
     if os.getenv("ENVIRONMENT") != "test":
         raise RuntimeError("fixture strategy execution is test-only")
     clean_objective = _safe_text(objective, field="strategy objective", maximum=1000)
@@ -312,53 +498,10 @@ async def record_fixture_brief(
 
     def optional(name: str) -> str | None:
         value = fixture_brief.get(name)
-        return _safe_text(str(value), field=name) if value is not None else None
+        return str(value) if value is not None else None
 
-    brief_objective = _safe_text(
-        str(fixture_brief.get("objective", clean_objective)), field="brief objective"
-    )
-    evidence_summary = _safe_text(
-        str(fixture_brief.get("evidence_summary", opportunities[0].summary)),
-        field="evidence summary",
-    )
-    reasoning = _safe_text(
-        str(fixture_brief.get("reasoning", opportunities[0].proposed_angle)),
-        field="reasoning",
-    )
-    fingerprint = _structural_fingerprint(
-        source_opportunity_ids=source_opportunity_ids,
-        objective=brief_objective,
-        target_platform=fixture_brief.get("target_platform"),
-        content_format=fixture_brief.get("content_format"),
-        creative_angle=fixture_brief.get("creative_angle"),
-        hook_direction=fixture_brief.get("hook_direction"),
-        cta_direction=fixture_brief.get("cta_direction"),
-        business_goal=fixture_brief.get("business_goal"),
-    )
-    existing = (
-        await session.execute(
-            select(StrategyBrief).where(
-                StrategyBrief.workspace_id == workspace_id,
-                StrategyBrief.structural_fingerprint == fingerprint,
-                StrategyBrief.deleted_at.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
-    if existing is not None:
-        run.status = "duplicate"
-        run.last_error = "DUPLICATE — REUSE OR REVISE"
-        await _emit_run(
-            session,
-            run,
-            "strategy.duplicate_detected",
-            {"strategy_brief_id": str(existing.id), "test_data": True},
-        )
-        return run, existing, True
-
-    brief = StrategyBrief(
-        workspace_id=workspace_id,
-        strategy_run_id=run.id,
-        objective=brief_objective,
+    draft = StrategyBriefDraft(
+        objective=str(fixture_brief.get("objective", clean_objective)),
         target_audience=optional("target_audience"),
         target_platform=optional("target_platform"),
         content_format=optional("content_format"),
@@ -369,54 +512,40 @@ async def record_fixture_brief(
         business_goal=optional("business_goal"),
         success_metric=optional("success_metric"),
         commercial_goal=optional("commercial_goal"),
-        estimated_complexity=str(fixture_brief.get("estimated_complexity", "low")),
-        risk_level=str(fixture_brief.get("risk_level", "low")),
-        evidence_summary=evidence_summary,
-        reasoning=reasoning,
+        evidence_summary=str(fixture_brief.get("evidence_summary", opportunities[0].summary)),
+        reasoning=str(fixture_brief.get("reasoning", opportunities[0].proposed_angle)),
         confidence=Decimal(str(fixture_brief.get("confidence", "0.50"))),
         priority=str(fixture_brief.get("priority", "medium_priority")),
-        component_scores=dict(fixture_brief.get("component_scores", {})),
-        score_reasoning=dict(fixture_brief.get("score_reasoning", {})),
+        estimated_complexity=str(fixture_brief.get("estimated_complexity", "low")),
+        risk_level=str(fixture_brief.get("risk_level", "low")),
         recommended_length=optional("recommended_length"),
         recommended_posting_window=optional("recommended_posting_window"),
         required_assets=list(fixture_brief.get("required_assets", [])),
         production_requirements=list(fixture_brief.get("production_requirements", [])),
         rights_requirements=list(fixture_brief.get("rights_requirements", [])),
         compliance_requirements=list(fixture_brief.get("compliance_requirements", [])),
+        component_scores=dict(fixture_brief.get("component_scores", {})),
+        score_reasoning=dict(fixture_brief.get("score_reasoning", {})),
         estimated_provider_usage=dict(fixture_brief.get("estimated_provider_usage", {})),
         estimated_cost_range=dict(fixture_brief.get("estimated_cost_range", {})),
-        cost_state=str(fixture_brief.get("cost_state", "known")),
-        capability_state=str(fixture_brief.get("capability_state", "configured")),
-        business_context_state=str(fixture_brief.get("business_context_state", "complete")),
-        performance_data_state=str(fixture_brief.get("performance_data_state", "no_data")),
-        structural_fingerprint=fingerprint,
-        repetition_state=str(fixture_brief.get("repetition_state", "clear")),
-        repetition_reasons=list(fixture_brief.get("repetition_reasons", [])),
-        created_by_worker="strategist_fixture",
-        status="draft",
-        test_data=True,
-        created_by=actor_id,
-        updated_by=actor_id,
     )
-    session.add(brief)
-    await session.flush()
-    for opportunity in opportunities:
-        session.add(
-            StrategyBriefOpportunity(
-                workspace_id=workspace_id,
-                strategy_brief_id=brief.id,
-                opportunity_id=opportunity.id,
-            )
-        )
-    run.briefs_created = 1
-    run.status = "succeeded"
-    await _emit_run(
+    brief, duplicate = await _persist_strategy_brief(
         session,
-        run,
-        "strategy.brief_created",
-        {"strategy_brief_id": str(brief.id), "test_data": True},
+        run=run,
+        actor_id=actor_id,
+        opportunities=opportunities,
+        draft=draft,
+        states={
+            "cost_state": fixture_brief.get("cost_state", "known"),
+            "capability_state": fixture_brief.get("capability_state", "configured"),
+            "business_context_state": fixture_brief.get("business_context_state", "complete"),
+            "performance_data_state": fixture_brief.get("performance_data_state", "no_data"),
+            "repetition_state": fixture_brief.get("repetition_state", "clear"),
+            "repetition_reasons": fixture_brief.get("repetition_reasons", []),
+        },
+        worker_id="strategist_fixture",
     )
-    return run, brief, False
+    return run, brief, duplicate
 
 
 async def audit_brief(
@@ -540,12 +669,18 @@ async def writer_gate(
             "strategy.writer_eligible",
             {"strategy_brief_id": str(brief.id), "test_data": brief.test_data},
         )
+    provider = get_pipeline_provider()
     return {
         "strategy_brief_id": brief.id,
         "eligible": True,
         "state": "eligible",
         "detail": (
-            "Strategy is eligible for a future Writer handoff; no Writer provider is configured."
+            "Strategy is eligible for a Writer handoff."
+            if provider.is_configured
+            else (
+                "Strategy is eligible for a future Writer handoff; "
+                "no Writer provider is configured."
+            )
         ),
     }
 
@@ -581,8 +716,9 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
         )
     ).scalar_one()
     cost = sum((Decimal(str(run.actual_cost_usd)) for run in runs), Decimal("0"))
+    provider = get_pipeline_provider()
     return {
-        "provider_state": "not_configured",
+        "provider_state": provider.state_label,
         "status": current.status if current else (last.status if last else "not_run"),
         "current_strategy": current,
         "last_run": last,
@@ -596,6 +732,6 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
         if (current or last)
         else "STRATEGY PROVIDER NOT CONFIGURED",
         "schedule_enabled": bool(schedule.enabled) if schedule else False,
-        "business_context_state": "incomplete",
+        "business_context_state": "complete" if provider.is_configured else "incomplete",
         "performance_data_state": "no_data",
     }

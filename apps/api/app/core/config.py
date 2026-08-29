@@ -60,6 +60,16 @@ class Settings(BaseSettings):
     # --- CORS ---
     cors_allow_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
 
+    # --- Pipeline provider (WP-PB-005) ---
+    # Selects the implementation behind every Scout → Compliance stage.
+    #   null       (default) no vendor; each stage stops truthfully at
+    #              provider_not_configured and spends nothing.
+    #   simulation deterministic offline provider for pre-vendor testing. It
+    #              performs no network I/O, costs nothing, labels every record
+    #              it writes `simulation`, and is refused in production.
+    # Activating a paid vendor is a separate audited milestone (PROVIDER-001).
+    pipeline_provider_mode: str = Field(default="null")
+
     # --- Worker registry (Workstream 1) ---
     # Liveness thresholds, server-clock only (see app/services/workers.py).
     worker_suspect_after_seconds: int = Field(default=30)
@@ -156,6 +166,21 @@ class Settings(BaseSettings):
             raise ValueError(
                 "AUTH_MODE=local is forbidden when ENVIRONMENT is production; "
                 "set ALLOW_LOCAL_AUTH_IN_PRODUCTION=true only as an audited override"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_pipeline_provider_mode(self) -> Settings:
+        mode = self.pipeline_provider_mode.strip().lower()
+        if mode not in {"null", "simulation"}:
+            raise ValueError("PIPELINE_PROVIDER_MODE must be 'null' or 'simulation'")
+        object.__setattr__(self, "pipeline_provider_mode", mode)
+        # Simulated content is synthetic by construction. There is no audited
+        # override for shipping it from a production deployment.
+        if mode == "simulation" and self.environment.strip().lower() in {"production", "prod"}:
+            raise ValueError(
+                "PIPELINE_PROVIDER_MODE=simulation is forbidden when ENVIRONMENT is production; "
+                "simulated pipeline output must never be produced by a production deployment"
             )
         return self
 
