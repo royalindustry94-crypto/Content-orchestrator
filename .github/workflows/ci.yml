@@ -38,6 +38,8 @@ jobs:
           python-version: "3.12"
       - name: Install dependencies
         run: pip install -e ".[dev]"
+      - name: Bootstrap local Postgres parity
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f ../../scripts/bootstrap_local_postgres.sql
       - name: Run migrations
         run: alembic upgrade head
       - name: Migration replay
@@ -141,6 +143,9 @@ jobs:
       - name: Install web dependencies
         working-directory: apps/web
         run: npm ci
+      - name: Bootstrap local Postgres parity
+        working-directory: apps/api
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f ../../scripts/bootstrap_local_postgres.sql
       - name: Migrate preview database
         working-directory: apps/api
         run: alembic upgrade head
@@ -211,8 +216,6 @@ jobs:
         working-directory: apps/api
         run: pip install -e ".[dev]"
       - name: pip-audit (API)
-        # P-003/P-004: fail-closed on known vulnerabilities in the installed
-        # project graph. Local packages are skipped; PyPI deps must be clean.
         working-directory: apps/api
         run: |
           pip install pip-audit
