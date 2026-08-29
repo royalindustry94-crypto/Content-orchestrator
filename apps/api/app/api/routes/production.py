@@ -128,6 +128,29 @@ async def artifact_detail(
     return FinalArtifactOut.model_validate(artifact)
 
 
+@router.post("/artifacts/{artifact_id}/media-qa", response_model=MediaQaOut)
+async def run_artifact_qa(
+    workspace_id: uuid.UUID,
+    artifact_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
+) -> MediaQaOut:
+    """Run independent Media QA against the stored artifact."""
+    del membership
+    try:
+        return await production.run_media_qa(
+            db,
+            workspace_id=workspace_id,
+            actor_id=uuid.UUID(user.id),
+            final_artifact_id=artifact_id,
+        )
+    except production.ProductionNotFoundError as exc:
+        raise _not_found(str(exc)) from exc
+    except production.ProducerGateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+
 @router.get("/artifacts/{artifact_id}/media-qa", response_model=list[MediaQaOut])
 async def artifact_qa(
     workspace_id: uuid.UUID,

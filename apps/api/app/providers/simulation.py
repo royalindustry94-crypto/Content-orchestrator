@@ -352,9 +352,11 @@ class SimulationPipelineProvider:
             request.script_body,
             request.script_cta,
         )
+        # Asset types are the domain's own AssetType values so the Producer can
+        # persist them without a provider-specific translation table.
         assets = [
             RenderedAssetDraft(
-                asset_type="voiceover",
+                asset_type="audio",
                 model_version="simulation-narration-v1",
                 duration_seconds=duration,
                 dimensions={},
@@ -362,15 +364,15 @@ class SimulationPipelineProvider:
                 cost_usd=Decimal("0.00"),
             ),
             RenderedAssetDraft(
-                asset_type="subtitle",
+                asset_type="visual",
                 model_version="simulation-captions-v1",
                 duration_seconds=duration,
-                dimensions={},
+                dimensions={"width": 1080, "height": 1920},
                 generation_settings={"format": "burned_in", "language": "en"},
                 cost_usd=Decimal("0.00"),
             ),
             RenderedAssetDraft(
-                asset_type="video",
+                asset_type="render",
                 model_version="simulation-render-v1",
                 duration_seconds=duration,
                 dimensions={"width": 1080, "height": 1920},

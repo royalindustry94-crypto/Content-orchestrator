@@ -281,6 +281,169 @@ async def test_all_four_content_auditors_pass_and_open_producer_gate(
     assert gate.json()["eligible"] is True
 
 
+async def _rendered_artifact(client, headers, workspace_id, objective) -> tuple[str, str]:
+    package_id = await _audited_package(client, headers, workspace_id, objective)
+    run = await client.post(
+        f"/workspaces/{workspace_id}/production/runs",
+        json={
+            "content_package_id": package_id,
+            "target_platform": "youtube_shorts",
+            "target_format": "vertical_video",
+            "target_duration_seconds": 45,
+        },
+        headers=headers,
+    )
+    assert run.status_code == 201, run.text
+    job_id = run.json()["id"]
+    detail = await client.get(
+        f"/workspaces/{workspace_id}/production/runs/{job_id}", headers=headers
+    )
+    artifact_id = detail.json()["artifacts"][0]["id"]
+    return job_id, artifact_id
+
+
+async def test_producer_renders_and_media_qa_passes(client, new_user, simulation_mode):
+    _, _, headers = new_user
+    workspace_id = await _workspace(client, headers)
+    job_id, artifact_id = await _rendered_artifact(client, headers, workspace_id, "Producer path")
+
+    detail = await client.get(
+        f"/workspaces/{workspace_id}/production/runs/{job_id}", headers=headers
+    )
+    body = detail.json()
+    assert body["job"]["status"] == "awaiting_media_qa"
+    assert {asset["asset_type"] for asset in body["assets"]} == {"audio", "visual", "render"}
+
+    qa = await client.post(
+        f"/workspaces/{workspace_id}/production/artifacts/{artifact_id}/media-qa",
+        headers=headers,
+    )
+    assert qa.status_code == 200, qa.text
+    assert qa.json()["status"] == "pass", qa.text
+
+    readiness = await client.get(
+        f"/workspaces/{workspace_id}/production/artifacts/{artifact_id}/readiness",
+        headers=headers,
+    )
+    # A Media QA pass alone must never look like readiness to publish.
+    assert readiness.json()["status"] == "blocked"
+
+
+async def test_compliance_requires_media_qa_pass_first(client, new_user, simulation_mode):
+    _, _, headers = new_user
+    workspace_id = await _workspace(client, headers)
+    _, artifact_id = await _rendered_artifact(client, headers, workspace_id, "Compliance ordering")
+
+    premature = await client.post(
+        f"/workspaces/{workspace_id}/compliance/runs",
+        json={"final_artifact_id": artifact_id, "target_platform": "youtube_shorts"},
+        headers=headers,
+    )
+    assert premature.status_code == 409, premature.text
+
+
+async def test_chief_audit_blocks_when_a_gate_is_missing(client, new_user, simulation_mode):
+    _, _, headers = new_user
+    workspace_id = await _workspace(client, headers)
+    _, artifact_id = await _rendered_artifact(client, headers, workspace_id, "Chief gate check")
+    await client.post(
+        f"/workspaces/{workspace_id}/production/artifacts/{artifact_id}/media-qa", headers=headers
+    )
+
+    # Compliance has not run, so the Chief Auditor must refuse to advance.
+    chief = await client.post(
+        f"/workspaces/{workspace_id}/compliance/artifacts/{artifact_id}/chief-audit",
+        headers=headers,
+    )
+    assert chief.status_code == 201, chief.text
+    assert chief.json()["status"] == "blocked"
+    assert "compliance_missing" in chief.json()["blockers"]
+
+    gates = await client.get(f"/workspaces/{workspace_id}/review-gates", headers=headers)
+    assert gates.json() == []
+
+
+async def test_full_pipeline_ends_at_a_human_review_gate(client, new_user, simulation_mode):
+    _, _, headers = new_user
+    workspace_id = await _workspace(client, headers)
+    _, artifact_id = await _rendered_artifact(client, headers, workspace_id, "Full chain")
+
+    qa = await client.post(
+        f"/workspaces/{workspace_id}/production/artifacts/{artifact_id}/media-qa", headers=headers
+    )
+    assert qa.json()["status"] == "pass"
+
+    compliance = await client.post(
+        f"/workspaces/{workspace_id}/compliance/runs",
+        json={"final_artifact_id": artifact_id, "target_platform": "youtube_shorts"},
+        headers=headers,
+    )
+    assert compliance.status_code == 201, compliance.text
+    assert compliance.json()["status"] == "pass", compliance.text
+
+    chief = await client.post(
+        f"/workspaces/{workspace_id}/compliance/artifacts/{artifact_id}/chief-audit",
+        headers=headers,
+    )
+    assert chief.status_code == 201, chief.text
+    assert chief.json()["status"] == "pass_to_human_review", chief.text
+
+    packages = await client.get(
+        f"/workspaces/{workspace_id}/compliance/human-review-packages", headers=headers
+    )
+    assert len(packages.json()) == 1
+    assert packages.json()[0]["review_gate_id"] is not None
+
+    gates = await client.get(f"/workspaces/{workspace_id}/review-gates", headers=headers)
+    assert len(gates.json()) == 1, gates.text
+    gate = gates.json()[0]
+    assert gate["status"] == "awaiting"
+    assert gate["script_body"]
+
+    decision = await client.post(
+        f"/workspaces/{workspace_id}/review-gates/{gate['id']}/decision",
+        json={"approved": True, "notes": "Reviewed simulated output."},
+        headers=headers,
+    )
+    assert decision.status_code == 200, decision.text
+    assert decision.json()["status"] == "approved"
+
+
+async def test_publication_stays_blocked_after_human_approval(client, new_user, simulation_mode):
+    _, _, headers = new_user
+    workspace_id = await _workspace(client, headers)
+    _, artifact_id = await _rendered_artifact(client, headers, workspace_id, "Publication block")
+    await client.post(
+        f"/workspaces/{workspace_id}/production/artifacts/{artifact_id}/media-qa", headers=headers
+    )
+    await client.post(
+        f"/workspaces/{workspace_id}/compliance/runs",
+        json={"final_artifact_id": artifact_id, "target_platform": "youtube_shorts"},
+        headers=headers,
+    )
+    await client.post(
+        f"/workspaces/{workspace_id}/compliance/artifacts/{artifact_id}/chief-audit",
+        headers=headers,
+    )
+    gates = await client.get(f"/workspaces/{workspace_id}/review-gates", headers=headers)
+    await client.post(
+        f"/workspaces/{workspace_id}/review-gates/{gates.json()[0]['id']}/decision",
+        json={"approved": True},
+        headers=headers,
+    )
+
+    eligibility = await client.post(
+        f"/workspaces/{workspace_id}/compliance/artifacts/{artifact_id}"
+        "/publication-eligibility?target_platform=youtube_shorts",
+        headers=headers,
+    )
+    assert eligibility.status_code in {200, 201}, eligibility.text
+    body = eligibility.json()
+    # External publishing is disabled by design; nothing upstream may unlock it.
+    assert body["publication_eligible"] is False
+    assert "external_publishing_disabled" in body["blocking_reasons"]
+
+
 async def test_content_auditors_are_independent_of_the_writer(client, new_user, simulation_mode):
     _, _, headers = new_user
     workspace_id = await _workspace(client, headers)
