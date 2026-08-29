@@ -262,13 +262,26 @@ def test_managed_supabase_default_acls_are_behaviorally_contained() -> None:
             psql,
             target_url,
             """
-            SELECT
-              has_table_privilege('anon', 'public.managed_acl_probe', 'SELECT')::int || ',' ||
-              has_table_privilege('authenticated', 'public.managed_acl_probe', 'SELECT')::int || ',' ||
-              has_sequence_privilege('anon', 'public.managed_acl_probe_seq', 'USAGE')::int || ',' ||
-              has_sequence_privilege('authenticated', 'public.managed_acl_probe_seq', 'USAGE')::int || ',' ||
-              has_function_privilege('anon', 'public.managed_acl_probe_fn()', 'EXECUTE')::int || ',' ||
-              has_function_privilege('authenticated', 'public.managed_acl_probe_fn()', 'EXECUTE')::int;
+            SELECT array_to_string(ARRAY[
+              has_table_privilege(
+                'anon', 'public.managed_acl_probe', 'SELECT'
+              )::int,
+              has_table_privilege(
+                'authenticated', 'public.managed_acl_probe', 'SELECT'
+              )::int,
+              has_sequence_privilege(
+                'anon', 'public.managed_acl_probe_seq', 'USAGE'
+              )::int,
+              has_sequence_privilege(
+                'authenticated', 'public.managed_acl_probe_seq', 'USAGE'
+              )::int,
+              has_function_privilege(
+                'anon', 'public.managed_acl_probe_fn()', 'EXECUTE'
+              )::int,
+              has_function_privilege(
+                'authenticated', 'public.managed_acl_probe_fn()', 'EXECUTE'
+              )::int
+            ], ',');
             """,
         ).stdout.strip()
         assert future_exposure == "0,0,0,0,0,0"
