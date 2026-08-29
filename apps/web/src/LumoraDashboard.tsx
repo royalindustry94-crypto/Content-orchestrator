@@ -344,11 +344,13 @@ function DashboardHome({
   token,
   workspaceId,
   navigate,
+  provider,
 }: {
   data: DashboardData;
   token: string;
   workspaceId: string;
   navigate: (key: NavKey) => void;
+  provider: PipelineProviderStatus | null;
 }) {
   const [askNotice, setAskNotice] = useState<string | null>(null);
   const priority = { critical: 0, warning: 1, info: 2 } as const;
@@ -376,6 +378,16 @@ function DashboardHome({
   ] as const;
   const realWorkers = data.workers.workers;
   const activeWorkerCount = realWorkers.filter((worker) => ["online", "busy"].includes(worker.status.toLowerCase())).length;
+  // These departments are backed by the pipeline provider, so their capability
+  // follows whichever one is configured rather than a fixed label.
+  const departmentState = provider?.simulated
+    ? "Simulated"
+    : provider?.configured ? "Configured" : "Not configured";
+  const departmentDetail = provider?.simulated
+    ? "Backed by the simulation provider: deterministic, offline, and not real work."
+    : provider?.configured
+      ? "Backed by the configured content provider."
+      : "No workspace role binding or executable capability is configured.";
 
   return (
     <div className="dashboard-home business-home">
@@ -454,10 +466,10 @@ function DashboardHome({
         <div className="department-grid">
           {departments.map(([name, responsibility]) => (
             <article className="department-card" key={name}>
-              <span className="department-card__state">Not configured</span>
+              <span className="department-card__state">{departmentState}</span>
               <h4>{name}</h4>
               <p>{responsibility}</p>
-              <small>No workspace role binding or executable capability is configured.</small>
+              <small>{departmentDetail}</small>
             </article>
           ))}
         </div>
@@ -1809,7 +1821,7 @@ export default function LumoraDashboard({
     if (loadedKey !== viewKey) return <Loading />;
 
     if (nav === "dashboard") {
-      if (isDashboardData(data)) return <DashboardHome data={data} navigate={navigate} token={token} workspaceId={workspaceId} />;
+      if (isDashboardData(data)) return <DashboardHome data={data} navigate={navigate} provider={provider} token={token} workspaceId={workspaceId} />;
       return <Loading />;
     }
     if (nav === "mission") {

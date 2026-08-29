@@ -247,6 +247,9 @@ describe("dashboard navigation smoke test", () => {
     expect(await screen.findByText(/Simulation provider active/i)).toBeDefined();
     // The banner must also say the safety controls still apply.
     expect(await screen.findByText(/Human Review is still required/i)).toBeDefined();
+    // Department capability follows the provider instead of a fixed label.
+    expect(screen.getAllByText("Simulated").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Not configured")).toBeNull();
   });
 
   it("shows real founder decisions without a synthetic alert-count metric", async () => {
