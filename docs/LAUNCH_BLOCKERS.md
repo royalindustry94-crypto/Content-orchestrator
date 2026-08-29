@@ -33,6 +33,8 @@ PR #48 merged the bounded Founder Preview pipeline with these workspace-scoped s
 5. Producer + Media QA
 6. Compliance + Chief Auditor
 
+WP-PB-005 then made that chain executable end to end behind the provider seam, and implemented the independent auditors that previously existed only as test-only helpers: the four Content Department auditors, Media QA, and the Chief Auditor gate reconciliation. A Chief Auditor pass now opens a real Human Review Gate, so the pipeline terminates at a human rather than at a dead end.
+
 Safety boundaries remain explicit:
 
 - Human Review Gate remains mandatory.
@@ -43,7 +45,7 @@ Safety boundaries remain explicit:
 
 ### Verified engineering evidence
 
-- API: **299 passed**, **81.09% coverage** (75% gate)
+- API: **323 passed**, **79.64% coverage** (75% gate)
 - Alembic: current audited head **`0050`**
 - Migration lifecycle: upgrade → full downgrade to base → re-upgrade **PASS**
 - Worker: **PASS**
@@ -77,7 +79,9 @@ The Supabase connector is installed but has not exposed a project to the current
 
 ### PROVIDER-001 — Live provider activation — **OPEN / DEFERRED**
 
-Before enabling OpenAI/Anthropic/Gemini/ElevenLabs/Creatomate/n8n or equivalent live effects, require a separate audited milestone covering credentials, provider abstraction, retries/backoff/timeouts, idempotency, spend reserve/commit accounting, redaction/logging, supervised provider tests and failure behavior.
+Before enabling OpenAI/Anthropic/Gemini/ElevenLabs/Creatomate/n8n or equivalent live effects, require a separate audited milestone covering credentials, retries/backoff/timeouts, idempotency, spend reserve/commit accounting, redaction/logging, supervised provider tests and failure behavior.
+
+The **provider abstraction** part of this blocker is closed by WP-PB-005: `PIPELINE_PROVIDER_MODE` now selects a `PipelineProvider` implementation behind a typed seam, so activating a vendor is an implementation swap rather than an edit to five stage services. The default remains `null` (no vendor, fail-closed, zero spend). A deterministic offline `simulation` provider ships alongside it for pre-vendor testing; it performs no network I/O, spends nothing, labels every record it writes, and is refused when `ENVIRONMENT` is production with no override. Simulation does **not** discharge any part of this blocker relating to live vendors.
 
 ### BILLING-001 — Billing go-live — **OPEN / DEFERRED**
 
