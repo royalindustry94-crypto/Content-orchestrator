@@ -33,10 +33,20 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 | Field | Value |
 |---|---|
 | Severity | MEDIUM |
-| Evidence | Current API suite: **325 passed, 79.68% coverage**; CI floor remains 75% |
+| Evidence | Current API suite: **354 passed, 79.78% coverage**; CI floor remains 75% |
 | Risk | Future code can regress materially while still passing the configured floor |
 | Recommendation | Raise the floor deliberately after measuring module-specific gaps; do not game coverage |
 | Effort | S |
+
+### TD-072 — Serverless preview cannot host the automation loops — **OPEN / ACCEPTED FOR PREVIEW**
+
+| Field | Value |
+|---|---|
+| Severity | MEDIUM |
+| Evidence | `RUNTIME_PROFILE=serverless` starts none of the scheduler, outbox relay or maintenance loops, because a Vercel Function is frozen between requests. `GET /health/automation` reports `status: "disabled"` with the reason and the affected capabilities; verified on a live deployment by `scripts/verify_preview.py` |
+| Risk | Draft Desk stage dispatch, worker liveness sweep, lease recovery, back-pressure evaluation and outbox catch-up delivery do not run on that profile. Accepted only because the Founder-testing path is entirely request-inline: every pipeline stage, auditor, and the opening **and deciding** of the Human Review Gate complete inside their request, and the review decision fails with 503 rather than reporting a decision it did not apply |
+| Recommendation | Keep `server` (the default) for any deployment that needs the worker path. Do not add Vercel Cron as a substitute — cron runs only on production deployments, and a once-per-invocation tick is not equivalent to lease reaping. If serverless ever becomes a supported customer topology, that needs its own work package with an external scheduler |
+| Effort | M |
 
 ### TD-034 — No explicit application rate limiting — **OPEN**
 

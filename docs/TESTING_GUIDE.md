@@ -106,6 +106,13 @@ passed its independent audit, so the order matters.
 | 10 | **Compliance** | Run the Chief Auditor | `pass_to_human_review` |
 | 11 | **Human Review** | A new gate is waiting | Approve or reject it |
 
+> **Use topics made of words, not numbers.** The writer echoes your topic into
+> the script, and any sentence containing a digit is classified as a `NUMBER`
+> claim, which the fact auditor blocks because no verification provider can
+> substantiate a quantity. "coffee brewing tips" runs clean; "top 5 coffee tips"
+> stops at step 6 and the Producer gate then refuses with a 409. That is the
+> control working.
+
 ### The interesting failures
 
 These are worth testing deliberately, because they are the controls:
@@ -181,9 +188,35 @@ The API suite needs Postgres and a database migrated to head. It uses
 
 ---
 
+## 10. Testing from a phone
+
+`scripts/dev_up.sh` binds to localhost, which a phone cannot reach. Two options:
+
+```bash
+# Same routing shape as the deployed preview (static SPA + API under /api).
+npm --prefix apps/web run build
+PIPELINE_PROVIDER_MODE=simulation RUNTIME_PROFILE=serverless \
+  python scripts/serve_preview.py --host 0.0.0.0 --port 8080
+```
+
+Then reach it over your LAN, or put a tunnel in front of it. For a hosted
+preview against the isolated Supabase test project, see
+`docs/ops/VERCEL_PREVIEW.md`. Either way, verify it with:
+
+```bash
+python scripts/verify_preview.py http://<host>:8080
+```
+
+Note that `RUNTIME_PROFILE=serverless` intentionally stops the background loops,
+so the Draft Desk worker path is not exercised — `/health/automation` says so.
+Leave it at the default `server` if you need the worker.
+
+---
+
 ## Related
 
 - `docs/work-packages/WP-PB-005-pipeline-provider-abstraction.md`
+- `docs/ops/VERCEL_PREVIEW.md`
 - `docs/LAUNCH_BLOCKERS.md`
 - `docs/BETA_OPERATOR_RUNBOOK.md`
 - `docs/ops/DEPLOYMENT.md`
