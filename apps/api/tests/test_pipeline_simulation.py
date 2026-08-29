@@ -36,6 +36,65 @@ async def _workspace(client, headers) -> str:
     return response.json()["id"]
 
 
+async def _audited_opportunity(client, headers, workspace_id, objective) -> str:
+    run = await client.post(
+        f"/workspaces/{workspace_id}/research/runs",
+        json={"research_objective": objective},
+        headers=headers,
+    )
+    assert run.status_code == 201, run.text
+    opportunities = await client.get(
+        f"/workspaces/{workspace_id}/research/opportunities", headers=headers
+    )
+    opportunity_id = opportunities.json()[0]["id"]
+    audit = await client.post(
+        f"/workspaces/{workspace_id}/research/opportunities/{opportunity_id}/audit",
+        headers=headers,
+    )
+    assert audit.json()["state"] == "pass", audit.text
+    return opportunity_id
+
+
+async def _audited_brief(client, headers, workspace_id, objective) -> str:
+    opportunity_id = await _audited_opportunity(client, headers, workspace_id, objective)
+    run = await client.post(
+        f"/workspaces/{workspace_id}/strategy/runs",
+        json={
+            "strategy_objective": f"Turn '{objective}' into a short explainer",
+            "source_opportunity_ids": [opportunity_id],
+        },
+        headers=headers,
+    )
+    assert run.status_code == 201, run.text
+    briefs = await client.get(f"/workspaces/{workspace_id}/strategy/briefs", headers=headers)
+    brief_id = briefs.json()[0]["id"]
+    audit = await client.post(
+        f"/workspaces/{workspace_id}/strategy/briefs/{brief_id}/audit", headers=headers
+    )
+    assert audit.json()["state"] == "pass", audit.text
+    return brief_id
+
+
+async def _audited_package(client, headers, workspace_id, objective) -> str:
+    brief_id = await _audited_brief(client, headers, workspace_id, objective)
+    run = await client.post(
+        f"/workspaces/{workspace_id}/content-department/runs",
+        json={"strategy_brief_id": brief_id},
+        headers=headers,
+    )
+    assert run.status_code == 201, run.text
+    packages = await client.get(
+        f"/workspaces/{workspace_id}/content-department/packages", headers=headers
+    )
+    package_id = packages.json()[0]["id"]
+    audits = await client.post(
+        f"/workspaces/{workspace_id}/content-department/packages/{package_id}/audits",
+        headers=headers,
+    )
+    assert audits.status_code == 200, audits.text
+    return package_id
+
+
 async def test_research_run_produces_audited_opportunity(client, new_user, simulation_mode):
     _, _, headers = new_user
     workspace_id = await _workspace(client, headers)
@@ -174,3 +233,64 @@ async def test_strategy_brief_passes_independent_auditor(client, new_user, simul
     )
     assert audit.status_code == 200, audit.text
     assert audit.json()["state"] == "pass", audit.text
+
+
+async def test_all_four_content_auditors_pass_and_open_producer_gate(
+    client, new_user, simulation_mode
+):
+    _, _, headers = new_user
+    workspace_id = await _workspace(client, headers)
+    brief_id = await _audited_brief(client, headers, workspace_id, "Content auditors clean path")
+
+    run = await client.post(
+        f"/workspaces/{workspace_id}/content-department/runs",
+        json={"strategy_brief_id": brief_id},
+        headers=headers,
+    )
+    assert run.status_code == 201, run.text
+    packages = await client.get(
+        f"/workspaces/{workspace_id}/content-department/packages", headers=headers
+    )
+    package_id = packages.json()[0]["id"]
+
+    # Producer handoff must be refused until every mandatory auditor has run.
+    premature = await client.get(
+        f"/workspaces/{workspace_id}/content-department/packages/{package_id}/producer-gate",
+        headers=headers,
+    )
+    assert premature.status_code == 409, premature.text
+
+    audits = await client.post(
+        f"/workspaces/{workspace_id}/content-department/packages/{package_id}/audits",
+        headers=headers,
+    )
+    assert audits.status_code == 200, audits.text
+    states = {item["auditor_type"]: item["state"] for item in audits.json()}
+    assert states == {
+        "language": "pass",
+        "fact": "pass",
+        "brand": "pass",
+        "originality": "pass",
+    }, audits.text
+
+    gate = await client.get(
+        f"/workspaces/{workspace_id}/content-department/packages/{package_id}/producer-gate",
+        headers=headers,
+    )
+    assert gate.status_code == 200, gate.text
+    assert gate.json()["eligible"] is True
+
+
+async def test_content_auditors_are_independent_of_the_writer(client, new_user, simulation_mode):
+    _, _, headers = new_user
+    workspace_id = await _workspace(client, headers)
+    package_id = await _audited_package(client, headers, workspace_id, "Auditor independence")
+
+    detail = await client.get(
+        f"/workspaces/{workspace_id}/content-department/packages/{package_id}", headers=headers
+    )
+    assert detail.status_code == 200, detail.text
+    body = detail.json()
+    producers = {body["package"]["writer_worker_id"], body["direction"]["worker_id"]}
+    auditors = {audit["auditor_worker_id"] for audit in body["audits"]}
+    assert producers.isdisjoint(auditors)

@@ -17,6 +17,10 @@ class ContentDepartmentRunCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     strategy_brief_id: uuid.UUID
+    # Set when this run revises an earlier package. The prior package is
+    # superseded and its audits are invalidated, so a revision can never
+    # inherit approval granted to different words.
+    prior_content_package_id: uuid.UUID | None = None
     max_provider_calls: int = Field(default=5, ge=0, le=25)
     max_tokens: int = Field(default=4000, ge=0, le=100_000)
     max_cost_usd: Decimal = Field(default=Decimal("0.00"), ge=0, le=Decimal("25.00"))

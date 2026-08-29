@@ -44,6 +44,10 @@ from app.providers.base import (
 # these citations for a real publication.
 SOURCE_HOST = "simulated-source.invalid"
 
+# The Writer must reproduce this phrase verbatim and the brand auditor checks
+# for it, so the two are defined once here rather than kept in sync by hand.
+REQUIRED_PHRASE = "outcomes track how much preparation happened"
+
 _ANGLES = (
     "a practitioner walkthrough grounded in the collected evidence",
     "a myth-versus-evidence comparison drawn from the collected sources",
@@ -284,13 +288,21 @@ class SimulationPipelineProvider:
             desired_emotion="confidence",
             production_complexity="low",
             estimated_duration=request.recommended_length or "under one minute",
-            required_claims=[message],
+            # Both lists are literal phrases so the brand auditor can check
+            # them by inspection rather than by interpretation.
+            required_claims=[REQUIRED_PHRASE],
             prohibited_claims=[
-                "any promise of reach, revenue, or ranking",
-                "any claim not supported by a cited source",
+                "guaranteed",
+                "go viral",
+                "increase revenue by",
+                "best in the world",
+                "risk-free",
             ],
             required_assets=["narration", "captions"],
-            risk_notes=["Simulated provider output; evidence is synthetic."],
+            risk_notes=[
+                "Simulated provider output; the cited evidence is synthetic.",
+                f"Core message to preserve in any revision: {message}",
+            ],
         )
 
         # The script avoids numerals and superlatives on purpose: those are the
@@ -308,8 +320,8 @@ class SimulationPipelineProvider:
             ),
             body=(
                 f"SIMULATED SCRIPT — generated offline for pipeline testing, not for publication. "
-                f"The sources gathered on {topic} agree on one point: outcomes track how much "
-                "preparation happened before anyone touched a tool. Where they part company is "
+                f"The sources gathered on {topic} agree on one point: {REQUIRED_PHRASE} "
+                "before anyone touched a tool. Where they part company is "
                 "on how much of that preparation is worth doing. One account describes teams "
                 "who front-loaded the setup and found the approach held. Another describes the "
                 "same approach falling over, and traces it back to preparation that got skipped. "
