@@ -45,7 +45,7 @@ Safety boundaries remain explicit:
 
 ### Verified engineering evidence
 
-- API: **323 passed**, **79.64% coverage** (75% gate)
+- API: **324 passed**, **79.69% coverage** (75% gate)
 - Alembic: current audited head **`0050`**
 - Migration lifecycle: upgrade → full downgrade to base → re-upgrade **PASS**
 - Worker: **PASS**

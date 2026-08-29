@@ -11,9 +11,12 @@ import uuid
 from urllib.parse import urlsplit
 
 import pytest
+from sqlalchemy import text
 
 from app.core.config import get_settings
+from app.db.session import AsyncSessionLocal
 from app.providers import get_pipeline_provider
+from tests.conftest import make_token
 
 
 @pytest.fixture
@@ -442,6 +445,56 @@ async def test_publication_stays_blocked_after_human_approval(client, new_user, 
     # External publishing is disabled by design; nothing upstream may unlock it.
     assert body["publication_eligible"] is False
     assert "external_publishing_disabled" in body["blocking_reasons"]
+
+
+async def test_chief_audit_cannot_reach_another_workspaces_artifact(
+    client, new_user, simulation_mode
+):
+    """The chief-audit route runs on the owner session, so prove isolation holds.
+
+    Raising a review gate writes orchestration rows that RLS does not permit
+    from a request-scoped session, so that handler uses the owner connection
+    behind the admin guard. This asserts the guard plus explicit workspace
+    scoping still contain it.
+    """
+    _, _, owner_headers = new_user
+    victim_workspace = await _workspace(client, owner_headers)
+    _, artifact_id = await _rendered_artifact(
+        client, owner_headers, victim_workspace, "Isolation target"
+    )
+    await client.post(
+        f"/workspaces/{victim_workspace}/production/artifacts/{artifact_id}/media-qa",
+        headers=owner_headers,
+    )
+
+    attacker_id = str(uuid.uuid4())
+    attacker_headers = {"Authorization": f"Bearer {make_token(user_id=attacker_id)}"}
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("INSERT INTO auth.users (id, email) VALUES (:id, :email)"),
+            {"id": attacker_id, "email": f"{attacker_id}@example.com"},
+        )
+        await session.commit()
+    attacker_workspace = await _workspace(client, attacker_headers)
+
+    # Not a member of the victim workspace at all.
+    denied = await client.post(
+        f"/workspaces/{victim_workspace}/compliance/artifacts/{artifact_id}/chief-audit",
+        headers=attacker_headers,
+    )
+    assert denied.status_code == 403, denied.text
+
+    # Admin of their own workspace, but the artifact belongs to another one.
+    crossed = await client.post(
+        f"/workspaces/{attacker_workspace}/compliance/artifacts/{artifact_id}/chief-audit",
+        headers=attacker_headers,
+    )
+    assert crossed.status_code == 404, crossed.text
+
+    gates = await client.get(
+        f"/workspaces/{attacker_workspace}/review-gates", headers=attacker_headers
+    )
+    assert gates.json() == []
 
 
 async def test_content_auditors_are_independent_of_the_writer(client, new_user, simulation_mode):

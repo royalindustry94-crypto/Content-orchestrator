@@ -33,7 +33,7 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 | Field | Value |
 |---|---|
 | Severity | MEDIUM |
-| Evidence | Current API suite: **323 passed, 79.64% coverage**; CI floor remains 75% |
+| Evidence | Current API suite: **324 passed, 79.69% coverage**; CI floor remains 75% |
 | Risk | Future code can regress materially while still passing the configured floor |
 | Recommendation | Raise the floor deliberately after measuring module-specific gaps; do not game coverage |
 | Effort | S |
@@ -87,7 +87,7 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 | TD-050 | Ruff format is not a distinct CI gate | LOW |
 | TD-060 | FORCE RLS remains a positive architectural control | INFO — exact current table count should be derived from live/current migration evidence when needed |
 | TD-061 | Migration round-trip through current head `0050` | INFO — PASS |
-| TD-062 | API baseline | INFO — **323 passed / 79.64% coverage** |
+| TD-062 | API baseline | INFO — **324 passed / 79.69% coverage** |
 | TD-063 | Exact-head browser smoke | INFO — retained desktop + exact-390px CI evidence now exists |
 
 ---

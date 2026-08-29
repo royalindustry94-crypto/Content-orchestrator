@@ -25,9 +25,10 @@ router = APIRouter(tags=["health"])
 async def pipeline_provider() -> dict:
     """Which provider backs the content pipeline, for honest UI labelling.
 
-    Unauthenticated on purpose: it exposes no workspace data, and the client
-    needs it before a session exists so it can never render simulated output
-    without saying so.
+    Deployment configuration only — no workspace data — so this is
+    unauthenticated for the same reason ``/auth/mode`` is: clients need to
+    render the right thing regardless of session state, and operators need to
+    confirm which mode an environment is actually running in.
     """
     return provider_status()
 
