@@ -18,6 +18,8 @@ import {
   createResearchRun,
   createStrategyRun,
   decideReviewGate,
+  getPipelineProvider,
+  type PipelineProviderStatus,
   getActivityFeed,
   getContentCommand,
   listChiefAudits,
@@ -1471,7 +1473,7 @@ function ComplianceView({
         <input aria-label="Final artifact ID" placeholder="Final artifact ID from audited Producer output" value={artifactId} onChange={(event) => setArtifactId(event.target.value)} />
         <button className="primary-action" disabled={busy} type="submit">{busy ? "Requesting…" : "Request Compliance"}</button>
       </form>
-      <p className="compliance-not-configured" role="status">COMPLIANCE PROVIDER NOT CONFIGURED — no policy retrieval, external rights verification, provider spend, remediation, publication, or fabricated compliance result will be created.</p>
+      {data.summary.provider_state === "not_configured" ? <p className="compliance-not-configured" role="status">COMPLIANCE PROVIDER NOT CONFIGURED — no policy retrieval, external rights verification, provider spend, remediation, publication, or fabricated compliance result will be created.</p> : <p className="compliance-not-configured" role="status">Platform policy freshness is still unverified, and a compliance pass can only hand the same artifact to Human Review. It can never publish.</p>}
       {notice ? <p className="producer-notice" role="status">{notice}</p> : null}
     </section>
     <section className="surface">
@@ -1558,6 +1560,7 @@ export default function LumoraDashboard({
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [reviewBusy, setReviewBusy] = useState<string | null>(null);
   const [reviewActionError, setReviewActionError] = useState<string | null>(null);
+  const [provider, setProvider] = useState<PipelineProviderStatus | null>(null);
   const requestId = useRef(0);
   const mobileNavRef = useDialogFocus<HTMLElement>(mobileOpen, () => setMobileOpen(false));
 
@@ -1571,6 +1574,14 @@ export default function LumoraDashboard({
       .catch(() => { if (active) setWorkspaces([]); });
     return () => { active = false; };
   }, [token]);
+
+  useEffect(() => {
+    let active = true;
+    void getPipelineProvider()
+      .then((value) => { if (active) setProvider(value); })
+      .catch(() => { if (active) setProvider(null); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -2058,6 +2069,17 @@ export default function LumoraDashboard({
         </header>
 
         <main className="lumora-main">
+          {provider?.simulated ? (
+            <div className="simulation-banner" role="status">
+              <strong>Simulation provider active.</strong>
+              <span>
+                Every opportunity, brief, script, and rendered artifact below is generated
+                offline for testing. Nothing here is real research or real media, no external
+                provider is called, and no money is spent. Human Review is still required and
+                external publishing is still disabled.
+              </span>
+            </div>
+          ) : null}
           {nav !== "dashboard" ? (
             <header className="view-header">
               <div><p>The Business Manager / {title}</p><h1>{title}</h1></div>

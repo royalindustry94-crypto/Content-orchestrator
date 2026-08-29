@@ -95,6 +95,15 @@ const executiveMode = {
 };
 
 vi.mock("./api", () => ({
+  getPipelineProvider: vi.fn(async () => ({
+    mode: "null",
+    name: "none",
+    state_label: "not_configured",
+    configured: false,
+    simulated: false,
+    external_publishing_enabled: false,
+    human_review_required: true,
+  })),
   getExecutiveDashboard: vi.fn(async () => executive),
   getPipelineMonitor: vi.fn(async () => pipelines),
   getOperationsAlerts: vi.fn(async () => alerts),
@@ -214,6 +223,30 @@ describe("dashboard navigation smoke test", () => {
     // Health footer must reflect the red worker indicator — never "operational".
     expect(await screen.findByText(/Service disruption detected/i)).toBeDefined();
     expect(screen.queryByText("All systems operational")).toBeNull();
+  });
+
+  it("says nothing about simulation when a real provider backs the pipeline", async () => {
+    renderShell();
+    await screen.findByRole("heading", { name: "Home" });
+    expect(screen.queryByText(/Simulation provider active/i)).toBeNull();
+  });
+
+  it("marks every screen as simulated when the simulation provider is active", async () => {
+    const api = await import("./api");
+    (api.getPipelineProvider as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      mode: "simulation",
+      name: "simulation",
+      state_label: "simulation",
+      configured: true,
+      simulated: true,
+      external_publishing_enabled: false,
+      human_review_required: true,
+    });
+    renderShell();
+    await screen.findByRole("heading", { name: "Home" });
+    expect(await screen.findByText(/Simulation provider active/i)).toBeDefined();
+    // The banner must also say the safety controls still apply.
+    expect(await screen.findByText(/Human Review is still required/i)).toBeDefined();
   });
 
   it("shows real founder decisions without a synthetic alert-count metric", async () => {

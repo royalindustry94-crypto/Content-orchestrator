@@ -14,10 +14,22 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db
+from app.providers import provider_status
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["health"])
+
+
+@router.get("/pipeline/provider")
+async def pipeline_provider() -> dict:
+    """Which provider backs the content pipeline, for honest UI labelling.
+
+    Unauthenticated on purpose: it exposes no workspace data, and the client
+    needs it before a session exists so it can never render simulated output
+    without saying so.
+    """
+    return provider_status()
 
 
 @router.get("/health/live")

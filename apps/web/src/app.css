@@ -3391,6 +3391,10 @@ button.side-link--active {
 .research-command__form input { min-width: 0; flex: 1; }
 .research-not-configured,
 .research-notice { margin: 0; border-left: 3px solid #d4af37; padding: 10px 12px; color: #f7f8fa; background: rgba(212, 175, 55, .07); font-size: .84rem; }
+/* Persistent, unmissable marker that stored output is simulated. */
+.simulation-banner { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; margin-bottom: 20px; border: 1px solid rgba(212, 175, 55, .45); border-left: 4px solid #d4af37; border-radius: 10px; padding: 12px 16px; background: rgba(212, 175, 55, .1); }
+.simulation-banner strong { color: #f0c650; font-size: .8rem; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
+.simulation-banner span { flex: 1 1 320px; min-width: 0; color: #e6e9ee; font-size: .84rem; line-height: 1.5; }
 .research-status-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .research-status-grid article { min-width: 0; border: 1px solid rgba(255, 255, 255, .08); border-radius: 12px; padding: 16px; background: #151a21; }
 .research-status-grid span { display: block; color: #9ca3af; font-size: .75rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
