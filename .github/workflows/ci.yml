@@ -228,6 +228,10 @@ jobs:
         run: |
           pip install pip-audit
           pip-audit --progress-spinner off
+      - name: pip-audit (Vercel preview function requirements)
+        run: |
+          pip install pip-audit
+          pip-audit --progress-spinner off -r requirements.txt
 
   docker-build:
     runs-on: ubuntu-latest

@@ -1,0 +1,37 @@
+# Keep the preview deployment to what actually serves traffic: the Vite build
+# inputs (apps/web), the API package the Function imports (apps/api/app), and
+# api/. Everything below is either build output, local tooling, or documents.
+.venv
+.venv-audit
+node_modules
+apps/web/dist
+
+# Not part of the serverless request path.
+apps/worker
+apps/api/tests
+apps/api/Dockerfile
+apps/api/docker-entrypoint.sh
+apps/web/Dockerfile
+apps/web/nginx.conf
+n8n
+database
+packages
+scripts
+
+# Reference material and reports; large and never imported.
+docs
+attached_assets
+*.docx
+*.pdf
+*.html
+report_server.py
+
+# Replit-era root files, excluded on purpose. Vercel's Python installer
+# prefers a root pyproject.toml over requirements.txt, and this one declares
+# no dependencies — leaving it in the build installs nothing and the Function
+# fails on import. main.py is also a filename Vercel probes for a Python
+# entrypoint. Neither is used by the API, the web app, or CI.
+main.py
+pyproject.toml
+.replit
+replit.md
