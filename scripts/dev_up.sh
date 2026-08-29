@@ -5,9 +5,6 @@
 #   scripts/dev_up.sh                  # default: no content provider configured
 #   scripts/dev_up.sh --simulation     # deterministic offline provider, so the
 #                                      # whole pipeline produces visible output
-#
-# Postgres comes from Docker when available, otherwise from a local server
-# already listening on the DATABASE_URL host and port.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -24,14 +21,11 @@ done
 
 log() { printf '\n==> %s\n' "$1"; }
 
-# --- .env ------------------------------------------------------------------
 if [[ ! -f .env ]]; then
   log "Creating .env from .env.example"
   cp .env.example .env
 fi
 
-# SUPABASE_JWT_SECRET signs local-auth JWTs and has no default in code, so the
-# API refuses to boot without it. Generate one rather than shipping a default.
 if ! grep -qE '^SUPABASE_JWT_SECRET=.+' .env; then
   SECRET="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
   if grep -qE '^SUPABASE_JWT_SECRET=' .env; then
@@ -76,7 +70,6 @@ wait_for_port() {
   return 1
 }
 
-# --- database --------------------------------------------------------------
 if wait_for_port "$DB_HOST" "$DB_PORT" 1; then
   log "Postgres already reachable on $DB_HOST:$DB_PORT"
 elif command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
@@ -95,8 +88,6 @@ EOF
   exit 1
 fi
 
-# --- dependencies ----------------------------------------------------------
-# Absolute, because every service below starts from its own app directory.
 if [[ -x "$ROOT/.venv/bin/python" ]]; then
   PYTHON="$ROOT/.venv/bin/python"
 elif [[ -n "${VIRTUAL_ENV:-}" ]]; then
@@ -116,13 +107,30 @@ if [[ ! -d apps/web/node_modules ]]; then
   (cd apps/web && npm install)
 fi
 
-# --- migrations ------------------------------------------------------------
-# The app_runtime role that APP_DATABASE_URL connects as is created by the
-# Milestone 2 migration, so this must run before anything serves traffic.
+# Canonical Alembic intentionally refuses to manufacture Supabase auth objects.
+# Local/CI parity is bootstrapped explicitly. The bootstrap itself refuses to
+# run against a managed Supabase project by detecting supabase_auth_admin.
+log "Bootstrapping local Postgres parity"
+"$PYTHON" - <<'PY'
+import asyncio
+import os
+from pathlib import Path
+import asyncpg
+
+async def main() -> None:
+    sql = Path("scripts/bootstrap_local_postgres.sql").read_text()
+    conn = await asyncpg.connect(os.environ["DATABASE_URL"])
+    try:
+        await conn.execute(sql)
+    finally:
+        await conn.close()
+
+asyncio.run(main())
+PY
+
 log "Applying migrations"
 (cd apps/api && "$PYTHON" -m alembic upgrade head >/dev/null && "$PYTHON" -m alembic current)
 
-# --- services --------------------------------------------------------------
 PIDS=()
 cleanup() { kill "${PIDS[@]}" 2>/dev/null || true; }
 trap cleanup EXIT INT TERM
