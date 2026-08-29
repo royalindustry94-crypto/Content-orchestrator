@@ -1225,6 +1225,7 @@ export type ContentPackage = {
   producer_handoff_state: string;
   invalidated_at: string | null;
   test_data: boolean;
+  originality_state: string;
 };
 
 export type ContentClaim = {

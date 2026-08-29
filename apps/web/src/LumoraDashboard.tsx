@@ -1244,7 +1244,7 @@ function ContentDepartmentView({
                 <p>Writer: {pkg.writer_worker_id.replaceAll("_", " ")} · Version {pkg.content_version_id.slice(0, 8)}</p>
                 <dl>
                   <div><dt>Audits</dt><dd>{pkg.audit_gate_status.replaceAll("_", " ")}</dd></div>
-                  <div><dt>Originality</dt><dd>{pkg.status === "audited_blocked" ? "Requires differentiation" : "Not run"}</dd></div>
+                  <div><dt>Originality</dt><dd>{pkg.originality_state.replaceAll("_", " ")}</dd></div>
                   <div><dt>Producer</dt><dd>{pkg.producer_handoff_state.replaceAll("_", " ")}</dd></div>
                 </dl>
                 <footer>
@@ -1319,6 +1319,27 @@ function GitHubSummary({ data }: { data: GitHubOut }) {
       </div>
     </section>
   );
+}
+
+// A job with no recorded error still has an outcome; saying otherwise reads as
+// though a successful render did nothing.
+function producerOutcome(status: string): string {
+  switch (status) {
+    case "blocked_provider_not_configured":
+      return "No production provider is configured, so no artifact was produced.";
+    case "running":
+      return "Production is in progress.";
+    case "awaiting_media_qa":
+      return "Artifact rendered. Independent Media QA has not run yet.";
+    case "media_qa_passed":
+      return "Artifact rendered and passed independent Media QA.";
+    case "media_qa_blocked":
+      return "Independent Media QA blocked this artifact.";
+    case "duplicate":
+      return "An identical artifact already exists in this workspace.";
+    default:
+      return "No provider outcome has been recorded.";
+  }
 }
 
 function ProducerView({
@@ -1415,7 +1436,7 @@ function ProducerView({
                   <div><dt>Repair cycles</dt><dd>{job.repair_cycles_used} / {job.max_repair_cycles}</dd></div>
                   <div><dt>Cost</dt><dd>{money(job.actual_cost_usd)}</dd></div>
                 </dl>
-                <small>{job.last_error ?? "No provider outcome has been recorded."}</small>
+                <small>{job.last_error ?? producerOutcome(job.status)}</small>
               </article>
             ))}
           </div>

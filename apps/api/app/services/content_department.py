@@ -162,19 +162,44 @@ async def get_package(
     ).scalar_one_or_none()
 
 
-async def list_packages(session: AsyncSession, *, workspace_id: uuid.UUID) -> list[ContentPackage]:
-    return list(
-        (
-            await session.execute(
-                select(ContentPackage)
-                .where(
-                    ContentPackage.workspace_id == workspace_id,
-                    ContentPackage.deleted_at.is_(None),
-                )
-                .order_by(ContentPackage.created_at.desc())
-            )
-        ).scalars()
+async def list_packages(session: AsyncSession, *, workspace_id: uuid.UUID) -> list[dict[str, Any]]:
+    """List packages with each one's recorded originality state.
+
+    The originality result is joined in rather than inferred from
+    ``audit_gate_status``, which only reports the aggregate and cannot say
+    which of the four auditors blocked.
+    """
+    latest_originality = (
+        select(ContentAudit.state)
+        .where(
+            ContentAudit.workspace_id == ContentPackage.workspace_id,
+            ContentAudit.content_package_id == ContentPackage.id,
+            ContentAudit.auditor_type == "originality",
+        )
+        .order_by(ContentAudit.checked_at.desc())
+        .limit(1)
+        .correlate(ContentPackage)
+        .scalar_subquery()
     )
+    rows = (
+        await session.execute(
+            select(ContentPackage, latest_originality.label("originality_state"))
+            .where(
+                ContentPackage.workspace_id == workspace_id,
+                ContentPackage.deleted_at.is_(None),
+            )
+            .order_by(ContentPackage.created_at.desc())
+        )
+    ).all()
+    packages: list[dict[str, Any]] = []
+    for package, originality_state in rows:
+        item = {
+            column.name: getattr(package, column.name)
+            for column in ContentPackage.__table__.columns
+        }
+        item["originality_state"] = originality_state or "not_run"
+        packages.append(item)
+    return packages
 
 
 async def _require_strategy_pass(

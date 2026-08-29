@@ -109,6 +109,10 @@ class ContentPackageOut(BaseModel):
     producer_handoff_state: str
     invalidated_at: datetime | None
     test_data: bool
+    # Carried on the list item so a package card can report the originality
+    # result directly instead of inferring it from the aggregate gate, which
+    # cannot distinguish which auditor blocked.
+    originality_state: str = "not_run"
 
 
 class ContentClaimOut(BaseModel):
