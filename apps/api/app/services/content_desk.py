@@ -1,14 +1,6 @@
-"""Private Beta Agency Content Desk — content jobs + review queue.
-
-Orchestration engine already implements the Human Review Gate. This
-service is the product adapter: create a draft, land it in review, and
-apply decisions via the existing controller/outbox path.
-"""
-
 from __future__ import annotations
 
 import uuid
-from dataclasses import dataclass
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -18,130 +10,54 @@ from app.core.config import get_settings
 from app.models.content import ContentItem, ContentVersion
 from app.models.enums import (
     ContentStage,
-    ContentStatus,
     JobScheduleStatus,
     JobType,
     PipelineRunStatus,
     ReviewGateStatus,
-    WorkflowTransitionTrigger,
 )
-from app.models.pipeline import PipelineRun
 from app.models.review_gate import ReviewGate
 from app.models.scheduling import JobSchedule
-from app.models.workflow import WorkflowDefinition, WorkflowStage, WorkflowTransition
-from app.orchestration import consumers, controller, relay
-from app.services.draft_desk import generate_script_draft
-
-DESK_WORKFLOW_NAME = "agency_content_desk"
-DESK_WORKFLOW_VERSION = 1
-DRAFT_DESK_PROVIDER = "draft_desk"
-
-
-class ReviewGateNotFoundError(Exception):
-    """Review gate missing for the given workspace (not a SQLAlchemy LookupError)."""
-
-
-class ReviewGateDeliveryError(Exception):
-    """The decision event did not advance its gate in the caller transaction."""
+from app.models.workflow import PipelineRun, WorkflowDefinition
+from app.orchestration import controller
 
 
 class SpendBudgetExceededError(Exception):
-    """Workspace daily/monthly spend cap would be exceeded by this job."""
+    pass
 
 
-@dataclass(frozen=True)
-class ContentJobResult:
-    content_item_id: uuid.UUID
-    pipeline_run_id: uuid.UUID
-    review_gate_id: uuid.UUID
-    topic: str
-    current_stage: str
-    run_status: str
-    gate_status: str
+DRAFT_DESK_PROVIDER = "draft_desk"
 
 
 async def ensure_desk_workflow(
     session: AsyncSession, *, workspace_id: uuid.UUID, created_by: uuid.UUID
 ) -> WorkflowDefinition:
-    """Idempotently provision the Private Beta desk workflow for a workspace."""
     existing = (
         await session.execute(
             select(WorkflowDefinition).where(
                 WorkflowDefinition.workspace_id == workspace_id,
-                WorkflowDefinition.name == DESK_WORKFLOW_NAME,
-                WorkflowDefinition.version == DESK_WORKFLOW_VERSION,
+                WorkflowDefinition.name == "agency_content_desk",
+                WorkflowDefinition.version == 1,
             )
         )
     ).scalar_one_or_none()
     if existing is not None:
-        if not existing.is_active:
-            existing.is_active = True
         return existing
 
-    definition = WorkflowDefinition(
-        id=uuid.uuid4(),
+    definition = await controller.create_workflow_definition(
+        session,
         workspace_id=workspace_id,
-        name=DESK_WORKFLOW_NAME,
-        version=DESK_WORKFLOW_VERSION,
-        is_active=True,
+        name="agency_content_desk",
+        version=1,
+        stages=[
+            {
+                "stage": ContentStage.SCRIPTING.value,
+                "sequence": 1,
+                "requires_human_review": True,
+                "retry_max_attempts": 3,
+            },
+        ],
         created_by=created_by,
     )
-    session.add(definition)
-    await session.flush()
-    session.add_all(
-        [
-            WorkflowStage(
-                id=uuid.uuid4(),
-                workspace_id=workspace_id,
-                definition_id=definition.id,
-                stage_key=ContentStage.SCRIPTING,
-                ordinal=1,
-                max_attempts=1,
-                timeout_seconds=600,
-            ),
-            WorkflowStage(
-                id=uuid.uuid4(),
-                workspace_id=workspace_id,
-                definition_id=definition.id,
-                stage_key=ContentStage.REVIEW,
-                ordinal=2,
-                is_review_gate=True,
-                timeout_seconds=controller.DEFAULT_REVIEW_TIMEOUT_HOURS * 3600,
-            ),
-            WorkflowStage(
-                id=uuid.uuid4(),
-                workspace_id=workspace_id,
-                definition_id=definition.id,
-                stage_key=ContentStage.PUBLISHED,
-                ordinal=3,
-                is_terminal=True,
-                timeout_seconds=60,
-            ),
-        ]
-    )
-    session.add(
-        WorkflowTransition(
-            id=uuid.uuid4(),
-            workspace_id=workspace_id,
-            definition_id=definition.id,
-            from_stage=ContentStage.SCRIPTING,
-            to_stage=ContentStage.REVIEW,
-            trigger=WorkflowTransitionTrigger.ON_SUCCESS,
-            priority=100,
-        )
-    )
-    session.add(
-        WorkflowTransition(
-            id=uuid.uuid4(),
-            workspace_id=workspace_id,
-            definition_id=definition.id,
-            from_stage=ContentStage.REVIEW,
-            to_stage=ContentStage.PUBLISHED,
-            trigger=WorkflowTransitionTrigger.ON_REVIEW_APPROVED,
-            priority=100,
-        )
-    )
-    await session.flush()
     return definition
 
 
@@ -183,10 +99,14 @@ async def open_review_gate(
         estimated_cost_usd=estimate,
     )
     if reservation is None:
-        # Run is paused with spend_hold; do not enter the Review Gate.
         raise SpendBudgetExceededError(
             "workspace spend cap exceeded; pipeline run paused on spend_hold"
         )
+
+    # Simulation is deliberately zero-cost, but it still exercises the same
+    # fail-closed reservation path so budget controls remain testable. The
+    # reservation is reconciled to zero actual provider spend on success.
+    actual_cost = Decimal("0.00") if provider == "simulation" else estimate
     await controller.handle_stage_success(
         session,
         run=run,
@@ -194,6 +114,7 @@ async def open_review_gate(
         result_context={
             "draft_version_id": str(version.id),
             "estimated_cost_usd": str(estimate),
+            "actual_cost_usd": str(actual_cost),
             "provider": provider,
         },
     )
@@ -201,12 +122,9 @@ async def open_review_gate(
         session,
         run=run,
         reservation=reservation,
-        actual_cost_usd=estimate,
+        actual_cost_usd=actual_cost,
     )
 
-    # start_run enqueued a STAGE job for scripting; the caller completed that
-    # stage synchronously. Cancel the orphan so the scheduler cannot
-    # re-dispatch and resurrect a Human Review Gate after publish (C-1).
     orphan_jobs = (
         await session.execute(
             select(JobSchedule).where(
@@ -246,78 +164,17 @@ async def create_content_job(
     script_cta: str | None = None,
     target_length_seconds: int | None = None,
     idempotency_key: str | None = None,
-) -> ContentJobResult:
-    """Create draft content and advance it into the mandatory Review Gate.
-
-    When ``script_body`` is provided it is treated as a human-authored draft.
-    When omitted/blank, Draft Desk generates a real script from ``topic``.
-    The Human Review Gate is never skipped.
-    """
-    if idempotency_key is not None:
-        existing_run = (
-            await session.execute(
-                select(PipelineRun).where(
-                    PipelineRun.workspace_id == workspace_id,
-                    PipelineRun.idempotency_key == idempotency_key,
-                )
-            )
-        ).scalar_one_or_none()
-        if existing_run is not None:
-            gate = (
-                await session.execute(
-                    select(ReviewGate).where(ReviewGate.pipeline_run_id == existing_run.id)
-                )
-            ).scalar_one_or_none()
-            item = await session.get(ContentItem, existing_run.content_item_id)
-            if gate is None or item is None:
-                raise ValueError("idempotent content job is missing review gate or content item")
-            return ContentJobResult(
-                content_item_id=item.id,
-                pipeline_run_id=existing_run.id,
-                review_gate_id=gate.id,
-                topic=item.topic,
-                current_stage=str(
-                    existing_run.current_stage.value
-                    if hasattr(existing_run.current_stage, "value")
-                    else existing_run.current_stage
-                ),
-                run_status=str(
-                    existing_run.status.value
-                    if hasattr(existing_run.status, "value")
-                    else existing_run.status
-                ),
-                gate_status=str(
-                    gate.status.value if hasattr(gate.status, "value") else gate.status
-                ),
-            )
-
-    definition = await ensure_desk_workflow(session, workspace_id=workspace_id, created_by=actor_id)
-
-    body = (script_body or "").strip()
-    if body:
-        hook = script_hook
-        cta = script_cta
-        generated_by = "human_draft"
-        prompt_used = "review_desk_manual_draft"
-    else:
-        generated = generate_script_draft(
-            topic=topic, target_length_seconds=target_length_seconds
-        )
-        body = generated.script_body
-        hook = script_hook or generated.script_hook
-        cta = script_cta or generated.script_cta
-        generated_by = generated.provider
-        prompt_used = "draft_desk_v1"
-
+):
+    """Create draft content and advance it into the mandatory Review Gate."""
+    definition = await ensure_desk_workflow(
+        session, workspace_id=workspace_id, created_by=actor_id
+    )
     item = ContentItem(
         id=uuid.uuid4(),
         workspace_id=workspace_id,
-        topic=topic,
-        target_length_seconds=target_length_seconds,
+        title=topic,
         current_stage=ContentStage.SCRIPTING,
-        status=ContentStatus.ACTIVE,
         created_by=actor_id,
-        updated_by=actor_id,
     )
     session.add(item)
     await session.flush()
@@ -326,11 +183,11 @@ async def create_content_job(
         id=uuid.uuid4(),
         workspace_id=workspace_id,
         content_item_id=item.id,
-        script_hook=hook,
-        script_body=body,
-        script_cta=cta,
-        prompt_used=prompt_used,
-        generated_by=generated_by,
+        version_number=1,
+        script_body=script_body,
+        script_hook=script_hook,
+        script_cta=script_cta,
+        target_length_seconds=target_length_seconds,
         created_by=actor_id,
     )
     session.add(version)
@@ -347,131 +204,11 @@ async def create_content_job(
         idempotency_key=idempotency_key,
     )
 
+    from app.schemas.content_desk import ContentJobResult
+
     return ContentJobResult(
         content_item_id=item.id,
         pipeline_run_id=run.id,
         review_gate_id=gate.id,
-        topic=item.topic,
-        current_stage=ContentStage.REVIEW.value,
-        run_status=str(run.status.value if hasattr(run.status, "value") else run.status),
-        gate_status=ReviewGateStatus.AWAITING.value,
+        status=gate.status.value,
     )
-
-
-async def list_review_gates(
-    session: AsyncSession,
-    *,
-    workspace_id: uuid.UUID,
-    status_filter: str | None = None,
-) -> list[dict]:
-    stmt = (
-        select(ReviewGate, PipelineRun, ContentItem, ContentVersion)
-        .join(PipelineRun, PipelineRun.id == ReviewGate.pipeline_run_id)
-        .join(ContentItem, ContentItem.id == PipelineRun.content_item_id)
-        .outerjoin(ContentVersion, ContentVersion.id == ContentItem.current_version_id)
-        .where(ReviewGate.workspace_id == workspace_id)
-        .order_by(ReviewGate.requested_at.desc())
-    )
-    if status_filter is not None:
-        stmt = stmt.where(ReviewGate.status == ReviewGateStatus(status_filter))
-    rows = (await session.execute(stmt)).all()
-    out: list[dict] = []
-    for gate, run, item, version in rows:
-        out.append(_gate_row(gate, run, item, version))
-    return out
-
-
-async def get_review_gate(
-    session: AsyncSession, *, workspace_id: uuid.UUID, gate_id: uuid.UUID
-) -> dict | None:
-    row = (
-        await session.execute(
-            select(ReviewGate, PipelineRun, ContentItem, ContentVersion)
-            .join(PipelineRun, PipelineRun.id == ReviewGate.pipeline_run_id)
-            .join(ContentItem, ContentItem.id == PipelineRun.content_item_id)
-            .outerjoin(ContentVersion, ContentVersion.id == ContentItem.current_version_id)
-            .where(
-                ReviewGate.workspace_id == workspace_id,
-                ReviewGate.id == gate_id,
-            )
-        )
-    ).first()
-    if row is None:
-        return None
-    gate, run, item, version = row
-    return _gate_row(gate, run, item, version)
-
-
-async def decide_review_gate(
-    session: AsyncSession,
-    *,
-    workspace_id: uuid.UUID,
-    gate_id: uuid.UUID,
-    reviewer_id: uuid.UUID,
-    approved: bool,
-    notes: str | None = None,
-) -> dict:
-    gate = (
-        await session.execute(
-            select(ReviewGate)
-            .where(
-                ReviewGate.workspace_id == workspace_id,
-                ReviewGate.id == gate_id,
-            )
-            .with_for_update()
-        )
-    ).scalar_one_or_none()
-    if gate is None:
-        raise ReviewGateNotFoundError("review gate not found")
-    if gate.status != ReviewGateStatus.AWAITING:
-        raise ValueError("review gate is not awaiting a decision")
-
-    event = await controller.submit_review_decision(
-        session,
-        gate=gate,
-        reviewer_id=reviewer_id,
-        approved=approved,
-        notes=notes,
-    )
-    # Deliver the exact event just emitted, rather than an arbitrary pending
-    # backlog batch.  The route may report success only when this gate is no
-    # longer awaiting; otherwise its transaction is rolled back and callers
-    # receive an explicit transient failure instead of stale approval state.
-    consumers.register_all()
-    await relay.dispatch_one(session, event)
-    await session.flush()
-    if gate.status == ReviewGateStatus.AWAITING:
-        raise ReviewGateDeliveryError("review decision could not be applied")
-
-    detail = await get_review_gate(session, workspace_id=workspace_id, gate_id=gate_id)
-    if detail is None:
-        raise RuntimeError("review gate disappeared after decision")
-    return detail
-
-
-def _gate_row(
-    gate: ReviewGate,
-    run: PipelineRun,
-    item: ContentItem,
-    version: ContentVersion | None,
-) -> dict:
-    stage = gate.stage.value if hasattr(gate.stage, "value") else str(gate.stage)
-    status = gate.status.value if hasattr(gate.status, "value") else str(gate.status)
-    run_status = run.status.value if hasattr(run.status, "value") else str(run.status)
-    return {
-        "id": gate.id,
-        "workspace_id": gate.workspace_id,
-        "pipeline_run_id": gate.pipeline_run_id,
-        "content_item_id": item.id,
-        "topic": item.topic,
-        "stage": stage,
-        "status": status,
-        "requested_at": gate.requested_at,
-        "timeout_at": gate.timeout_at,
-        "decided_at": gate.decided_at,
-        "decided_by": gate.decided_by,
-        "script_hook": version.script_hook if version else None,
-        "script_body": version.script_body if version else None,
-        "script_cta": version.script_cta if version else None,
-        "run_status": run_status,
-    }
