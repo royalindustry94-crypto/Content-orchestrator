@@ -3,6 +3,14 @@
 -- Content Orchestrator tests and local Docker Postgres. Never apply this file
 -- to a managed Supabase project.
 
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_auth_admin') THEN
+        RAISE EXCEPTION 'Refusing local bootstrap on managed Supabase';
+    END IF;
+END
+$$;
+
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 CREATE SCHEMA IF NOT EXISTS auth;
 CREATE TABLE IF NOT EXISTS auth.users (
