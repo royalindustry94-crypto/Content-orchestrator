@@ -332,6 +332,36 @@ async def test_producer_renders_and_media_qa_passes(client, new_user, simulation
     assert readiness.json()["status"] == "blocked"
 
 
+async def test_producer_inherits_the_platform_the_strategy_chose(
+    client, new_user, simulation_mode
+):
+    """Omitting the platform must not strand a correctly produced artifact.
+
+    Media QA fails closed on an unknown platform, so a request that leaves the
+    target out has to inherit it from the audited strategy brief.
+    """
+    _, _, headers = new_user
+    workspace_id = await _workspace(client, headers)
+    package_id = await _audited_package(client, headers, workspace_id, "Platform inheritance")
+
+    run = await client.post(
+        f"/workspaces/{workspace_id}/production/runs",
+        json={"content_package_id": package_id},
+        headers=headers,
+    )
+    assert run.status_code == 201, run.text
+    assert run.json()["target_platform"], run.text
+
+    detail = await client.get(
+        f"/workspaces/{workspace_id}/production/runs/{run.json()['id']}", headers=headers
+    )
+    artifact_id = detail.json()["artifacts"][0]["id"]
+    qa = await client.post(
+        f"/workspaces/{workspace_id}/production/artifacts/{artifact_id}/media-qa", headers=headers
+    )
+    assert qa.json()["status"] == "pass", qa.text
+
+
 async def test_compliance_requires_media_qa_pass_first(client, new_user, simulation_mode):
     _, _, headers = new_user
     workspace_id = await _workspace(client, headers)

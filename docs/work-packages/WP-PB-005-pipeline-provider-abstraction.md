@@ -117,7 +117,7 @@ Alembic head is unchanged.
 
 | Check | Result |
 |---|---|
-| API tests | 324 passed, 79.69% coverage (75% gate) |
+| API tests | 325 passed, 79.68% coverage (75% gate) |
 | Worker tests | 4 passed |
 | Web tests / build / lint | 28 passed, build clean, eslint clean |
 | Ruff | clean |

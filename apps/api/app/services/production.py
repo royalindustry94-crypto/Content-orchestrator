@@ -31,6 +31,7 @@ from app.models.production import (
     ProductionReadiness,
     ProductionRepair,
 )
+from app.models.strategy import StrategyBrief
 from app.orchestration import outbox
 from app.providers import ProductionRequest, ProviderExecutionError, get_pipeline_provider
 
@@ -104,6 +105,22 @@ async def create_production_run(
         raise ProductionEligibilityError(
             "content package is not eligible for Producer; all independent content audits must pass"
         )
+    # Fall back to the delivery target the audited strategy already chose rather
+    # than making the operator retype it. Media QA checks the artifact against
+    # this platform's constraints and fails closed on an unknown one, so an
+    # omitted platform would otherwise block a correctly produced artifact.
+    if target_platform is None or target_format is None:
+        brief = (
+            await session.execute(
+                select(StrategyBrief).where(
+                    StrategyBrief.workspace_id == workspace_id,
+                    StrategyBrief.id == package.strategy_brief_id,
+                )
+            )
+        ).scalar_one_or_none()
+        if brief is not None:
+            target_platform = target_platform or brief.target_platform
+            target_format = target_format or brief.content_format
     configured = provider.is_configured
     job = ProductionJob(
         id=uuid.uuid4(),
