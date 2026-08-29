@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.session import get_db
 from app.providers import provider_status
 
@@ -57,20 +58,59 @@ async def readiness(db: AsyncSession = Depends(get_db)) -> dict[str, str]:
     return {"status": "ok", "database": "reachable"}
 
 
+# Work that only the background loops perform. On a runtime that cannot host
+# them these are genuinely not happening, and saying so is the point of this
+# endpoint — an operator must never infer background progress that is absent.
+_LOOP_ONLY_CAPABILITIES = (
+    "draft_desk_stage_dispatch",
+    "worker_liveness_sweep",
+    "assignment_lease_recovery",
+    "queue_backpressure_evaluation",
+    "outbox_catch_up_delivery",
+)
+
+# Work that completes inside the request that triggers it, and therefore still
+# holds when the loops are absent.
+_REQUEST_INLINE_CAPABILITIES = (
+    "auth",
+    "workspace_management",
+    "research_strategy_content_production_compliance_stages",
+    "independent_auditors",
+    "human_review_gate_open_and_decide",
+    "spend_reservation_and_commit",
+)
+
+
 @router.get("/health/automation")
 async def automation_health(request: Request) -> dict:
     """Expose background-loop liveness for ops (scheduler / outbox / maintenance).
 
-    In ENVIRONMENT=test loops are intentionally not started; the payload
-    reports that fact rather than failing readiness.
+    Loops are intentionally not started in ENVIRONMENT=test (tests drive the
+    reapers directly) or under RUNTIME_PROFILE=serverless (a frozen process
+    cannot tick one). Both cases report ``disabled`` with the reason and the
+    capabilities that are consequently unavailable, rather than ``idle``, which
+    would read as a transient stall of loops that were expected to run.
     """
     # Prefer lifespan-bound state; fall back to module singleton so tests
     # (ASGITransport without lifespan) still see a stable schema.
     from app.main import automation_state as module_state
 
+    settings = get_settings()
     state = getattr(request.app.state, "automation", None) or module_state
+    if state.tasks_running:
+        loop_status = "ok"
+    elif not settings.background_loops_supported:
+        loop_status = "disabled"
+    else:
+        loop_status = "idle"
     return {
-        "status": "ok" if state.tasks_running else "idle",
+        "status": loop_status,
+        "runtime_profile": settings.runtime_profile,
+        "disabled_reason": settings.background_loops_disabled_reason,
+        "unavailable_capabilities": (
+            [] if settings.background_loops_supported else list(_LOOP_ONLY_CAPABILITIES)
+        ),
+        "request_inline_capabilities": list(_REQUEST_INLINE_CAPABILITIES),
         "started_at": state.started_at.isoformat() if state.started_at else None,
         "tasks_running": list(state.tasks_running),
         "maintenance": {

@@ -50,6 +50,21 @@ class Settings(BaseSettings):
     # Explicit break-glass for AUTH_MODE=local when ENVIRONMENT=production.
     allow_local_auth_in_production: bool = Field(default=False)
 
+    # --- Runtime profile ---
+    # Where this process runs, which decides whether it can host the
+    # in-process automation loops at all.
+    #   server     (default) long-lived process (uvicorn/container). The API
+    #              also runs the scheduler, outbox relay and maintenance
+    #              loops, exactly as before this setting existed.
+    #   serverless per-request execution (e.g. Vercel Functions). The process
+    #              is frozen between requests, so a loop started at cold start
+    #              would not tick. Those loops are therefore not started, and
+    #              /health/automation reports them unavailable rather than
+    #              idle. Request-inline work is unaffected: auth, every
+    #              pipeline stage, the auditors, and review decisions all run
+    #              to completion inside the request that triggers them.
+    runtime_profile: str = Field(default="server")
+
     # --- Scheduler (background tick in API lifespan) ---
     scheduler_interval_seconds: float = Field(default=2.0, ge=0.2)
     scheduler_batch_size: int = Field(default=50, ge=1)
@@ -151,6 +166,32 @@ class Settings(BaseSettings):
         """Swagger/ReDoc/OpenAPI JSON are development-only (P-005)."""
         return self.environment.strip().lower() in {"development", "dev"}
 
+    @property
+    def is_serverless(self) -> bool:
+        return self.runtime_profile == "serverless"
+
+    @property
+    def background_loops_supported(self) -> bool:
+        """Whether this runtime can host the automation loops.
+
+        ENVIRONMENT=test is excluded for the existing reason (tests drive the
+        reapers directly with a controlled clock), serverless because a frozen
+        process cannot tick one.
+        """
+        return self.runtime_profile == "server" and self.environment.strip().lower() != "test"
+
+    @property
+    def background_loops_disabled_reason(self) -> str | None:
+        """Why the loops are not running, for honest ops reporting."""
+        if self.background_loops_supported:
+            return None
+        if self.environment.strip().lower() == "test":
+            return "ENVIRONMENT=test: tests invoke the reapers directly with a controlled clock"
+        return (
+            "RUNTIME_PROFILE=serverless: the process is frozen between requests, "
+            "so in-process background loops cannot tick and are not started"
+        )
+
     @model_validator(mode="after")
     def _validate_auth_mode(self) -> Settings:
         mode = self.auth_mode.strip().lower()
@@ -167,6 +208,14 @@ class Settings(BaseSettings):
                 "AUTH_MODE=local is forbidden when ENVIRONMENT is production; "
                 "set ALLOW_LOCAL_AUTH_IN_PRODUCTION=true only as an audited override"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_runtime_profile(self) -> Settings:
+        profile = self.runtime_profile.strip().lower()
+        if profile not in {"server", "serverless"}:
+            raise ValueError("RUNTIME_PROFILE must be 'server' or 'serverless'")
+        object.__setattr__(self, "runtime_profile", profile)
         return self
 
     @model_validator(mode="after")

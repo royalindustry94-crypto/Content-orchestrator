@@ -50,6 +50,9 @@ class AutomationRuntimeState:
     """Process-local liveness for background automation loops."""
 
     started_at: datetime | None = None
+    # Populated when the loops are deliberately not started, so ops can tell
+    # "not supported by this runtime" apart from "should be running, isn't".
+    disabled_reason: str | None = None
     maintenance_ticks: int = 0
     maintenance_last_ok_at: datetime | None = None
     maintenance_last_error: str | None = None
@@ -169,11 +172,20 @@ async def lifespan(app: FastAPI):
     background_tasks: list[asyncio.Task] = []
     automation_state.started_at = datetime.now(UTC)
     automation_state.tasks_running = []
-    if settings.environment != "test":
+    automation_state.disabled_reason = settings.background_loops_disabled_reason
+    if settings.background_loops_supported:
         background_tasks.append(asyncio.create_task(_orchestration_maintenance_loop()))
         background_tasks.append(asyncio.create_task(_outbox_relay_loop()))
         background_tasks.append(asyncio.create_task(_scheduler_loop()))
         automation_state.tasks_running = ["maintenance", "outbox_relay", "scheduler"]
+    else:
+        logger.info(
+            "background automation loops not started",
+            extra={
+                "runtime_profile": settings.runtime_profile,
+                "reason": automation_state.disabled_reason,
+            },
+        )
     app.state.automation = automation_state
     yield
     for task in background_tasks:

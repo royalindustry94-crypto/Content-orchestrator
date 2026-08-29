@@ -27,6 +27,7 @@ from __future__ import annotations
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
+from uuid import uuid4
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -41,7 +42,44 @@ settings = get_settings()
 # when pytest-asyncio creates a new event loop per test while SQLAlchemy's
 # pool retains connections bound to the previous loop.
 _is_test = os.getenv("ENVIRONMENT") == "test"
-_pool_kwargs: dict = {"poolclass": NullPool} if _is_test else {"pool_pre_ping": True}
+
+
+def pool_kwargs_for(*, is_test: bool, is_serverless: bool) -> dict:
+    """Engine pooling arguments for this runtime.
+
+    On a serverless runtime an in-process pool is worse than no pool: the
+    instance is frozen immediately after the response, so a checked-out
+    connection is never handed back and the server-side backend lingers until
+    it times out. NullPool opens and closes per checkout instead.
+    """
+    if is_test or is_serverless:
+        return {"poolclass": NullPool}
+    return {"pool_pre_ping": True}
+
+
+def connect_args_for(*, is_serverless: bool) -> dict:
+    """DBAPI arguments for this runtime.
+
+    A serverless deployment reaches Postgres through a transaction-mode
+    connection pooler (Supabase's Supavisor, PgBouncer). Consecutive statements
+    can land on different backends, which breaks asyncpg's prepared statements
+    two ways: a cached statement handle is not valid on another backend, and
+    asyncpg's default numeric statement names collide between clients sharing
+    one. Disabling the cache and generating unique names is the documented fix —
+    see "Prepared Statement Name with PGBouncer" in SQLAlchemy's asyncpg dialect
+    docs. Both are DBAPI-level arguments, hence connect_args rather than
+    engine kwargs.
+    """
+    if not is_serverless:
+        return {}
+    return {
+        "prepared_statement_cache_size": 0,
+        "prepared_statement_name_func": lambda: f"__asyncpg_{uuid4()}__",
+    }
+
+
+_pool_kwargs = pool_kwargs_for(is_test=_is_test, is_serverless=settings.is_serverless)
+_connect_args = connect_args_for(is_serverless=settings.is_serverless)
 
 
 def _asyncpg_url(dsn: str) -> str:
@@ -50,13 +88,19 @@ def _asyncpg_url(dsn: str) -> str:
 
 # Owner/migration connection.
 engine = create_async_engine(
-    _asyncpg_url(str(settings.database_url)), echo=False, **_pool_kwargs
+    _asyncpg_url(str(settings.database_url)),
+    echo=False,
+    connect_args=_connect_args,
+    **_pool_kwargs,
 )
 AsyncSessionLocal = async_sessionmaker(bind=engine, expire_on_commit=False, autoflush=False)
 
 # Runtime (RLS-enforced) connection.
 runtime_engine = create_async_engine(
-    _asyncpg_url(str(settings.app_database_url)), echo=False, **_pool_kwargs
+    _asyncpg_url(str(settings.app_database_url)),
+    echo=False,
+    connect_args=_connect_args,
+    **_pool_kwargs,
 )
 RuntimeSessionLocal = async_sessionmaker(
     bind=runtime_engine, expire_on_commit=False, autoflush=False
