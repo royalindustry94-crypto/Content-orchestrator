@@ -925,6 +925,34 @@ async def publication_eligibility(
     ).scalar_one_or_none()
     if readiness is None or readiness.media_qa_state != "pass":
         blockers.insert(0, "media_qa_not_passed")
+
+    # One determination per (workspace, artifact, platform) — the table is
+    # uniquely constrained on exactly that and, unlike the append-only audit
+    # tables, carries an update policy and a version trigger. Re-determining
+    # therefore refreshes the verdict in place. Inserting unconditionally would
+    # violate the constraint, so asking twice (a repeated request, or a second
+    # tap on a phone) used to fail with a 500 instead of restating the answer.
+    existing = (
+        await session.execute(
+            select(ArtifactPublicationEligibility).where(
+                ArtifactPublicationEligibility.workspace_id == workspace_id,
+                ArtifactPublicationEligibility.final_artifact_id == artifact.id,
+                ArtifactPublicationEligibility.target_platform == target_platform,
+            )
+        )
+    ).scalar_one_or_none()
+
+    if existing is not None:
+        existing.artifact_hash = artifact.artifact_hash
+        existing.content_version_id = artifact.content_version_id
+        existing.chief_audit_id = chief.id if chief else None
+        existing.status = "blocked"
+        existing.blocking_reasons = blockers
+        existing.publication_eligible = False
+        existing.updated_by = actor_id
+        await session.flush()
+        return existing
+
     row = ArtifactPublicationEligibility(
         id=uuid.uuid4(),
         workspace_id=workspace_id,
