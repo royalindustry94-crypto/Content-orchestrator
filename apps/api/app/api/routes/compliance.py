@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import require_workspace_admin
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
+from app.db.session import AsyncSessionLocal
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.compliance import (
     ArtifactPublicationEligibilityResponse,
@@ -16,11 +17,26 @@ from app.schemas.compliance import (
     ComplianceSummaryResponse,
     HumanReviewPackageResponse,
 )
-from app.services import compliance
+from app.services import compliance, content_desk
 
 router = APIRouter(
     prefix="/workspaces/{workspace_id}/compliance", tags=["compliance-chief-auditor"]
 )
+
+
+def _chief(row: object) -> ChiefAuditResponse:
+    return ChiefAuditResponse(
+        id=row.id,
+        final_artifact_id=row.final_artifact_id,
+        artifact_hash=row.artifact_hash,
+        status=row.status,
+        lineage_status=row.lineage_status,
+        version_integrity_status=row.version_integrity_status,
+        cost_reconciliation_status=row.cost_reconciliation_status,
+        provider_reconciliation_status=row.provider_reconciliation_status,
+        blockers=row.blockers,
+        test_data=row.test_data,
+    )
 
 
 def _audit(row: object) -> ComplianceAuditResponse:
@@ -71,6 +87,47 @@ async def run_compliance(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
+@router.post(
+    "/artifacts/{final_artifact_id}/chief-audit",
+    response_model=ChiefAuditResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def run_chief_audit(
+    workspace_id: uuid.UUID,
+    final_artifact_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+    user: AuthenticatedUser = Depends(get_current_user),
+) -> ChiefAuditResponse:
+    """Reconcile every required gate; a clean pass opens the Human Review Gate.
+
+    Raising the gate writes orchestration rows (pipeline run, review gate)
+    that are owner-write-only by design, so this handler uses the owner
+    session exactly as the content-jobs route does. The admin guard above has
+    already resolved membership through the RLS-scoped session, and every
+    query in the service is explicitly workspace-scoped. Audit and gate must
+    land in one transaction: a chief-audit pass without its review gate would
+    strand content with no reviewer.
+    """
+    del membership
+    try:
+        async with AsyncSessionLocal() as session:
+            audit_row = await compliance.run_chief_audit(
+                session,
+                workspace_id=workspace_id,
+                actor_id=uuid.UUID(user.id),
+                final_artifact_id=final_artifact_id,
+            )
+            response = _chief(audit_row)
+            await session.commit()
+            return response
+    except compliance.ComplianceNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except compliance.ComplianceGateError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except content_desk.SpendBudgetExceededError as exc:
+        raise HTTPException(status_code=402, detail=str(exc)) from exc
+
+
 @router.get("/summary", response_model=ComplianceSummaryResponse)
 async def get_summary(
     workspace_id: uuid.UUID,
@@ -99,21 +156,7 @@ async def get_chief_audits(
 ) -> list[ChiefAuditResponse]:
     del membership
     rows = await compliance.list_chief_audits(db, workspace_id=workspace_id)
-    return [
-        ChiefAuditResponse(
-            id=row.id,
-            final_artifact_id=row.final_artifact_id,
-            artifact_hash=row.artifact_hash,
-            status=row.status,
-            lineage_status=row.lineage_status,
-            version_integrity_status=row.version_integrity_status,
-            cost_reconciliation_status=row.cost_reconciliation_status,
-            provider_reconciliation_status=row.provider_reconciliation_status,
-            blockers=row.blockers,
-            test_data=row.test_data,
-        )
-        for row in rows
-    ]
+    return [_chief(row) for row in rows]
 
 
 @router.get("/human-review-packages", response_model=list[HumanReviewPackageResponse])

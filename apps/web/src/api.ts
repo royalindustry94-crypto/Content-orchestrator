@@ -433,6 +433,20 @@ export function getAuthMode(): Promise<{ auth_mode: string }> {
   return apiFetch<{ auth_mode: string }>("/auth/mode", null);
 }
 
+export type PipelineProviderStatus = {
+  mode: string;
+  name: string;
+  state_label: string;
+  configured: boolean;
+  simulated: boolean;
+  external_publishing_enabled: boolean;
+  human_review_required: boolean;
+};
+
+export function getPipelineProvider(): Promise<PipelineProviderStatus> {
+  return apiFetch<PipelineProviderStatus>("/pipeline/provider", null);
+}
+
 export function signup(
   email: string,
   password: string,
@@ -1211,6 +1225,7 @@ export type ContentPackage = {
   producer_handoff_state: string;
   invalidated_at: string | null;
   test_data: boolean;
+  originality_state: string;
 };
 
 export type ContentClaim = {

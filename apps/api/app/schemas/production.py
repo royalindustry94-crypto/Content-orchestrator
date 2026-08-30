@@ -6,7 +6,7 @@ from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ProductionRunCreate(BaseModel):
@@ -23,6 +23,8 @@ class ProductionRunCreate(BaseModel):
 
 
 class ProductionRunOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     content_package_id: UUID
     content_item_id: UUID
@@ -48,6 +50,8 @@ class ProductionRunOut(BaseModel):
 
 
 class ProductionAssetOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     asset_id: UUID
     asset_type: str
@@ -62,6 +66,8 @@ class ProductionAssetOut(BaseModel):
 
 
 class FinalArtifactOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     production_job_id: UUID
     content_version_id: UUID
@@ -79,6 +85,8 @@ class FinalArtifactOut(BaseModel):
 
 
 class MediaQaOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     final_artifact_id: UUID
     artifact_hash: str
@@ -100,6 +108,8 @@ class MediaQaOut(BaseModel):
 
 
 class ProductionRepairOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     production_job_id: UUID
     final_artifact_id: UUID | None
@@ -114,6 +124,8 @@ class ProductionRepairOut(BaseModel):
 
 
 class ProductionReadinessOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: UUID
     final_artifact_id: UUID
     content_version_id: UUID

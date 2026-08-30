@@ -1,8 +1,8 @@
 # Technical Debt Register
 
 **Repository:** Content Orchestrator  
-**Updated:** 2026-08-28  
-**Current reference:** `main` after PR #49 governance merge
+**Updated:** 2026-08-29  
+**Current reference:** `main` after PR #51, plus WP-PB-005 (pipeline provider abstraction)
 
 Severity: CRITICAL · HIGH · MEDIUM · LOW · INFO
 
@@ -33,10 +33,20 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 | Field | Value |
 |---|---|
 | Severity | MEDIUM |
-| Evidence | Current API suite: **299 passed, 81.09% coverage**; CI floor remains 75% |
+| Evidence | Current API suite: **354 passed, 79.78% coverage**; CI floor remains 75% |
 | Risk | Future code can regress materially while still passing the configured floor |
 | Recommendation | Raise the floor deliberately after measuring module-specific gaps; do not game coverage |
 | Effort | S |
+
+### TD-072 — Serverless preview cannot host the automation loops — **OPEN / ACCEPTED FOR PREVIEW**
+
+| Field | Value |
+|---|---|
+| Severity | MEDIUM |
+| Evidence | `RUNTIME_PROFILE=serverless` starts none of the scheduler, outbox relay or maintenance loops, because a Vercel Function is frozen between requests. `GET /health/automation` reports `status: "disabled"` with the reason and the affected capabilities; verified on a live deployment by `scripts/verify_preview.py` |
+| Risk | Draft Desk stage dispatch, worker liveness sweep, lease recovery, back-pressure evaluation and outbox catch-up delivery do not run on that profile. Accepted only because the Founder-testing path is entirely request-inline: every pipeline stage, auditor, and the opening **and deciding** of the Human Review Gate complete inside their request, and the review decision fails with 503 rather than reporting a decision it did not apply |
+| Recommendation | Keep `server` (the default) for any deployment that needs the worker path. Do not add Vercel Cron as a substitute — cron runs only on production deployments, and a once-per-invocation tick is not equivalent to lease reaping. If serverless ever becomes a supported customer topology, that needs its own work package with an external scheduler |
+| Effort | M |
 
 ### TD-034 — No explicit application rate limiting — **OPEN**
 
@@ -53,10 +63,20 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 | Field | Value |
 |---|---|
 | Severity | MEDIUM |
-| Evidence | Preview departments remain explicitly unconfigured; live provider/runtime evidence is not part of the merged preview certification |
+| Evidence | No live vendor is wired to any stage; live provider/runtime evidence is not part of the merged certification. WP-PB-005 supplied the abstraction this activation must sit behind (`app/providers`, `PIPELINE_PROVIDER_MODE`), so the remaining work is vendor activation, not architecture |
 | Risk | Overstating AI/media execution capability or enabling cost-bearing calls without full accounting |
-| Recommendation | Activate one provider at a time behind provider abstraction, spend reserve/commit controls, retries/backoff/timeouts, idempotency and supervised failure tests |
+| Recommendation | Activate one provider at a time behind the existing provider seam, with spend reserve/commit controls, retries/backoff/timeouts, idempotency, credential redaction and supervised failure tests |
 | Effort | L |
+
+### TD-072 — Simulation provider must never reach a customer deployment — **OPEN**
+
+| Field | Value |
+|---|---|
+| Severity | MEDIUM |
+| Evidence | `PIPELINE_PROVIDER_MODE=simulation` produces deterministic synthetic content. It defaults to off, is refused when `ENVIRONMENT` is production, labels every record `simulation`, cites only the reserved `.invalid` TLD, and is bannered in the UI |
+| Risk | A staging or preview deployment left in simulation mode could present synthetic output to a customer as real work |
+| Recommendation | Assert `PIPELINE_PROVIDER_MODE` in deployment configuration checks, and include the value in release evidence for any environment a customer can reach |
+| Effort | S |
 
 ### TD-071 — Managed Supabase/runtime evidence unavailable — **OPEN**
 
@@ -77,7 +97,7 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 | TD-050 | Ruff format is not a distinct CI gate | LOW |
 | TD-060 | FORCE RLS remains a positive architectural control | INFO — exact current table count should be derived from live/current migration evidence when needed |
 | TD-061 | Migration round-trip through current head `0050` | INFO — PASS |
-| TD-062 | API baseline | INFO — **299 passed / 81.09% coverage** |
+| TD-062 | API baseline | INFO — **325 passed / 79.68% coverage** |
 | TD-063 | Exact-head browser smoke | INFO — retained desktop + exact-390px CI evidence now exists |
 
 ---

@@ -145,6 +145,103 @@ async def ensure_desk_workflow(
     return definition
 
 
+async def open_review_gate(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    definition: WorkflowDefinition,
+    item: ContentItem,
+    version: ContentVersion,
+    provider: str,
+    idempotency_key: str | None = None,
+) -> tuple[PipelineRun, ReviewGate]:
+    """Run a content version through scripting and into the Human Review Gate.
+
+    Every path that puts content in front of a reviewer goes through here, so
+    there is one implementation of the gate and no way to reach ``published``
+    without passing it.
+    """
+    run = PipelineRun(
+        id=uuid.uuid4(),
+        workspace_id=workspace_id,
+        content_item_id=item.id,
+        idempotency_key=idempotency_key,
+        current_stage=ContentStage.SCRIPTING,
+        status=PipelineRunStatus.RUNNING,
+    )
+    session.add(run)
+    await session.flush()
+    item.current_pipeline_run_id = run.id
+
+    await controller.start_run(session, run=run, definition=definition)
+    estimate = Decimal(str(get_settings().default_stage_estimate_usd))
+    reservation = await controller.reserve_spend(
+        session,
+        run=run,
+        stage=ContentStage.SCRIPTING.value,
+        provider=provider,
+        estimated_cost_usd=estimate,
+    )
+    if reservation is None:
+        # Run is paused with spend_hold; do not enter the Review Gate.
+        raise SpendBudgetExceededError(
+            "workspace spend cap exceeded; pipeline run paused on spend_hold"
+        )
+
+    # Reserve the normal bounded estimate before work begins so simulation
+    # exercises the same fail-closed spend gate as a live provider. The
+    # simulation provider itself is explicitly zero-cost, however, so the
+    # immutable actual-spend ledger must record 0 rather than the estimate.
+    actual_cost = Decimal("0.00") if provider == "simulation" else estimate
+    await controller.handle_stage_success(
+        session,
+        run=run,
+        stage=ContentStage.SCRIPTING.value,
+        result_context={
+            "draft_version_id": str(version.id),
+            "estimated_cost_usd": str(estimate),
+            "actual_cost_usd": str(actual_cost),
+            "provider": provider,
+        },
+    )
+    await controller.commit_spend(
+        session,
+        run=run,
+        reservation=reservation,
+        actual_cost_usd=actual_cost,
+    )
+
+    # start_run enqueued a STAGE job for scripting; the caller completed that
+    # stage synchronously. Cancel the orphan so the scheduler cannot
+    # re-dispatch and resurrect a Human Review Gate after publish (C-1).
+    orphan_jobs = (
+        await session.execute(
+            select(JobSchedule).where(
+                JobSchedule.ref_id == run.id,
+                JobSchedule.job_type.in_([JobType.STAGE, JobType.RETRY]),
+                JobSchedule.ref_table == ContentStage.SCRIPTING.value,
+                JobSchedule.status.in_(
+                    [JobScheduleStatus.PENDING, JobScheduleStatus.LEASED]
+                ),
+            )
+        )
+    ).scalars().all()
+    for job in orphan_jobs:
+        job.status = JobScheduleStatus.CANCELLED
+        job.lease_owner = None
+        job.lease_expires_at = None
+
+    gate = (
+        await session.execute(select(ReviewGate).where(ReviewGate.pipeline_run_id == run.id))
+    ).scalar_one_or_none()
+    if gate is None or gate.status != ReviewGateStatus.AWAITING:
+        raise RuntimeError("content failed to enter Human Review Gate")
+
+    item.current_stage = ContentStage.REVIEW
+    await session.flush()
+    return run, gate
+
+
 async def create_content_job(
     session: AsyncSession,
     *,
@@ -247,77 +344,15 @@ async def create_content_job(
     await session.flush()
     item.current_version_id = version.id
 
-    run = PipelineRun(
-        id=uuid.uuid4(),
+    run, gate = await open_review_gate(
+        session,
         workspace_id=workspace_id,
-        content_item_id=item.id,
-        idempotency_key=idempotency_key,
-        current_stage=ContentStage.SCRIPTING,
-        status=PipelineRunStatus.RUNNING,
-    )
-    session.add(run)
-    await session.flush()
-    item.current_pipeline_run_id = run.id
-
-    await controller.start_run(session, run=run, definition=definition)
-    estimate = Decimal(str(get_settings().default_stage_estimate_usd))
-    reservation = await controller.reserve_spend(
-        session,
-        run=run,
-        stage=ContentStage.SCRIPTING.value,
+        definition=definition,
+        item=item,
+        version=version,
         provider=DRAFT_DESK_PROVIDER,
-        estimated_cost_usd=estimate,
+        idempotency_key=idempotency_key,
     )
-    if reservation is None:
-        # Run is paused with spend_hold; do not enter the Review Gate.
-        raise SpendBudgetExceededError(
-            "workspace spend cap exceeded; pipeline run paused on spend_hold"
-        )
-    await controller.handle_stage_success(
-        session,
-        run=run,
-        stage=ContentStage.SCRIPTING.value,
-        result_context={
-            "draft_version_id": str(version.id),
-            "estimated_cost_usd": str(estimate),
-            "provider": DRAFT_DESK_PROVIDER,
-        },
-    )
-    await controller.commit_spend(
-        session,
-        run=run,
-        reservation=reservation,
-        actual_cost_usd=estimate,
-    )
-
-    # start_run enqueued a STAGE job for scripting; Content Desk completed
-    # that stage synchronously. Cancel the orphan so the scheduler cannot
-    # re-dispatch and resurrect a Human Review Gate after publish (C-1).
-    orphan_jobs = (
-        await session.execute(
-            select(JobSchedule).where(
-                JobSchedule.ref_id == run.id,
-                JobSchedule.job_type.in_([JobType.STAGE, JobType.RETRY]),
-                JobSchedule.ref_table == ContentStage.SCRIPTING.value,
-                JobSchedule.status.in_(
-                    [JobScheduleStatus.PENDING, JobScheduleStatus.LEASED]
-                ),
-            )
-        )
-    ).scalars().all()
-    for job in orphan_jobs:
-        job.status = JobScheduleStatus.CANCELLED
-        job.lease_owner = None
-        job.lease_expires_at = None
-
-    gate = (
-        await session.execute(select(ReviewGate).where(ReviewGate.pipeline_run_id == run.id))
-    ).scalar_one_or_none()
-    if gate is None or gate.status != ReviewGateStatus.AWAITING:
-        raise RuntimeError("content job failed to enter Human Review Gate")
-
-    item.current_stage = ContentStage.REVIEW
-    await session.flush()
 
     return ContentJobResult(
         content_item_id=item.id,

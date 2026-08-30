@@ -11,6 +11,7 @@ from app.core.authorization import require_workspace_admin
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.content_department import (
+    ContentAuditOut,
     ContentDepartmentRunCreate,
     ContentDepartmentRunOut,
     ContentDepartmentSummaryOut,
@@ -104,6 +105,29 @@ async def package_detail(
         )
     except content_department.ContentDepartmentNotFoundError as exc:
         raise _not_found(str(exc)) from exc
+
+
+@router.post("/packages/{package_id}/audits", response_model=list[ContentAuditOut])
+async def run_audits(
+    workspace_id: uuid.UUID,
+    package_id: uuid.UUID,
+    membership: WorkspaceMembership = Depends(require_workspace_admin),
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
+) -> list[ContentAuditOut]:
+    """Run the four mandatory independent auditors against a stored package."""
+    del membership
+    try:
+        return await content_department.run_content_audits(
+            db,
+            workspace_id=workspace_id,
+            actor_id=uuid.UUID(user.id),
+            package_id=package_id,
+        )
+    except content_department.ContentDepartmentNotFoundError as exc:
+        raise _not_found(str(exc)) from exc
+    except content_department.ContentDepartmentGateError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
 @router.get("/packages/{package_id}/producer-gate", response_model=ProducerGateOut)

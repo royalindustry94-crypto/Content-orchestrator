@@ -18,6 +18,8 @@ import {
   createResearchRun,
   createStrategyRun,
   decideReviewGate,
+  getPipelineProvider,
+  type PipelineProviderStatus,
   getActivityFeed,
   getContentCommand,
   listChiefAudits,
@@ -342,11 +344,13 @@ function DashboardHome({
   token,
   workspaceId,
   navigate,
+  provider,
 }: {
   data: DashboardData;
   token: string;
   workspaceId: string;
   navigate: (key: NavKey) => void;
+  provider: PipelineProviderStatus | null;
 }) {
   const [askNotice, setAskNotice] = useState<string | null>(null);
   const priority = { critical: 0, warning: 1, info: 2 } as const;
@@ -374,6 +378,16 @@ function DashboardHome({
   ] as const;
   const realWorkers = data.workers.workers;
   const activeWorkerCount = realWorkers.filter((worker) => ["online", "busy"].includes(worker.status.toLowerCase())).length;
+  // These departments are backed by the pipeline provider, so their capability
+  // follows whichever one is configured rather than a fixed label.
+  const departmentState = provider?.simulated
+    ? "Simulated"
+    : provider?.configured ? "Configured" : "Not configured";
+  const departmentDetail = provider?.simulated
+    ? "Backed by the simulation provider: deterministic, offline, and not real work."
+    : provider?.configured
+      ? "Backed by the configured content provider."
+      : "No workspace role binding or executable capability is configured.";
 
   return (
     <div className="dashboard-home business-home">
@@ -452,10 +466,10 @@ function DashboardHome({
         <div className="department-grid">
           {departments.map(([name, responsibility]) => (
             <article className="department-card" key={name}>
-              <span className="department-card__state">Not configured</span>
+              <span className="department-card__state">{departmentState}</span>
               <h4>{name}</h4>
               <p>{responsibility}</p>
-              <small>No workspace role binding or executable capability is configured.</small>
+              <small>{departmentDetail}</small>
             </article>
           ))}
         </div>
@@ -1230,7 +1244,7 @@ function ContentDepartmentView({
                 <p>Writer: {pkg.writer_worker_id.replaceAll("_", " ")} · Version {pkg.content_version_id.slice(0, 8)}</p>
                 <dl>
                   <div><dt>Audits</dt><dd>{pkg.audit_gate_status.replaceAll("_", " ")}</dd></div>
-                  <div><dt>Originality</dt><dd>{pkg.status === "audited_blocked" ? "Requires differentiation" : "Not run"}</dd></div>
+                  <div><dt>Originality</dt><dd>{pkg.originality_state.replaceAll("_", " ")}</dd></div>
                   <div><dt>Producer</dt><dd>{pkg.producer_handoff_state.replaceAll("_", " ")}</dd></div>
                 </dl>
                 <footer>
@@ -1305,6 +1319,27 @@ function GitHubSummary({ data }: { data: GitHubOut }) {
       </div>
     </section>
   );
+}
+
+// A job with no recorded error still has an outcome; saying otherwise reads as
+// though a successful render did nothing.
+function producerOutcome(status: string): string {
+  switch (status) {
+    case "blocked_provider_not_configured":
+      return "No production provider is configured, so no artifact was produced.";
+    case "running":
+      return "Production is in progress.";
+    case "awaiting_media_qa":
+      return "Artifact rendered. Independent Media QA has not run yet.";
+    case "media_qa_passed":
+      return "Artifact rendered and passed independent Media QA.";
+    case "media_qa_blocked":
+      return "Independent Media QA blocked this artifact.";
+    case "duplicate":
+      return "An identical artifact already exists in this workspace.";
+    default:
+      return "No provider outcome has been recorded.";
+  }
 }
 
 function ProducerView({
@@ -1401,7 +1436,7 @@ function ProducerView({
                   <div><dt>Repair cycles</dt><dd>{job.repair_cycles_used} / {job.max_repair_cycles}</dd></div>
                   <div><dt>Cost</dt><dd>{money(job.actual_cost_usd)}</dd></div>
                 </dl>
-                <small>{job.last_error ?? "No provider outcome has been recorded."}</small>
+                <small>{job.last_error ?? producerOutcome(job.status)}</small>
               </article>
             ))}
           </div>
@@ -1471,7 +1506,7 @@ function ComplianceView({
         <input aria-label="Final artifact ID" placeholder="Final artifact ID from audited Producer output" value={artifactId} onChange={(event) => setArtifactId(event.target.value)} />
         <button className="primary-action" disabled={busy} type="submit">{busy ? "Requesting…" : "Request Compliance"}</button>
       </form>
-      <p className="compliance-not-configured" role="status">COMPLIANCE PROVIDER NOT CONFIGURED — no policy retrieval, external rights verification, provider spend, remediation, publication, or fabricated compliance result will be created.</p>
+      {data.summary.provider_state === "not_configured" ? <p className="compliance-not-configured" role="status">COMPLIANCE PROVIDER NOT CONFIGURED — no policy retrieval, external rights verification, provider spend, remediation, publication, or fabricated compliance result will be created.</p> : <p className="compliance-not-configured" role="status">Platform policy freshness is still unverified, and a compliance pass can only hand the same artifact to Human Review. It can never publish.</p>}
       {notice ? <p className="producer-notice" role="status">{notice}</p> : null}
     </section>
     <section className="surface">
@@ -1558,6 +1593,7 @@ export default function LumoraDashboard({
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
   const [reviewBusy, setReviewBusy] = useState<string | null>(null);
   const [reviewActionError, setReviewActionError] = useState<string | null>(null);
+  const [provider, setProvider] = useState<PipelineProviderStatus | null>(null);
   const requestId = useRef(0);
   const mobileNavRef = useDialogFocus<HTMLElement>(mobileOpen, () => setMobileOpen(false));
 
@@ -1571,6 +1607,14 @@ export default function LumoraDashboard({
       .catch(() => { if (active) setWorkspaces([]); });
     return () => { active = false; };
   }, [token]);
+
+  useEffect(() => {
+    let active = true;
+    void getPipelineProvider()
+      .then((value) => { if (active) setProvider(value); })
+      .catch(() => { if (active) setProvider(null); });
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -1798,7 +1842,7 @@ export default function LumoraDashboard({
     if (loadedKey !== viewKey) return <Loading />;
 
     if (nav === "dashboard") {
-      if (isDashboardData(data)) return <DashboardHome data={data} navigate={navigate} token={token} workspaceId={workspaceId} />;
+      if (isDashboardData(data)) return <DashboardHome data={data} navigate={navigate} provider={provider} token={token} workspaceId={workspaceId} />;
       return <Loading />;
     }
     if (nav === "mission") {
@@ -2058,6 +2102,17 @@ export default function LumoraDashboard({
         </header>
 
         <main className="lumora-main">
+          {provider?.simulated ? (
+            <div className="simulation-banner" role="status">
+              <strong>Simulation provider active.</strong>
+              <span>
+                Every opportunity, brief, script, and rendered artifact below is generated
+                offline for testing. Nothing here is real research or real media, no external
+                provider is called, and no money is spent. Human Review is still required and
+                external publishing is still disabled.
+              </span>
+            </div>
+          ) : null}
           {nav !== "dashboard" ? (
             <header className="view-header">
               <div><p>The Business Manager / {title}</p><h1>{title}</h1></div>

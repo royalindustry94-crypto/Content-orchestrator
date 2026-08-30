@@ -7,7 +7,7 @@ from sqlalchemy import select, text
 
 from app.core.security import rls_scoped_session
 from app.db.session import AsyncSessionLocal
-from app.models.compliance import ComplianceAudit
+from app.models.compliance import ArtifactPublicationEligibility, ComplianceAudit
 from app.schemas.compliance import ComplianceRunRequest
 from app.services import compliance, production
 from tests.test_production_v1 import _audited_package
@@ -126,6 +126,69 @@ async def test_compliance_invalidation_and_external_publication_block(client, ne
         )
         assert eligibility.publication_eligible is False
         assert "external_publishing_disabled" in eligibility.blocking_reasons
+
+
+@pytest.mark.asyncio
+async def test_publication_eligibility_is_idempotent_per_artifact_and_platform(client, new_user):
+    """Asking twice must restate the verdict, not raise.
+
+    The table is uniquely constrained on (workspace, artifact, platform), so an
+    unconditional insert made a second request fail with a 500 — reachable by a
+    repeated request or a double tap, and on the documented walkthrough where
+    eligibility is checked both before and after the review decision.
+    """
+    user_id, _headers, workspace_id = await _tenant(client, new_user, "Eligibility idempotency")
+    artifact = await _artifact(user_id, workspace_id)
+
+    async with rls_scoped_session(str(user_id)) as session:
+        first = await compliance.publication_eligibility(
+            session,
+            workspace_id=workspace_id,
+            actor_id=user_id,
+            final_artifact_id=artifact.id,
+            target_platform="short_video",
+        )
+        first_id = first.id
+
+    async with rls_scoped_session(str(user_id)) as session:
+        second = await compliance.publication_eligibility(
+            session,
+            workspace_id=workspace_id,
+            actor_id=user_id,
+            final_artifact_id=artifact.id,
+            target_platform="short_video",
+        )
+        # Same determination refreshed in place, and still fail-closed.
+        assert second.id == first_id
+        assert second.publication_eligible is False
+        assert "external_publishing_disabled" in second.blocking_reasons
+
+    async with rls_scoped_session(str(user_id)) as session:
+        rows = (
+            (
+                await session.execute(
+                    select(ArtifactPublicationEligibility).where(
+                        ArtifactPublicationEligibility.workspace_id == workspace_id,
+                        ArtifactPublicationEligibility.final_artifact_id == artifact.id,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 1
+
+    # A different platform is a separate determination, not a refresh.
+    async with rls_scoped_session(str(user_id)) as session:
+        other = await compliance.publication_eligibility(
+            session,
+            workspace_id=workspace_id,
+            actor_id=user_id,
+            final_artifact_id=artifact.id,
+            target_platform="youtube_shorts",
+        )
+        assert other.id != first_id
+        assert other.publication_eligible is False
 
 
 @pytest.mark.asyncio

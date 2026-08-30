@@ -50,6 +50,21 @@ class Settings(BaseSettings):
     # Explicit break-glass for AUTH_MODE=local when ENVIRONMENT=production.
     allow_local_auth_in_production: bool = Field(default=False)
 
+    # --- Runtime profile ---
+    # Where this process runs, which decides whether it can host the
+    # in-process automation loops at all.
+    #   server     (default) long-lived process (uvicorn/container). The API
+    #              also runs the scheduler, outbox relay and maintenance
+    #              loops, exactly as before this setting existed.
+    #   serverless per-request execution (e.g. Vercel Functions). The process
+    #              is frozen between requests, so a loop started at cold start
+    #              would not tick. Those loops are therefore not started, and
+    #              /health/automation reports them unavailable rather than
+    #              idle. Request-inline work is unaffected: auth, every
+    #              pipeline stage, the auditors, and review decisions all run
+    #              to completion inside the request that triggers them.
+    runtime_profile: str = Field(default="server")
+
     # --- Scheduler (background tick in API lifespan) ---
     scheduler_interval_seconds: float = Field(default=2.0, ge=0.2)
     scheduler_batch_size: int = Field(default=50, ge=1)
@@ -59,6 +74,16 @@ class Settings(BaseSettings):
 
     # --- CORS ---
     cors_allow_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
+
+    # --- Pipeline provider (WP-PB-005) ---
+    # Selects the implementation behind every Scout → Compliance stage.
+    #   null       (default) no vendor; each stage stops truthfully at
+    #              provider_not_configured and spends nothing.
+    #   simulation deterministic offline provider for pre-vendor testing. It
+    #              performs no network I/O, costs nothing, labels every record
+    #              it writes `simulation`, and is refused in production.
+    # Activating a paid vendor is a separate audited milestone (PROVIDER-001).
+    pipeline_provider_mode: str = Field(default="null")
 
     # --- Worker registry (Workstream 1) ---
     # Liveness thresholds, server-clock only (see app/services/workers.py).
@@ -141,6 +166,32 @@ class Settings(BaseSettings):
         """Swagger/ReDoc/OpenAPI JSON are development-only (P-005)."""
         return self.environment.strip().lower() in {"development", "dev"}
 
+    @property
+    def is_serverless(self) -> bool:
+        return self.runtime_profile == "serverless"
+
+    @property
+    def background_loops_supported(self) -> bool:
+        """Whether this runtime can host the automation loops.
+
+        ENVIRONMENT=test is excluded for the existing reason (tests drive the
+        reapers directly with a controlled clock), serverless because a frozen
+        process cannot tick one.
+        """
+        return self.runtime_profile == "server" and self.environment.strip().lower() != "test"
+
+    @property
+    def background_loops_disabled_reason(self) -> str | None:
+        """Why the loops are not running, for honest ops reporting."""
+        if self.background_loops_supported:
+            return None
+        if self.environment.strip().lower() == "test":
+            return "ENVIRONMENT=test: tests invoke the reapers directly with a controlled clock"
+        return (
+            "RUNTIME_PROFILE=serverless: the process is frozen between requests, "
+            "so in-process background loops cannot tick and are not started"
+        )
+
     @model_validator(mode="after")
     def _validate_auth_mode(self) -> Settings:
         mode = self.auth_mode.strip().lower()
@@ -156,6 +207,29 @@ class Settings(BaseSettings):
             raise ValueError(
                 "AUTH_MODE=local is forbidden when ENVIRONMENT is production; "
                 "set ALLOW_LOCAL_AUTH_IN_PRODUCTION=true only as an audited override"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _validate_runtime_profile(self) -> Settings:
+        profile = self.runtime_profile.strip().lower()
+        if profile not in {"server", "serverless"}:
+            raise ValueError("RUNTIME_PROFILE must be 'server' or 'serverless'")
+        object.__setattr__(self, "runtime_profile", profile)
+        return self
+
+    @model_validator(mode="after")
+    def _validate_pipeline_provider_mode(self) -> Settings:
+        mode = self.pipeline_provider_mode.strip().lower()
+        if mode not in {"null", "simulation"}:
+            raise ValueError("PIPELINE_PROVIDER_MODE must be 'null' or 'simulation'")
+        object.__setattr__(self, "pipeline_provider_mode", mode)
+        # Simulated content is synthetic by construction. There is no audited
+        # override for shipping it from a production deployment.
+        if mode == "simulation" and self.environment.strip().lower() in {"production", "prod"}:
+            raise ValueError(
+                "PIPELINE_PROVIDER_MODE=simulation is forbidden when ENVIRONMENT is production; "
+                "simulated pipeline output must never be produced by a production deployment"
             )
         return self
 

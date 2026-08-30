@@ -1,10 +1,14 @@
 """Bounded Scout research and independent Research Auditor service.
 
-The live Founder Preview intentionally has no external research provider. Manual
-runs persist their limits and truthfully finish as ``provider_not_configured``.
-The deterministic fixture path is test-only and exercises the same persistence,
-provenance, deduplication, and independent audit gates without pretending to be
-live web research.
+Research execution goes through the configured pipeline provider. With the
+default ``null`` provider there is no external research vendor, so manual runs
+persist their limits and truthfully finish as ``provider_not_configured``. With
+a configured provider the same persistence, provenance, deduplication, and
+independent audit gates run against that provider's output, labelled with the
+provider's own state so stored evidence is never misattributed.
+
+The test fixture path shares that persistence routine so regression tests
+exercise the code that really runs.
 """
 
 from __future__ import annotations
@@ -31,6 +35,13 @@ from app.models.research import (
     ResearchSource,
 )
 from app.orchestration.outbox import emit
+from app.providers import (
+    OpportunityDraft,
+    ProviderExecutionError,
+    ResearchRequest,
+    SourceDraft,
+    get_pipeline_provider,
+)
 from app.schemas.research import ResearchRunCreate
 
 MAX_FIXTURE_EXCERPT = 6_000
@@ -146,15 +157,21 @@ async def create_manual_run(
     actor_id: uuid.UUID,
     payload: ResearchRunCreate,
 ) -> ResearchRun:
-    """Persist a bounded manual run. No provider means no external call or spend."""
+    """Persist a bounded manual run and execute it through the configured provider.
+
+    Without a configured provider the run stops at ``provider_not_configured``
+    and makes no external call and no spend.
+    """
+    provider = get_pipeline_provider()
     now = _utcnow()
-    # Runs are deliberately short-lived in this preview; a real provider later
-    # must honor the persisted deadline rather than invent a longer horizon.
+    # Runs are deliberately short-lived; a provider must honor the persisted
+    # deadline rather than invent a longer horizon.
     deadline = now + timedelta(minutes=15)
+    objective = payload.research_objective.strip()
     run = ResearchRun(
         workspace_id=workspace_id,
         trigger="manual",
-        research_objective=payload.research_objective.strip(),
+        research_objective=objective,
         permitted_sources=list(payload.permitted_sources),
         started_at=now,
         deadline=deadline,
@@ -163,9 +180,9 @@ async def create_manual_run(
         max_tokens=payload.max_tokens,
         max_cost_usd=payload.max_cost_usd,
         max_attempts=payload.max_attempts,
-        status="provider_not_configured",
-        provider_state="not_configured",
-        last_error="RESEARCH PROVIDER NOT CONFIGURED",
+        status="queued" if provider.is_configured else "provider_not_configured",
+        provider_state=provider.state_label,
+        last_error=None if provider.is_configured else "RESEARCH PROVIDER NOT CONFIGURED",
         created_by=actor_id,
         updated_by=actor_id,
     )
@@ -177,6 +194,7 @@ async def create_manual_run(
         "research.started",
         {
             "trigger": "manual",
+            "provider": provider.name,
             "limits": {
                 "max_searches": run.max_searches,
                 "max_provider_calls": run.max_provider_calls,
@@ -186,14 +204,45 @@ async def create_manual_run(
             },
         },
     )
-    await _emit_run(
+    if not provider.is_configured:
+        await _emit_run(
+            session,
+            run,
+            "research.provider_not_configured",
+            {"detail": "No external research provider is configured."},
+        )
+        return run
+
+    try:
+        result = await provider.research(
+            ResearchRequest(
+                workspace_id=workspace_id,
+                objective=objective,
+                permitted_sources=list(payload.permitted_sources),
+                max_searches=payload.max_searches,
+            )
+        )
+    except Exception as exc:  # provider failure is a failed run, never an unconfigured one
+        run.status = "failed"
+        run.last_error = f"research provider '{provider.name}' failed: {exc}"
+        await _emit_run(session, run, "research.failed", {"reason": run.last_error})
+        return run
+
+    run.status = "running"
+    await _persist_research_output(
         session,
-        run,
-        "research.provider_not_configured",
-        {
-            "detail": "No external research provider is configured in the Founder Preview.",
-        },
+        run=run,
+        actor_id=actor_id,
+        sources=result.sources,
+        opportunity=result.opportunity,
     )
+    run.provider_calls_used = result.usage.calls
+    run.tokens_used = result.usage.tokens
+    run.actual_cost_usd = result.usage.cost_usd
+    if Decimal(str(run.actual_cost_usd)) > Decimal(str(run.max_cost_usd)):
+        raise ProviderExecutionError(
+            "research provider reported cost above the run's persisted ceiling"
+        )
     return run
 
 
@@ -309,8 +358,9 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
         )
     ).scalar_one_or_none()
     cost = sum((Decimal(str(run.actual_cost_usd)) for run in runs), Decimal("0"))
+    provider = get_pipeline_provider()
     return {
-        "provider_state": "not_configured",
+        "provider_state": provider.state_label,
         "status": current.status if current else (last.status if last else "not_run"),
         "current_research": current,
         "last_run": last,
@@ -323,8 +373,170 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
         if (current or last)
         else "RESEARCH PROVIDER NOT CONFIGURED",
         "schedule_enabled": bool(schedule.enabled) if schedule else False,
-        "research_data_state": "not_connected",
+        "research_data_state": "connected" if provider.is_configured else "not_connected",
     }
+
+
+async def _persist_research_output(
+    session: AsyncSession,
+    *,
+    run: ResearchRun,
+    actor_id: uuid.UUID,
+    sources: list[SourceDraft],
+    opportunity: OpportunityDraft,
+) -> Opportunity | None:
+    """Store provider output with full provenance, dedupe, and safety handling.
+
+    Shared by the live provider path and the test fixture path so both exercise
+    the same URL canonicalisation, excerpt sanitising, and deduplication.
+    """
+    workspace_id = run.workspace_id
+    now = run.started_at
+    test_data = run.test_data
+    accepted: list[ResearchSource] = []
+    for item in sources[: run.max_searches]:
+        try:
+            url = _canonical_url(item.canonical_url)
+        except ValueError as exc:
+            await _emit_run(
+                session,
+                run,
+                "research.source_rejected",
+                {"reason": str(exc), "test_data": test_data},
+            )
+            continue
+        excerpt, rejection_reason = _safe_excerpt(item.excerpt)
+        source = ResearchSource(
+            workspace_id=workspace_id,
+            research_run_id=run.id,
+            canonical_url=url,
+            source_type=item.source_type,
+            retrieved_at=now,
+            published_at=item.published_at,
+            publisher=item.publisher,
+            author=item.author,
+            claim_supported=item.claim_supported,
+            freshness=item.freshness,
+            confidence=item.confidence,
+            content_digest=hashlib.sha256(
+                (excerpt or rejection_reason or url).encode("utf-8")
+            ).hexdigest(),
+            safe_excerpt=excerpt,
+            handling_state="rejected" if rejection_reason else "accepted",
+            rejection_reason=rejection_reason,
+            test_data=test_data,
+        )
+        session.add(source)
+        await session.flush()
+        if rejection_reason:
+            await _emit_run(
+                session,
+                run,
+                "research.source_rejected",
+                {
+                    "source_id": str(source.id),
+                    "reason": rejection_reason,
+                    "test_data": test_data,
+                },
+            )
+        else:
+            accepted.append(source)
+            await _emit_run(
+                session,
+                run,
+                "research.source_recorded",
+                {"source_id": str(source.id), "test_data": test_data},
+            )
+
+    run.searches_used = len(sources)
+    if not accepted:
+        run.status = "failed"
+        run.last_error = "No safe evidence sources were accepted"
+        await _emit_run(
+            session,
+            run,
+            "research.failed",
+            {"reason": run.last_error, "test_data": test_data},
+        )
+        return None
+
+    topic = opportunity.topic.strip()
+    angle = opportunity.proposed_angle.strip()
+    key = _dedupe_key(
+        topic=topic,
+        angle=angle,
+        platform=opportunity.target_platform,
+        format_name=opportunity.suggested_format,
+        source_urls=[s.canonical_url for s in accepted],
+    )
+    existing = (
+        await session.execute(
+            select(Opportunity).where(
+                Opportunity.workspace_id == workspace_id,
+                Opportunity.dedupe_key == key,
+                Opportunity.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if existing is None:
+        record = Opportunity(
+            workspace_id=workspace_id,
+            research_run_id=run.id,
+            title=opportunity.title.strip(),
+            topic=topic,
+            summary=opportunity.summary.strip(),
+            proposed_angle=angle,
+            target_audience=opportunity.target_audience,
+            target_platform=opportunity.target_platform,
+            suggested_format=opportunity.suggested_format,
+            freshness=opportunity.freshness,
+            source_count=len(accepted),
+            confidence=opportunity.confidence,
+            risk=opportunity.risk,
+            status="active",
+            created_by_worker=f"scout_{run.provider_state}",
+            component_scores=dict(opportunity.component_scores),
+            score_reasoning=dict(opportunity.score_reasoning),
+            dedupe_key=key,
+            test_data=test_data,
+            created_by=actor_id,
+            updated_by=actor_id,
+        )
+        session.add(record)
+        await session.flush()
+        event_type = "opportunity.created"
+    else:
+        record = existing
+        record.source_count += len(accepted)
+        record.updated_by = actor_id
+        event_type = "opportunity.duplicate_detected"
+
+    for source in accepted:
+        link = OpportunityEvidence(
+            workspace_id=workspace_id,
+            opportunity_id=record.id,
+            source_id=source.id,
+            claim_supported=source.claim_supported or record.summary,
+            relevance=Decimal("0.80"),
+            contradiction_flag=False,
+        )
+        session.add(link)
+    await session.flush()
+    await _emit_run(
+        session,
+        run,
+        event_type,
+        {"opportunity_id": str(record.id), "test_data": test_data},
+    )
+    run.opportunity_count = 1 if existing is None else 0
+    run.status = "succeeded"
+    await _emit_run(
+        session,
+        run,
+        "research.completed",
+        {"opportunity_id": str(record.id), "test_data": test_data},
+    )
+    return record
 
 
 async def record_fixture_run(
@@ -336,7 +548,7 @@ async def record_fixture_run(
     fixture_sources: list[dict[str, Any]],
     fixture_opportunity: dict[str, Any],
 ) -> tuple[ResearchRun, Opportunity | None]:
-    """Test-only real persistence path. Never callable in preview/production."""
+    """Test-only entry point onto the shared persistence path."""
     if os.getenv("ENVIRONMENT") != "test":
         raise RuntimeError("fixture research execution is test-only")
     now = _utcnow()
@@ -366,151 +578,38 @@ async def record_fixture_run(
         "research.started",
         {"trigger": "manual_test_fixture", "test_data": True},
     )
-
-    accepted: list[ResearchSource] = []
-    for item in fixture_sources[: run.max_searches]:
-        try:
-            url = _canonical_url(str(item.get("url", "")))
-        except ValueError as exc:
-            await _emit_run(
-                session,
-                run,
-                "research.source_rejected",
-                {"reason": str(exc), "test_data": True},
+    opportunity = await _persist_research_output(
+        session,
+        run=run,
+        actor_id=actor_id,
+        sources=[
+            SourceDraft(
+                canonical_url=str(item.get("url", "")),
+                source_type=str(item.get("source_type", "fixture")),
+                publisher=item.get("publisher"),
+                author=item.get("author"),
+                claim_supported=item.get("claim_supported"),
+                freshness=str(item.get("freshness", "test")),
+                confidence=Decimal(str(item.get("confidence", "0.50"))),
+                excerpt=item.get("excerpt"),
+                published_at=item.get("published_at"),
             )
-            continue
-        excerpt, rejection_reason = _safe_excerpt(item.get("excerpt"))
-        source = ResearchSource(
-            workspace_id=workspace_id,
-            research_run_id=run.id,
-            canonical_url=url,
-            source_type=str(item.get("source_type", "fixture")),
-            retrieved_at=now,
-            published_at=item.get("published_at"),
-            publisher=item.get("publisher"),
-            author=item.get("author"),
-            claim_supported=item.get("claim_supported"),
-            freshness=str(item.get("freshness", "test")),
-            confidence=Decimal(str(item.get("confidence", "0.50"))),
-            content_digest=hashlib.sha256(
-                (excerpt or rejection_reason or url).encode("utf-8")
-            ).hexdigest(),
-            safe_excerpt=excerpt,
-            handling_state="rejected" if rejection_reason else "accepted",
-            rejection_reason=rejection_reason,
-            test_data=True,
-        )
-        session.add(source)
-        await session.flush()
-        if rejection_reason:
-            await _emit_run(
-                session,
-                run,
-                "research.source_rejected",
-                {
-                    "source_id": str(source.id),
-                    "reason": rejection_reason,
-                    "test_data": True,
-                },
-            )
-        else:
-            accepted.append(source)
-            await _emit_run(
-                session,
-                run,
-                "research.source_recorded",
-                {"source_id": str(source.id), "test_data": True},
-            )
-
-    run.searches_used = len(fixture_sources)
-    if not accepted:
-        run.status = "failed"
-        run.last_error = "No safe evidence sources were accepted"
-        await _emit_run(
-            session,
-            run,
-            "research.failed",
-            {"reason": run.last_error, "test_data": True},
-        )
-        return run, None
-
-    topic = str(fixture_opportunity["topic"]).strip()
-    angle = str(fixture_opportunity["proposed_angle"]).strip()
-    platform = fixture_opportunity.get("target_platform")
-    format_name = fixture_opportunity.get("suggested_format")
-    key = _dedupe_key(
-        topic=topic,
-        angle=angle,
-        platform=platform,
-        format_name=format_name,
-        source_urls=[s.canonical_url for s in accepted],
-    )
-    existing = (
-        await session.execute(
-            select(Opportunity).where(
-                Opportunity.workspace_id == workspace_id,
-                Opportunity.dedupe_key == key,
-                Opportunity.deleted_at.is_(None),
-            )
-        )
-    ).scalar_one_or_none()
-    if existing is None:
-        opportunity = Opportunity(
-            workspace_id=workspace_id,
-            research_run_id=run.id,
-            title=str(fixture_opportunity["title"]).strip(),
-            topic=topic,
-            summary=str(fixture_opportunity["summary"]).strip(),
-            proposed_angle=angle,
+            for item in fixture_sources
+        ],
+        opportunity=OpportunityDraft(
+            title=str(fixture_opportunity["title"]),
+            topic=str(fixture_opportunity["topic"]),
+            summary=str(fixture_opportunity["summary"]),
+            proposed_angle=str(fixture_opportunity["proposed_angle"]),
             target_audience=fixture_opportunity.get("target_audience"),
-            target_platform=platform,
-            suggested_format=format_name,
+            target_platform=fixture_opportunity.get("target_platform"),
+            suggested_format=fixture_opportunity.get("suggested_format"),
             freshness=str(fixture_opportunity.get("freshness", "test")),
-            source_count=len(accepted),
             confidence=Decimal(str(fixture_opportunity.get("confidence", "0.50"))),
             risk=str(fixture_opportunity.get("risk", "low")),
-            status="active",
-            created_by_worker="scout_fixture",
             component_scores=dict(fixture_opportunity.get("component_scores", {})),
             score_reasoning=dict(fixture_opportunity.get("score_reasoning", {})),
-            dedupe_key=key,
-            test_data=True,
-            created_by=actor_id,
-            updated_by=actor_id,
-        )
-        session.add(opportunity)
-        await session.flush()
-        event_type = "opportunity.created"
-    else:
-        opportunity = existing
-        opportunity.source_count += len(accepted)
-        opportunity.updated_by = actor_id
-        event_type = "opportunity.duplicate_detected"
-
-    for source in accepted:
-        link = OpportunityEvidence(
-            workspace_id=workspace_id,
-            opportunity_id=opportunity.id,
-            source_id=source.id,
-            claim_supported=source.claim_supported or opportunity.summary,
-            relevance=Decimal("0.80"),
-            contradiction_flag=False,
-        )
-        session.add(link)
-    await session.flush()
-    await _emit_run(
-        session,
-        run,
-        event_type,
-        {"opportunity_id": str(opportunity.id), "test_data": True},
-    )
-    run.opportunity_count = 1 if existing is None else 0
-    run.status = "succeeded"
-    await _emit_run(
-        session,
-        run,
-        "research.completed",
-        {"opportunity_id": str(opportunity.id), "test_data": True},
+        ),
     )
     return run, opportunity
 
@@ -642,12 +741,17 @@ async def strategist_gate(
             "opportunity.strategist_eligible",
             {"opportunity_id": str(opportunity.id)},
         )
+    provider = get_pipeline_provider()
     return {
         "opportunity_id": opportunity.id,
         "eligible": True,
         "state": "eligible",
         "detail": (
-            "Approved intelligence is eligible for a future Strategist handoff; "
-            "no Strategist provider is configured."
+            "Approved intelligence is eligible for a Strategist handoff."
+            if provider.is_configured
+            else (
+                "Approved intelligence is eligible for a future Strategist handoff; "
+                "no Strategist provider is configured."
+            )
         ),
     }
