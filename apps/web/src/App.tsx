@@ -15,6 +15,7 @@ type Session = {
 };
 
 const STORAGE_KEY = "lumora.missionControl.session";
+const AUTO_PREVIEW_SESSION = import.meta.env.VITE_FOUNDER_TEST_AUTO_LOGIN === "true";
 
 function loadSession(): Session | null {
   try {
@@ -28,6 +29,16 @@ function loadSession(): Session | null {
   }
 }
 
+function disposablePreviewCredentials() {
+  const random = new Uint32Array(4);
+  window.crypto.getRandomValues(random);
+  const suffix = Array.from(random, (value) => value.toString(16).padStart(8, "0")).join("");
+  return {
+    email: `founder-test-${Date.now()}-${suffix.slice(0, 12)}@example.com`,
+    password: `Preview!Aa7-${suffix}-${Date.now()}`,
+  };
+}
+
 export default function App() {
   const [session, setSession] = useState<Session | null>(() => loadSession());
   const [launchState, setLaunchState] = useState<"hidden" | "visible" | "exiting">(() => loadSession() ? "visible" : "hidden");
@@ -38,6 +49,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [previewBootstrapState, setPreviewBootstrapState] = useState<"idle" | "running" | "failed">("idle");
 
   useEffect(() => {
     if (!session || launchState !== "visible") return;
@@ -53,6 +65,37 @@ export default function App() {
       window.clearTimeout(timeout);
     };
   }, [launchState, session]);
+
+  useEffect(() => {
+    if (!AUTO_PREVIEW_SESSION || session || previewBootstrapState !== "idle") return;
+
+    setPreviewBootstrapState("running");
+    setError(null);
+    const credentials = disposablePreviewCredentials();
+
+    void (async () => {
+      try {
+        const auth = await signup(credentials.email, credentials.password);
+        const existing = await listWorkspaces(auth.access_token);
+        let workspaceId = existing[0]?.id;
+        if (!workspaceId) {
+          const created = await createWorkspace(auth.access_token, "Founder Test Workspace");
+          workspaceId = created.id;
+        }
+        const next: Session = {
+          token: auth.access_token,
+          workspaceId,
+          email: auth.email,
+        };
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+        setLaunchState("visible");
+        setSession(next);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Preview session could not start");
+        setPreviewBootstrapState("failed");
+      }
+    })();
+  }, [previewBootstrapState, session]);
 
   async function authenticate(nextMode: "login" | "signup", event: FormEvent) {
     event.preventDefault();
@@ -106,6 +149,7 @@ export default function App() {
             sessionStorage.removeItem(STORAGE_KEY);
             setLaunchState("hidden");
             setSession(null);
+            if (AUTO_PREVIEW_SESSION) setPreviewBootstrapState("idle");
           }}
         />
         {launchState !== "hidden" ? (
@@ -116,6 +160,38 @@ export default function App() {
           </div>
         ) : null}
       </>
+    );
+  }
+
+  if (AUTO_PREVIEW_SESSION) {
+    return (
+      <main className="auth-shell auth-shell--approved">
+        <section className="auth-card" aria-live="polite">
+          <div className="auth-lockup" aria-label="The Business Manager — Founder Test Preview">
+            <BusinessManagerMark className="auth-lockup__mark" />
+            <strong className="auth-lockup__name">The Business Manager</strong>
+            <small className="auth-lockup__subtitle">Founder Test Preview</small>
+          </div>
+          {previewBootstrapState === "failed" ? (
+            <div className="auth-form auth-form--approved">
+              <h1>Preview could not start</h1>
+              {error ? <p className="error" role="alert">{error}</p> : null}
+              <button
+                className="button button--primary auth-submit"
+                type="button"
+                onClick={() => setPreviewBootstrapState("idle")}
+              >
+                RETRY TEST SESSION
+              </button>
+            </div>
+          ) : (
+            <div className="auth-form auth-form--approved" role="status">
+              <h1>Preparing test workspace…</h1>
+              <p className="auth-notice">Creating a disposable test session. No login is required for this preview.</p>
+            </div>
+          )}
+        </section>
+      </main>
     );
   }
 
