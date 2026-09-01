@@ -1,0 +1,53 @@
+name: Founder Preview Smoke
+
+on:
+  push:
+    branches:
+      - founder-studio-preview
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: founder-preview-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Vercel Founder Studio smoke
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      PREVIEW_URL: https://content-orchestrator-git-founder-studio-preview-tbm10.vercel.app
+    steps:
+      - name: Wait for preview root
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 24); do
+            code=$(curl -L -sS -o /tmp/root.html -w '%{http_code}' --max-time 15 "$PREVIEW_URL/" || true)
+            if [ "$code" = "200" ]; then
+              test -s /tmp/root.html
+              echo "Founder Studio root is reachable"
+              exit 0
+            fi
+            echo "Attempt $attempt: root returned HTTP $code"
+            sleep 10
+          done
+          echo "Preview root did not become reachable"
+          exit 1
+
+      - name: Verify API liveness
+        shell: bash
+        run: |
+          set -euo pipefail
+          body=$(curl -L -sS --fail --max-time 20 "$PREVIEW_URL/api/health/live")
+          printf '%s' "$body" | grep -q '"status":"ok"'
+
+      - name: Verify isolated database readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          body=$(curl -L -sS --fail --max-time 20 "$PREVIEW_URL/api/health/ready")
+          printf '%s' "$body" | grep -q '"database":"reachable"'

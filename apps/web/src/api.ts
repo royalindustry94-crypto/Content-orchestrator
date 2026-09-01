@@ -406,6 +406,8 @@ export type AssistantAnswer = {
   generated_at: string;
 };
 
+/** Relative `/api` calls. Vite strips `/api` locally; Vercel must keep it.
+ *  Never accept the Founder Studio UI-only preview token here. */
 async function apiFetch<T>(
   path: string,
   token: string | null,
