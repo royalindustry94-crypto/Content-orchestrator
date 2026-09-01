@@ -45,5 +45,14 @@ except Exception as exc:  # fail closed while keeping a diagnosable endpoint
             },
         )
 else:
-    app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
-    app.mount("/api", real_api)
+    # File-based `api/index.py` is only `/api`. A rewrite may deliver either
+    # `/api/health/live` or a stripped `/health/live`. Serve both shapes.
+    from starlette.applications import Starlette
+    from starlette.routing import Mount
+
+    app = Starlette(
+        routes=[
+            Mount("/api", app=real_api),
+            Mount("/", app=real_api),
+        ]
+    )

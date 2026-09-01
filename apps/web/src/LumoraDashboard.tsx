@@ -114,6 +114,16 @@ import {
   UniversalTimelineView,
 } from "./MissionControlV4";
 import {
+  FounderAdvancedUnavailable,
+  FounderCreateView,
+  FounderCustomersView,
+  FounderHomeView,
+  FounderReadyView,
+  FounderReviewView,
+  FounderSettingsView,
+} from "./FounderStudioViews";
+import { isFounderStudioPreviewToken } from "./preview/session";
+import {
   HEALTH_COPY,
   aggregateHealth,
   isActivityFeed,
@@ -147,7 +157,9 @@ type NavKey =
   | "compliance"
   | "analytics"
   | "billing"
-  | "settings";
+  | "settings"
+  | "create"
+  | "ready";
 
 type MissionTab = "overview" | "timeline" | "logs" | "assistant" | "content";
 
@@ -240,6 +252,16 @@ const NAV: Array<{ id: NavKey; label: string; icon: IconName }> = [
   { id: "mission", label: "Connections", icon: "mission" },
   { id: "settings", label: "Settings", icon: "settings" },
 ];
+
+const FOUNDER_PRIMARY_NAV: Array<{ id: NavKey; label: string; icon: IconName }> = [
+  { id: "dashboard", label: "Home", icon: "dashboard" },
+  { id: "customers", label: "Customers", icon: "customers" },
+  { id: "create", label: "Create", icon: "pipelines" },
+  { id: "review", label: "Review", icon: "review" },
+  { id: "ready", label: "Ready to Publish", icon: "check" },
+];
+
+const FOUNDER_ADVANCED_NAV = NAV.filter((item) => !["dashboard", "customers", "review"].includes(item.id));
 
 function formatDate(value: string | null | undefined): string {
   if (!value) return "Unavailable";
@@ -1560,19 +1582,29 @@ export default function LumoraDashboard({
   const [reviewActionError, setReviewActionError] = useState<string | null>(null);
   const requestId = useRef(0);
   const mobileNavRef = useDialogFocus<HTMLElement>(mobileOpen, () => setMobileOpen(false));
+  const isPreview = isFounderStudioPreviewToken(token);
 
   const currentWorkspace = workspaces.find((workspace) => workspace.id === workspaceId);
   const viewKey = `${workspaceId}:${nav}:${missionTab}`;
 
   useEffect(() => {
+    if (isPreview) {
+      setWorkspaces([]);
+      return;
+    }
     let active = true;
     void listWorkspaces(token)
       .then((rows) => { if (active) setWorkspaces(rows); })
       .catch(() => { if (active) setWorkspaces([]); });
     return () => { active = false; };
-  }, [token]);
+  }, [isPreview, token]);
 
   useEffect(() => {
+    if (isPreview) {
+      setNotifications(null);
+      setReviewCount(0);
+      return;
+    }
     let active = true;
     void getNotifications(token, workspaceId)
       .then((value) => { if (active) setNotifications(value); })
@@ -1581,9 +1613,10 @@ export default function LumoraDashboard({
       .then((gates) => { if (active) setReviewCount(gates.length); })
       .catch(() => { if (active) setReviewCount(0); });
     return () => { active = false; };
-  }, [token, workspaceId]);
+  }, [isPreview, token, workspaceId]);
 
   useEffect(() => {
+    if (isPreview) return;
     // Dashboard and Settings already fetch health as part of their atomic page
     // load. Other routes fetch it here for the persistent shell footer.
     if (nav === "dashboard" || nav === "settings") return;
@@ -1602,7 +1635,7 @@ export default function LumoraDashboard({
         }
       });
     return () => { active = false; };
-  }, [nav, token, workspaceId]);
+  }, [isPreview, nav, token, workspaceId]);
 
   const load = useCallback(async () => {
     const currentRequest = requestId.current + 1;
@@ -1611,6 +1644,13 @@ export default function LumoraDashboard({
     const isCurrent = () => requestId.current === currentRequest;
     setLoading(true);
     setError(null);
+    if (isFounderStudioPreviewToken(token)) {
+      if (!isCurrent()) return;
+      setData(null);
+      setLoadedKey(currentViewKey);
+      setLoading(false);
+      return;
+    }
     try {
       let next: ViewData;
       if (nav === "dashboard") {
@@ -1749,7 +1789,10 @@ export default function LumoraDashboard({
     setMobileOpen(false);
   };
 
-  const title = NAV.find((item) => item.id === nav)?.label ?? "Dashboard";
+  const title =
+    (isPreview ? FOUNDER_PRIMARY_NAV.find((item) => item.id === nav)?.label : undefined)
+    ?? NAV.find((item) => item.id === nav)?.label
+    ?? "Dashboard";
   const awaitingReviews = Array.isArray(data) ? data.filter((gate) => gate.status === "awaiting") : [];
   const notificationCount = notifications?.notifications.length ?? 0;
   const displayedHealth = healthWorkspaceId === workspaceId ? health : null;
@@ -1769,6 +1812,15 @@ export default function LumoraDashboard({
   };
 
   const renderView = () => {
+    if (isPreview) {
+      if (nav === "dashboard") return <FounderHomeView navigate={navigate} />;
+      if (nav === "customers") return <FounderCustomersView />;
+      if (nav === "create") return <FounderCreateView />;
+      if (nav === "review") return <FounderReviewView />;
+      if (nav === "ready") return <FounderReadyView />;
+      if (nav === "settings") return <FounderSettingsView />;
+      return <FounderAdvancedUnavailable label={title} />;
+    }
     if (error) return <ErrorState error={error} retry={() => void load()} />;
 
     // Review Queue drives its own list off the shared review fetch and always
@@ -1901,8 +1953,8 @@ export default function LumoraDashboard({
   };
 
   return (
-    <div className="lumora-shell">
-      <CommandPalette navigate={(target) => {
+    <div className={isPreview ? "lumora-shell lumora-shell--founder-preview" : "lumora-shell"}>
+      {isPreview ? null : <CommandPalette navigate={(target) => {
         if (target === "logs") {
           navigateToMissionTab("logs");
           return;
@@ -1919,7 +1971,7 @@ export default function LumoraDashboard({
           alerts: "mission",
         };
         navigate(mapping[target] ?? "mission");
-      }} token={token} workspaceId={workspaceId} />
+      }} token={token} workspaceId={workspaceId} />}
       <aside
         aria-label={mobileOpen ? "Mobile navigation" : undefined}
         aria-modal={mobileOpen ? "true" : undefined}
@@ -1930,35 +1982,54 @@ export default function LumoraDashboard({
       >
         <div className="brand">
           <BusinessManagerMark className="brand-mark" />
-          <div className="brand-copy"><strong>The Business Manager</strong><small>Business Operating System</small></div>
+          <div className="brand-copy"><strong>The Business Manager</strong><small>{isPreview ? "Founder Studio Preview" : "Business Operating System"}</small></div>
           <button aria-label="Close navigation" className="mobile-close" onClick={() => setMobileOpen(false)} type="button"><Icon name="close" /></button>
         </div>
         <nav aria-label="Primary navigation">
-          <p>Business</p>
-          {NAV.slice(0, 3).map((item) => (
-            <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
-              <Icon name={item.icon} /><span>{item.label}</span>
-            </button>
-          ))}
-          <p>Content &amp; workforce</p>
-          {NAV.slice(3, 6).map((item) => (
-            <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
-              <Icon name={item.icon} /><span>{item.label}</span>
-              {item.id === "review" && reviewCount > 0 ? <b>{reviewCount}</b> : null}
-            </button>
-          ))}
-          <p>Money &amp; insights</p>
-          {NAV.slice(6, 9).map((item) => (
-            <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
-              <Icon name={item.icon} /><span>{item.label}</span>
-            </button>
-          ))}
-          <p>System</p>
-          {NAV.slice(9).map((item) => (
-            <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
-              <Icon name={item.icon} /><span>{item.label}</span>
-            </button>
-          ))}
+          {isPreview ? (
+            <>
+              <p>Founder Studio</p>
+              {FOUNDER_PRIMARY_NAV.map((item) => (
+                <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
+                  <Icon name={item.icon} /><span>{item.label}</span>
+                </button>
+              ))}
+              <p>Advanced desk</p>
+              {FOUNDER_ADVANCED_NAV.map((item) => (
+                <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
+                  <Icon name={item.icon} /><span>{item.label}</span>
+                </button>
+              ))}
+            </>
+          ) : (
+            <>
+              <p>Business</p>
+              {NAV.slice(0, 3).map((item) => (
+                <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
+                  <Icon name={item.icon} /><span>{item.label}</span>
+                </button>
+              ))}
+              <p>Content &amp; workforce</p>
+              {NAV.slice(3, 6).map((item) => (
+                <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
+                  <Icon name={item.icon} /><span>{item.label}</span>
+                  {item.id === "review" && reviewCount > 0 ? <b>{reviewCount}</b> : null}
+                </button>
+              ))}
+              <p>Money &amp; insights</p>
+              {NAV.slice(6, 9).map((item) => (
+                <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
+                  <Icon name={item.icon} /><span>{item.label}</span>
+                </button>
+              ))}
+              <p>System</p>
+              {NAV.slice(9).map((item) => (
+                <button className={nav === item.id ? "side-link side-link--active" : "side-link"} key={item.id} onClick={() => navigate(item.id)} type="button">
+                  <Icon name={item.icon} /><span>{item.label}</span>
+                </button>
+              ))}
+            </>
+          )}
         </nav>
         <button
           className="sidebar-foot"
@@ -1966,10 +2037,10 @@ export default function LumoraDashboard({
           title="View system health"
           type="button"
         >
-          <span className={`status-orb status-orb--${HEALTH_COPY[healthLevel].orb}`} />
+          <span className={`status-orb status-orb--${isPreview ? "amber" : HEALTH_COPY[healthLevel].orb}`} />
           <div>
-            <strong>{HEALTH_COPY[healthLevel].label}</strong>
-            <small>{displayedHealth ? `Updated ${relativeTime(displayedHealth.generated_at)}` : "Live service status"}</small>
+            <strong>{isPreview ? "Preview · demo data" : HEALTH_COPY[healthLevel].label}</strong>
+            <small>{isPreview ? "Browser-local. API not used." : displayedHealth ? `Updated ${relativeTime(displayedHealth.generated_at)}` : "Live service status"}</small>
           </div>
         </button>
       </aside>
@@ -1981,17 +2052,24 @@ export default function LumoraDashboard({
             <button aria-label="Open navigation" className="mobile-menu" onClick={() => setMobileOpen(true)} type="button"><Icon name="menu" /></button>
             <div className="mobile-brand" aria-label="The Business Manager">
               <BusinessManagerMark className="mobile-brand__mark" />
-              <span><strong>The Business Manager</strong><small>Business Operating System</small></span>
+              <span><strong>The Business Manager</strong><small>{isPreview ? "Founder Studio Preview" : "Business Operating System"}</small></span>
             </div>
           </div>
           <div className="topbar-utilities">
+            {isPreview ? (
+              <div className="workspace-switcher workspace-switcher--preview">
+                <span className="workspace-avatar">F</span>
+                <span className="workspace-preview-label">Founder Studio preview</span>
+              </div>
+            ) : (
             <label className="workspace-switcher">
               <span className="workspace-avatar">{(currentWorkspace?.name ?? "W").slice(0, 1).toUpperCase()}</span>
               <select aria-label="Workspace" onChange={(event) => onWorkspaceChange(event.target.value)} value={workspaceId}>
                 {workspaces.map((workspace) => <option key={workspace.id} value={workspace.id}>{workspace.name}</option>)}
               </select>
             </label>
-          <div className={mobileSearchOpen ? "topbar-search topbar-search--open" : "topbar-search"}>
+            )}
+          {isPreview ? null : <div className={mobileSearchOpen ? "topbar-search topbar-search--open" : "topbar-search"}>
             <Icon name="search" size={17} />
             <GlobalSearchBar
               onOpen={(type) => {
@@ -2010,8 +2088,9 @@ export default function LumoraDashboard({
               token={token}
               workspaceId={workspaceId}
             />
-          </div>
+          </div>}
           <div className="topbar-actions">
+            {isPreview ? null : (
             <button
               aria-label="Search"
               aria-expanded={mobileSearchOpen}
@@ -2021,6 +2100,7 @@ export default function LumoraDashboard({
             >
               <Icon name={mobileSearchOpen ? "close" : "search"} />
             </button>
+            )}
             <div className="popover-anchor">
               <button aria-label="Notifications" className="icon-button" onClick={() => setNotificationOpen((value) => !value)} type="button">
                 <Icon name="bell" />
@@ -2058,7 +2138,7 @@ export default function LumoraDashboard({
         </header>
 
         <main className="lumora-main">
-          {nav !== "dashboard" ? (
+          {!isPreview && nav !== "dashboard" ? (
             <header className="view-header">
               <div><p>The Business Manager / {title}</p><h1>{title}</h1></div>
               <button aria-label="Refresh data" className="icon-button refresh-button" disabled={loading} onClick={() => void load()} type="button"><Icon name="refresh" /></button>
@@ -2106,6 +2186,21 @@ export default function LumoraDashboard({
             </ErrorBoundary>
           </div>
         </main>
+        {isPreview ? (
+          <nav aria-label="Founder Studio mobile" className="founder-dock">
+            {FOUNDER_PRIMARY_NAV.map((item) => (
+              <button
+                className={nav === item.id ? "founder-dock__link founder-dock__link--active" : "founder-dock__link"}
+                key={item.id}
+                onClick={() => navigate(item.id)}
+                type="button"
+              >
+                <Icon name={item.icon} size={20} />
+                <span>{item.label === "Ready to Publish" ? "Ready" : item.label}</span>
+              </button>
+            ))}
+          </nav>
+        ) : null}
       </div>
     </div>
   );
