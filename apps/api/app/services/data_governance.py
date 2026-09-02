@@ -51,6 +51,7 @@ EXPORT_DENYLIST: frozenset[str] = frozenset(
 EXPORTABLE_TABLES: tuple[str, ...] = (
     "workspaces",
     "workspace_memberships",
+    "workspace_content_profiles",
     "content_pillars",
     "content_items",
     "content_versions",
@@ -136,6 +137,7 @@ SOFT_DELETABLE_TABLES: tuple[str, ...] = (
 # Customer records with no append-only dependents and an explicit DELETE
 # policy: removed outright.
 HARD_DELETABLE_TABLES: tuple[str, ...] = (
+    "workspace_content_profiles",
     "publication_eligibility",
     "leads",
     "job_schedule",

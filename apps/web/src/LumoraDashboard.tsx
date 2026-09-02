@@ -12,6 +12,7 @@ import { useDialogFocus } from "./useDialogFocus";
 import {
   auditOpportunity,
   createComplianceRun,
+  createContentJob,
   createContentDepartmentRun,
   createLead,
   createProductionRun,
@@ -20,6 +21,7 @@ import {
   decideReviewGate,
   getActivityFeed,
   getContentCommand,
+  getContentProfile,
   listChiefAudits,
   getComplianceSummary,
   getContentDepartmentSummary,
@@ -54,6 +56,7 @@ import {
   listReviewGates,
   listStrategyBriefs,
   listWorkspaces,
+  saveContentProfile,
   sendOpportunityToStrategist,
   sendStrategyBriefToWriter,
   auditStrategyBrief,
@@ -67,6 +70,7 @@ import {
   type ContentDepartmentSummary,
   type ContentPackage,
   type ContentPackageDetail,
+  type ContentProfile,
   type CostControl,
   type Customers,
   type ExecutiveDashboard,
@@ -337,18 +341,298 @@ function SectionHeader({
   );
 }
 
+type ContentSetup = {
+  serviceMode: "own" | "client";
+  businessName: string;
+  offer: string;
+  audience: string;
+  voice: string;
+  platform: string;
+  goal: string;
+  topic: string;
+  lengthSeconds: string;
+  completed: boolean;
+};
+
+const EMPTY_CONTENT_SETUP: ContentSetup = {
+  serviceMode: "own",
+  businessName: "",
+  offer: "",
+  audience: "",
+  voice: "",
+  platform: "",
+  goal: "",
+  topic: "",
+  lengthSeconds: "60",
+  completed: false,
+};
+
+const CONTENT_SETUP_STEPS = [
+  ["Business", "Choose whose content you are creating"],
+  ["Audience", "Define the customer"],
+  ["Brand voice", "Set how the content should sound"],
+  ["Content plan", "Choose the platform and outcome"],
+  ["First brief", "Give the system its first topic"],
+] as const;
+
+function setupSubmissionKey(workspaceId: string): string {
+  return `setup-${workspaceId}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function setupFromProfile(profile: ContentProfile): ContentSetup {
+  return {
+    serviceMode: profile.service_mode,
+    businessName: profile.business_name,
+    offer: profile.offer,
+    audience: profile.target_audience,
+    voice: profile.brand_voice,
+    platform: profile.target_platform,
+    goal: profile.content_goal,
+    topic: "",
+    lengthSeconds: String(profile.default_length_seconds),
+    completed: true,
+  };
+}
+
+function ContentSetupWizard({
+  token,
+  workspaceId,
+  workspaceName,
+  openReview,
+  onProfileState,
+}: {
+  token: string;
+  workspaceId: string;
+  workspaceName: string;
+  openReview: () => void;
+  onProfileState: (state: "loading" | "incomplete" | "complete") => void;
+}) {
+  const [setup, setSetup] = useState<ContentSetup>({ ...EMPTY_CONTENT_SETUP });
+  const [step, setStep] = useState(0);
+  const [editing, setEditing] = useState(false);
+  const [submissionKey, setSubmissionKey] = useState(() => setupSubmissionKey(workspaceId));
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    onProfileState("loading");
+    void getContentProfile(token, workspaceId)
+      .then((profile) => {
+        if (!active) return;
+        if (profile) {
+          setSetup(setupFromProfile(profile));
+          setEditing(false);
+          onProfileState("complete");
+        } else {
+          setSetup({ ...EMPTY_CONTENT_SETUP });
+          setEditing(true);
+          onProfileState("incomplete");
+        }
+      })
+      .catch((cause) => {
+        if (!active) return;
+        setSetup({ ...EMPTY_CONTENT_SETUP });
+        setEditing(true);
+        setError(cause instanceof Error ? cause.message : "Unable to load content setup.");
+        onProfileState("incomplete");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    setStep(0);
+    setSubmissionKey(setupSubmissionKey(workspaceId));
+    setError(null);
+    return () => { active = false; };
+  }, [onProfileState, token, workspaceId]);
+
+  const update = (values: Partial<ContentSetup>) => {
+    setSetup((current) => ({ ...current, ...values }));
+  };
+
+  const stepComplete = [
+    Boolean(setup.businessName.trim() && setup.offer.trim()),
+    Boolean(setup.audience.trim()),
+    Boolean(setup.voice.trim()),
+    Boolean(setup.platform && setup.goal.trim()),
+    Boolean(setup.topic.trim() && setup.lengthSeconds),
+  ];
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!stepComplete.every(Boolean)) {
+      setError("Complete all five steps before creating the first draft.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      await createContentJob(token, workspaceId, {
+        topic: setup.topic.trim(),
+        business_name: setup.businessName.trim(),
+        offer: setup.offer.trim(),
+        target_audience: setup.audience.trim(),
+        brand_voice: setup.voice.trim(),
+        content_goal: setup.goal.trim(),
+        target_platform: setup.platform,
+        target_length_seconds: Number(setup.lengthSeconds),
+        idempotency_key: submissionKey,
+      });
+      await saveContentProfile(token, workspaceId, {
+        service_mode: setup.serviceMode,
+        business_name: setup.businessName.trim(),
+        offer: setup.offer.trim(),
+        target_audience: setup.audience.trim(),
+        brand_voice: setup.voice.trim(),
+        content_goal: setup.goal.trim(),
+        target_platform: setup.platform,
+        default_length_seconds: Number(setup.lengthSeconds),
+      });
+      setSetup((current) => ({ ...current, completed: true }));
+      setSubmissionKey(setupSubmissionKey(workspaceId));
+      setEditing(false);
+      onProfileState("complete");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to create the first draft.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <section className="content-setup content-setup--loading" aria-live="polite">
+        <p className="page-kicker">The Business Manager</p>
+        <h3>Loading your content setup…</h3>
+      </section>
+    );
+  }
+
+  if (setup.completed && !editing) {
+    return (
+      <section className="content-setup content-setup--complete" aria-labelledby="content-setup-title">
+        <span className="content-setup__complete-icon"><Icon name="check" size={22} /></span>
+        <div>
+          <p className="page-kicker">Content setup complete</p>
+          <h3 id="content-setup-title">Your first draft is ready for review</h3>
+          <p>
+            {setup.serviceMode === "client" ? `${setup.businessName} is isolated inside ${workspaceName}.` : `${setup.businessName} is ready.`}
+            {" "}Nothing publishes until you approve it.
+          </p>
+        </div>
+        <div className="content-setup__complete-actions">
+          <button className="button button--primary" onClick={openReview} type="button">Open Human Review</button>
+          <button className="button button--ghost" onClick={() => setEditing(true)} type="button">Edit setup</button>
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section className="content-setup" aria-labelledby="content-setup-title">
+      <header className="content-setup__header">
+        <div>
+          <p className="page-kicker">Start here</p>
+          <h3 id="content-setup-title">Set up content creation</h3>
+          <p>Complete five short steps. Then the first draft is created and sent to Human Review.</p>
+        </div>
+        <strong>{step + 1} of {CONTENT_SETUP_STEPS.length}</strong>
+      </header>
+
+      <div className="content-setup__layout">
+        <ol className="content-setup__steps" aria-label="Content setup progress">
+          {CONTENT_SETUP_STEPS.map(([title, detail], index) => (
+            <li className={index === step ? "is-active" : stepComplete[index] ? "is-complete" : ""} key={title}>
+              <button onClick={() => setStep(index)} type="button">
+                <span>{stepComplete[index] ? <Icon name="check" size={14} /> : index + 1}</span>
+                <div><strong>{title}</strong><small>{detail}</small></div>
+              </button>
+            </li>
+          ))}
+        </ol>
+
+        <form className="content-setup__form" onSubmit={(event) => void submit(event)}>
+          {step === 0 ? (
+            <fieldset className="content-setup__fieldset">
+              <legend>Whose content are you creating?</legend>
+              <div className="service-mode-grid">
+                <button aria-pressed={setup.serviceMode === "own"} className={setup.serviceMode === "own" ? "service-mode is-selected" : "service-mode"} onClick={() => update({ serviceMode: "own" })} type="button">
+                  <strong>My business</strong><small>Create content for your own brand.</small>
+                </button>
+                <button aria-pressed={setup.serviceMode === "client"} className={setup.serviceMode === "client" ? "service-mode is-selected" : "service-mode"} onClick={() => update({ serviceMode: "client" })} type="button">
+                  <strong>Done-for-you client</strong><small>Use your login to create exclusively for this client workspace.</small>
+                </button>
+              </div>
+              {setup.serviceMode === "client" ? <p className="content-setup__scope-note">Current client workspace: <strong>{workspaceName}</strong>. Use one workspace per client so their content never mixes.</p> : null}
+              <label>Business name<input aria-label="Business name" maxLength={200} onChange={(event) => update({ businessName: event.target.value })} placeholder={setup.serviceMode === "client" ? "Client business name" : "Your business name"} required value={setup.businessName} /></label>
+              <label>What do you sell?<textarea aria-label="What do you sell?" maxLength={1000} onChange={(event) => update({ offer: event.target.value })} placeholder="Products, services, and the result customers buy" required value={setup.offer} /></label>
+            </fieldset>
+          ) : null}
+          {step === 1 ? (
+            <fieldset className="content-setup__fieldset">
+              <legend>Who should this content attract?</legend>
+              <label>Target audience<textarea aria-label="Who is this content for?" maxLength={1000} onChange={(event) => update({ audience: event.target.value })} placeholder="Who they are, what they want, and the problem they need solved" required value={setup.audience} /></label>
+            </fieldset>
+          ) : null}
+          {step === 2 ? (
+            <fieldset className="content-setup__fieldset">
+              <legend>How should the brand sound?</legend>
+              <label>Brand voice<textarea aria-label="Brand voice" maxLength={500} onChange={(event) => update({ voice: event.target.value })} placeholder="For example: direct, confident, practical, never corporate" required value={setup.voice} /></label>
+            </fieldset>
+          ) : null}
+          {step === 3 ? (
+            <fieldset className="content-setup__fieldset">
+              <legend>What should the content achieve?</legend>
+              <label>Primary platform<select aria-label="Primary platform" onChange={(event) => update({ platform: event.target.value })} required value={setup.platform}><option value="">Choose a platform</option><option value="Instagram">Instagram</option><option value="TikTok">TikTok</option><option value="YouTube">YouTube</option><option value="LinkedIn">LinkedIn</option><option value="Facebook">Facebook</option></select></label>
+              <label>Content goal<textarea aria-label="Content goal" maxLength={1000} onChange={(event) => update({ goal: event.target.value })} placeholder="For example: build trust and generate qualified enquiries" required value={setup.goal} /></label>
+            </fieldset>
+          ) : null}
+          {step === 4 ? (
+            <fieldset className="content-setup__fieldset">
+              <legend>What should the first piece be about?</legend>
+              <label>First content topic<textarea aria-label="First content topic" maxLength={500} onChange={(event) => update({ topic: event.target.value })} placeholder="One clear idea, question, lesson, or offer" required value={setup.topic} /></label>
+              <label>Target length<select aria-label="Target length" onChange={(event) => update({ lengthSeconds: event.target.value })} required value={setup.lengthSeconds}><option value="30">30 seconds</option><option value="60">60 seconds</option><option value="90">90 seconds</option></select></label>
+            </fieldset>
+          ) : null}
+
+          {error ? <p className="content-setup__error" role="alert">{error}</p> : null}
+          <footer className="content-setup__actions">
+            <button className="button button--ghost" disabled={step === 0 || busy} onClick={() => setStep((value) => Math.max(0, value - 1))} type="button">Back</button>
+            {step < CONTENT_SETUP_STEPS.length - 1 ? (
+              <button className="button button--primary" disabled={!stepComplete[step]} onClick={() => setStep((value) => Math.min(CONTENT_SETUP_STEPS.length - 1, value + 1))} type="button">Save and continue</button>
+            ) : (
+              <button className="button button--primary" disabled={busy || !stepComplete.every(Boolean)} type="submit">{busy ? "Creating draft…" : "Create first draft"}</button>
+            )}
+          </footer>
+        </form>
+      </div>
+    </section>
+  );
+}
+
 function DashboardHome({
   data,
   token,
   workspaceId,
   navigate,
+  workspaceName,
 }: {
   data: DashboardData;
   token: string;
   workspaceId: string;
   navigate: (key: NavKey) => void;
+  workspaceName: string;
 }) {
   const [askNotice, setAskNotice] = useState<string | null>(null);
+  const [profileState, setProfileState] = useState<"loading" | "incomplete" | "complete">(
+    "loading",
+  );
+  const handleProfileState = useCallback(
+    (state: "loading" | "incomplete" | "complete") => setProfileState(state),
+    [],
+  );
   const priority = { critical: 0, warning: 1, info: 2 } as const;
   const decisionTargets: Record<string, NavKey> = {
     review_required: "review",
@@ -375,16 +659,39 @@ function DashboardHome({
   const realWorkers = data.workers.workers;
   const activeWorkerCount = realWorkers.filter((worker) => ["online", "busy"].includes(worker.status.toLowerCase())).length;
 
+  const intro = (
+    <section className="business-home__intro">
+      <div>
+        <p className="page-kicker">The Business Manager</p>
+        <h2>Home</h2>
+        <p>Set up your business once, then create content without re-entering the basics.</p>
+      </div>
+      <span className="live-indicator"><i /> Workspace-backed data</span>
+    </section>
+  );
+  const setupWizard = (
+    <ContentSetupWizard
+      onProfileState={handleProfileState}
+      openReview={() => navigate("review")}
+      token={token}
+      workspaceId={workspaceId}
+      workspaceName={workspaceName}
+    />
+  );
+
+  if (profileState !== "complete") {
+    return (
+      <div className="dashboard-home business-home business-home--setup">
+        {intro}
+        {setupWizard}
+      </div>
+    );
+  }
+
   return (
     <div className="dashboard-home business-home">
-      <section className="business-home__intro">
-        <div>
-          <p className="page-kicker">The Business Manager</p>
-          <h2>Home</h2>
-          <p>What happened, what it cost, what it made, and what needs your decision.</p>
-        </div>
-        <span className="live-indicator"><i /> Workspace-backed data</span>
-      </section>
+      {intro}
+      {setupWizard}
 
       <section className="financial-overview" aria-label="Business performance">
         <header className="financial-overview__header">
@@ -1798,7 +2105,7 @@ export default function LumoraDashboard({
     if (loadedKey !== viewKey) return <Loading />;
 
     if (nav === "dashboard") {
-      if (isDashboardData(data)) return <DashboardHome data={data} navigate={navigate} token={token} workspaceId={workspaceId} />;
+      if (isDashboardData(data)) return <DashboardHome data={data} navigate={navigate} token={token} workspaceId={workspaceId} workspaceName={currentWorkspace?.name ?? "Current workspace"} />;
       return <Loading />;
     }
     if (nav === "mission") {

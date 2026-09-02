@@ -10,10 +10,8 @@ services:
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the staging environment}
       POSTGRES_DB: content_orchestrator
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -21,6 +19,25 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  database-bootstrap:
+    image: postgres:16-alpine
+    restart: "no"
+    environment:
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the staging environment}
+    volumes:
+      - ./scripts/bootstrap_local_postgres.sql:/bootstrap_local_postgres.sql:ro
+    command:
+      - sh
+      - -ec
+      - >-
+        psql -h postgres -U postgres -d content_orchestrator
+        -v ON_ERROR_STOP=1
+        -v app_runtime_password="${APP_RUNTIME_PASSWORD:?Set APP_RUNTIME_PASSWORD in the staging environment}"
+        -f /bootstrap_local_postgres.sql
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   api:
     build:
@@ -31,16 +48,16 @@ services:
       - .env
     environment:
       # Compose network hostnames override local .env localhost URLs.
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/content_orchestrator
-      APP_DATABASE_URL: postgresql://app_runtime:app_runtime@postgres:5432/content_orchestrator
+      DATABASE_URL: ${STAGING_DATABASE_URL:?Set STAGING_DATABASE_URL with the postgres service hostname}
+      APP_DATABASE_URL: ${STAGING_APP_DATABASE_URL:?Set STAGING_APP_DATABASE_URL with the app_runtime credentials}
       ENVIRONMENT: ${ENVIRONMENT:-staging}
       RUN_MIGRATIONS: "1"
       CORS_ALLOW_ORIGINS: ${CORS_ALLOW_ORIGINS:-["http://localhost:8080"]}
-    ports:
-      - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
+      database-bootstrap:
+        condition: service_completed_successfully
     healthcheck:
       test:
         [
@@ -62,7 +79,7 @@ services:
     env_file:
       - .env
     environment:
-      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/content_orchestrator
+      DATABASE_URL: ${STAGING_DATABASE_URL:?Set STAGING_DATABASE_URL with the postgres service hostname}
       API_BASE_URL: http://api:8000
       ENVIRONMENT: ${ENVIRONMENT:-staging}
       HEALTH_CHECK_INTERVAL_SECONDS: ${HEALTH_CHECK_INTERVAL_SECONDS:-300}

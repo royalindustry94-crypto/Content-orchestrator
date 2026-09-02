@@ -78,6 +78,103 @@ async def test_content_job_lands_in_review_gate(client, new_user):
 
 
 @pytest.mark.asyncio
+async def test_five_step_setup_context_creates_tailored_review_draft(client, new_user):
+    _user_id, _token, headers = new_user
+    workspace_id = await _create_workspace(client, headers)
+
+    created = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=headers,
+        json={
+            "topic": "Three mistakes first-time gym members make",
+            "business_name": "Northside Strength",
+            "offer": "beginner strength coaching",
+            "target_audience": "busy adults returning to the gym",
+            "brand_voice": "direct, encouraging, and practical",
+            "content_goal": "build trust and generate trial-session enquiries",
+            "target_platform": "Instagram",
+            "target_length_seconds": 60,
+            "idempotency_key": "five-step-setup-1",
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    queue = await client.get(
+        f"/workspaces/{workspace_id}/review-gates",
+        headers=headers,
+    )
+    assert queue.status_code == 200
+    draft = queue.json()[0]
+    assert "Northside Strength" in draft["script_body"]
+    assert "busy adults returning to the gym" in draft["script_body"]
+    assert "direct, encouraging, and practical" in draft["script_body"]
+    assert "Instagram" in draft["script_body"]
+    assert "beginner strength coaching" in draft["script_cta"]
+    assert draft["status"] == "awaiting"
+
+
+@pytest.mark.asyncio
+async def test_saved_content_profile_is_durable_reused_and_workspace_isolated(client, new_user):
+    _user_id, _token, headers = new_user
+    workspace_id = await _create_workspace(client, headers)
+    profile_payload = {
+        "service_mode": "client",
+        "business_name": "Northside Strength",
+        "offer": "beginner strength coaching",
+        "target_audience": "busy adults returning to the gym",
+        "brand_voice": "direct, encouraging, and practical",
+        "content_goal": "generate trial-session enquiries",
+        "target_platform": "Instagram",
+        "default_length_seconds": 60,
+    }
+
+    saved = await client.put(
+        f"/workspaces/{workspace_id}/content-profile",
+        headers=headers,
+        json=profile_payload,
+    )
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["workspace_id"] == workspace_id
+    assert saved.json()["service_mode"] == "client"
+
+    loaded = await client.get(
+        f"/workspaces/{workspace_id}/content-profile",
+        headers=headers,
+    )
+    assert loaded.status_code == 200, loaded.text
+    assert loaded.json()["business_name"] == "Northside Strength"
+
+    created = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=headers,
+        json={"topic": "Three beginner gym mistakes", "idempotency_key": "profile-defaults-1"},
+    )
+    assert created.status_code == 201, created.text
+    queue = await client.get(f"/workspaces/{workspace_id}/review-gates", headers=headers)
+    draft = queue.json()[0]
+    assert "Northside Strength" in draft["script_body"]
+    assert "busy adults returning to the gym" in draft["script_body"]
+    assert "Instagram" in draft["script_body"]
+    assert "beginner strength coaching" in draft["script_cta"]
+
+    outsider_id = str(uuid.uuid4())
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("INSERT INTO auth.users (id, email) VALUES (:id, :email)"),
+            {"id": outsider_id, "email": f"{outsider_id}@example.com"},
+        )
+        await session.commit()
+    from tests.conftest import make_token
+
+    outsider_headers = {"Authorization": f"Bearer {make_token(user_id=outsider_id)}"}
+    forbidden = await client.get(
+        f"/workspaces/{workspace_id}/content-profile",
+        headers=outsider_headers,
+    )
+    assert forbidden.status_code == 403
+
+
+@pytest.mark.asyncio
 async def test_approve_advances_to_published(client, new_user):
     _user_id, _token, headers = new_user
     workspace_id = await _create_workspace(client, headers)

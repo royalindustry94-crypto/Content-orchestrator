@@ -8,8 +8,8 @@ policy hides the workspace row from a user who is not yet a member, that EXISTS
 always returns FALSE, so the creator can never insert the first membership row.
 
 Fix: add ``is_workspace_creator(wsid uuid, uid uuid)`` as a SECURITY DEFINER
-function (runs as the table-owning superuser, bypassing RLS) and update the
-memberships_insert policy to use it.
+function. The defining/migration owner must have BYPASSRLS in managed environments
+so the helper can read through FORCE RLS, and the memberships_insert policy uses it.
 
 Revision ID: 0023
 Revises: 0022
