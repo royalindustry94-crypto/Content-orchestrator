@@ -91,7 +91,16 @@ def execute_stage(context: dict) -> tuple[bool, dict | None, str]:
         if not topic:
             return False, None, "draft_desk requires topic in assignment context"
         try:
-            draft = generate_script_draft(topic=topic, target_length_seconds=length)
+            draft = generate_script_draft(
+                topic=topic,
+                target_length_seconds=length,
+                business_name=context.get("business_name"),
+                offer=context.get("offer"),
+                target_audience=context.get("target_audience"),
+                brand_voice=context.get("brand_voice"),
+                content_goal=context.get("content_goal"),
+                target_platform=context.get("target_platform"),
+            )
         except ValueError as exc:
             return False, None, str(exc)
         return (

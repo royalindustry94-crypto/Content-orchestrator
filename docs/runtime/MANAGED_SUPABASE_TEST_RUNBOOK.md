@@ -35,7 +35,8 @@ Required: `rolbypassrls = true`. `rolsuper` is not required. If `rolbypassrls` i
 3. Review the only intended managed-auth interaction: application trigger `content_orchestrator_on_auth_user_created` on `auth.users`, executing `public.content_orchestrator_handle_new_auth_user()`.
 4. Re-run the migration-identity query above in the same managed channel that will apply DDL and confirm `rolbypassrls = true`.
 5. Apply schema DDL through the managed migration channel in order.
-6. Verify Alembic head is `0050` (or the exact newer audited head if this runbook is superseded).
+6. Verify Alembic head is `0052` for the current remediation candidate. If a
+   newer candidate supersedes it, record and verify that exact audited head.
 7. Re-run Supabase security advisors after DDL.
 
 ## Verification queries

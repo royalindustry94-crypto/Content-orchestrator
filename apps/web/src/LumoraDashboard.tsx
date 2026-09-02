@@ -452,34 +452,45 @@ function ContentSetupWizard({
     setSetup((current) => ({ ...current, ...values }));
   };
 
+  const editingExistingProfile = setup.completed;
+
   const stepComplete = [
     Boolean(setup.businessName.trim() && setup.offer.trim()),
     Boolean(setup.audience.trim()),
     Boolean(setup.voice.trim()),
     Boolean(setup.platform && setup.goal.trim()),
-    Boolean(setup.topic.trim() && setup.lengthSeconds),
+    Boolean(
+      setup.lengthSeconds &&
+      (editingExistingProfile || setup.topic.trim()),
+    ),
   ];
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     if (!stepComplete.every(Boolean)) {
-      setError("Complete all five steps before creating the first draft.");
+      setError(
+        editingExistingProfile
+          ? "Complete all five steps before saving your setup."
+          : "Complete all five steps before creating the first draft.",
+      );
       return;
     }
     setBusy(true);
     setError(null);
     try {
-      await createContentJob(token, workspaceId, {
-        topic: setup.topic.trim(),
-        business_name: setup.businessName.trim(),
-        offer: setup.offer.trim(),
-        target_audience: setup.audience.trim(),
-        brand_voice: setup.voice.trim(),
-        content_goal: setup.goal.trim(),
-        target_platform: setup.platform,
-        target_length_seconds: Number(setup.lengthSeconds),
-        idempotency_key: submissionKey,
-      });
+      if (!editingExistingProfile) {
+        await createContentJob(token, workspaceId, {
+          topic: setup.topic.trim(),
+          business_name: setup.businessName.trim(),
+          offer: setup.offer.trim(),
+          target_audience: setup.audience.trim(),
+          brand_voice: setup.voice.trim(),
+          content_goal: setup.goal.trim(),
+          target_platform: setup.platform,
+          target_length_seconds: Number(setup.lengthSeconds),
+          idempotency_key: submissionKey,
+        });
+      }
       await saveContentProfile(token, workspaceId, {
         service_mode: setup.serviceMode,
         business_name: setup.businessName.trim(),
@@ -495,7 +506,13 @@ function ContentSetupWizard({
       setEditing(false);
       onProfileState("complete");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Unable to create the first draft.");
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : editingExistingProfile
+            ? "Unable to save content setup."
+            : "Unable to create the first draft.",
+      );
     } finally {
       setBusy(false);
     }
@@ -516,10 +533,10 @@ function ContentSetupWizard({
         <span className="content-setup__complete-icon"><Icon name="check" size={22} /></span>
         <div>
           <p className="page-kicker">Content setup complete</p>
-          <h3 id="content-setup-title">Your first draft is ready for review</h3>
+          <h3 id="content-setup-title">Your content system is ready</h3>
           <p>
             {setup.serviceMode === "client" ? `${setup.businessName} is isolated inside ${workspaceName}.` : `${setup.businessName} is ready.`}
-            {" "}Nothing publishes until you approve it.
+            {" "}Drafts enter Human Review, and nothing publishes until you approve it.
           </p>
         </div>
         <div className="content-setup__complete-actions">
@@ -535,22 +552,26 @@ function ContentSetupWizard({
       <header className="content-setup__header">
         <div>
           <p className="page-kicker">Start here</p>
-          <h3 id="content-setup-title">Set up content creation</h3>
-          <p>Complete five short steps. Then the first draft is created and sent to Human Review.</p>
+          <h3 id="content-setup-title">{editingExistingProfile ? "Edit content setup" : "Set up content creation"}</h3>
+          <p>{editingExistingProfile ? "Update the five saved parts of this workspace profile." : "Complete five short steps. Then the first draft is created and sent to Human Review."}</p>
         </div>
         <strong>{step + 1} of {CONTENT_SETUP_STEPS.length}</strong>
       </header>
 
       <div className="content-setup__layout">
         <ol className="content-setup__steps" aria-label="Content setup progress">
-          {CONTENT_SETUP_STEPS.map(([title, detail], index) => (
-            <li className={index === step ? "is-active" : stepComplete[index] ? "is-complete" : ""} key={title}>
-              <button onClick={() => setStep(index)} type="button">
-                <span>{stepComplete[index] ? <Icon name="check" size={14} /> : index + 1}</span>
-                <div><strong>{title}</strong><small>{detail}</small></div>
-              </button>
-            </li>
-          ))}
+          {CONTENT_SETUP_STEPS.map(([title, detail], index) => {
+            const stepTitle = editingExistingProfile && index === 4 ? "Content defaults" : title;
+            const stepDetail = editingExistingProfile && index === 4 ? "Set the standard draft length" : detail;
+            return (
+              <li className={index === step ? "is-active" : stepComplete[index] ? "is-complete" : ""} key={title}>
+                <button onClick={() => setStep(index)} type="button">
+                  <span>{stepComplete[index] ? <Icon name="check" size={14} /> : index + 1}</span>
+                  <div><strong>{stepTitle}</strong><small>{stepDetail}</small></div>
+                </button>
+              </li>
+            );
+          })}
         </ol>
 
         <form className="content-setup__form" onSubmit={(event) => void submit(event)}>
@@ -591,8 +612,8 @@ function ContentSetupWizard({
           ) : null}
           {step === 4 ? (
             <fieldset className="content-setup__fieldset">
-              <legend>What should the first piece be about?</legend>
-              <label>First content topic<textarea aria-label="First content topic" maxLength={500} onChange={(event) => update({ topic: event.target.value })} placeholder="One clear idea, question, lesson, or offer" required value={setup.topic} /></label>
+              <legend>{editingExistingProfile ? "What should new drafts default to?" : "What should the first piece be about?"}</legend>
+              {!editingExistingProfile ? <label>First content topic<textarea aria-label="First content topic" maxLength={500} onChange={(event) => update({ topic: event.target.value })} placeholder="One clear idea, question, lesson, or offer" required value={setup.topic} /></label> : null}
               <label>Target length<select aria-label="Target length" onChange={(event) => update({ lengthSeconds: event.target.value })} required value={setup.lengthSeconds}><option value="30">30 seconds</option><option value="60">60 seconds</option><option value="90">90 seconds</option></select></label>
             </fieldset>
           ) : null}
@@ -603,7 +624,7 @@ function ContentSetupWizard({
             {step < CONTENT_SETUP_STEPS.length - 1 ? (
               <button className="button button--primary" disabled={!stepComplete[step]} onClick={() => setStep((value) => Math.min(CONTENT_SETUP_STEPS.length - 1, value + 1))} type="button">Save and continue</button>
             ) : (
-              <button className="button button--primary" disabled={busy || !stepComplete.every(Boolean)} type="submit">{busy ? "Creating draft…" : "Create first draft"}</button>
+              <button className="button button--primary" disabled={busy || !stepComplete.every(Boolean)} type="submit">{busy ? (editingExistingProfile ? "Saving setup…" : "Creating draft…") : (editingExistingProfile ? "Save setup" : "Create first draft")}</button>
             )}
           </footer>
         </form>
@@ -663,7 +684,7 @@ function DashboardHome({
     <section className="business-home__intro">
       <div>
         <p className="page-kicker">The Business Manager</p>
-        <h2>Home</h2>
+        <h1>Home</h1>
         <p>Set up your business once, then create content without re-entering the basics.</p>
       </div>
       <span className="live-indicator"><i /> Workspace-backed data</span>
@@ -2209,6 +2230,7 @@ export default function LumoraDashboard({
 
   return (
     <div className="lumora-shell">
+      <a className="skip-link" href="#main-content">Skip to main content</a>
       <CommandPalette navigate={(target) => {
         if (target === "logs") {
           navigateToMissionTab("logs");
@@ -2329,12 +2351,12 @@ export default function LumoraDashboard({
               <Icon name={mobileSearchOpen ? "close" : "search"} />
             </button>
             <div className="popover-anchor">
-              <button aria-label="Notifications" className="icon-button" onClick={() => setNotificationOpen((value) => !value)} type="button">
+              <button aria-controls="notifications-popover" aria-expanded={notificationOpen} aria-haspopup="dialog" aria-label="Notifications" className="icon-button" onClick={() => setNotificationOpen((value) => !value)} type="button">
                 <Icon name="bell" />
                 {notificationCount ? <i>{notificationCount}</i> : null}
               </button>
               {notificationOpen ? (
-                <div className="top-popover notifications-popover">
+                <div aria-label="Notifications" className="top-popover notifications-popover" id="notifications-popover" role="dialog">
                   <SectionHeader title="Notifications" />
                   {notifications?.notifications.slice(0, 4).map((item) => (
                     <button key={item.key} onClick={() => { setNotificationOpen(false); navigate("mission"); }} type="button">
@@ -2347,16 +2369,16 @@ export default function LumoraDashboard({
               ) : null}
             </div>
             <div className="popover-anchor">
-              <button aria-label={`Open profile menu for ${email}`} className="profile-button" onClick={() => setProfileOpen((value) => !value)} type="button">
+              <button aria-controls="profile-popover" aria-expanded={profileOpen} aria-haspopup="menu" aria-label={`Open profile menu for ${email}`} className="profile-button" onClick={() => setProfileOpen((value) => !value)} type="button">
                 <span>{email.slice(0, 1).toUpperCase()}</span>
                 <div><strong>{email.split("@")[0]}</strong><small>{email}</small></div>
                 <Icon name="chevron" size={14} />
               </button>
               {profileOpen ? (
-                <div className="top-popover profile-popover">
+                <div className="top-popover profile-popover" id="profile-popover" role="menu">
                   <strong>{email}</strong>
-                  <button onClick={() => navigate("settings")} type="button">Account settings</button>
-                  <button onClick={onSignOut} type="button">Sign out</button>
+                  <button onClick={() => navigate("settings")} role="menuitem" type="button">Account settings</button>
+                  <button onClick={onSignOut} role="menuitem" type="button">Sign out</button>
                 </div>
               ) : null}
             </div>
@@ -2364,7 +2386,7 @@ export default function LumoraDashboard({
           </div>
         </header>
 
-        <main className="lumora-main">
+        <main className="lumora-main" id="main-content">
           {nav !== "dashboard" ? (
             <header className="view-header">
               <div><p>The Business Manager / {title}</p><h1>{title}</h1></div>

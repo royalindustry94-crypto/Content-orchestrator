@@ -14,14 +14,17 @@ type Session = {
   email: string;
 };
 
-const STORAGE_KEY = "lumora.missionControl.session";
+const STORAGE_KEY = "businessManager.session";
+const LEGACY_STORAGE_KEY = "lumora.missionControl.session";
 
 function loadSession(): Session | null {
   try {
-    const raw = sessionStorage.getItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY) ?? sessionStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Session;
     if (!parsed.token || !parsed.workspaceId) return null;
+    sessionStorage.setItem(STORAGE_KEY, raw);
+    sessionStorage.removeItem(LEGACY_STORAGE_KEY);
     return parsed;
   } catch {
     return null;
@@ -104,6 +107,7 @@ export default function App() {
           }}
           onSignOut={() => {
             sessionStorage.removeItem(STORAGE_KEY);
+            sessionStorage.removeItem(LEGACY_STORAGE_KEY);
             setLaunchState("hidden");
             setSession(null);
           }}

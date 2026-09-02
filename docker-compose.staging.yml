@@ -5,6 +5,16 @@
 # Dev-only Postgres remains in docker-compose.yml (no app images).
 
 services:
+  secrets-check:
+    image: alpine:3.21
+    restart: "no"
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the staging environment}
+      APP_RUNTIME_PASSWORD: ${APP_RUNTIME_PASSWORD:?Set APP_RUNTIME_PASSWORD in the staging environment}
+    volumes:
+      - ./scripts/validate_staging_secrets.sh:/validate_staging_secrets.sh:ro
+    command: ["sh", "/validate_staging_secrets.sh"]
+
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -19,6 +29,9 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    depends_on:
+      secrets-check:
+        condition: service_completed_successfully
 
   database-bootstrap:
     image: postgres:16-alpine

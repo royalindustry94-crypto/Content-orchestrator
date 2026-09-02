@@ -58,6 +58,16 @@ def upgrade() -> None:
             name="ck_content_profile_default_length",
         ),
     )
+    op.create_index(
+        "ix_workspace_content_profiles_created_by",
+        "workspace_content_profiles",
+        ["created_by"],
+    )
+    op.create_index(
+        "ix_workspace_content_profiles_updated_by",
+        "workspace_content_profiles",
+        ["updated_by"],
+    )
     op.execute("ALTER TABLE workspace_content_profiles ENABLE ROW LEVEL SECURITY;")
     op.execute("ALTER TABLE workspace_content_profiles FORCE ROW LEVEL SECURITY;")
     op.execute("GRANT SELECT, INSERT, UPDATE, DELETE ON workspace_content_profiles TO app_runtime;")
@@ -135,6 +145,21 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.execute(
+        "DROP POLICY IF EXISTS consumer_checkpoints_runtime_update "
+        "ON consumer_checkpoints;"
+    )
+    op.execute(
+        "DROP POLICY IF EXISTS consumer_checkpoints_runtime_insert "
+        "ON consumer_checkpoints;"
+    )
+    op.execute(
+        "DROP POLICY IF EXISTS consumer_checkpoints_runtime_select "
+        "ON consumer_checkpoints;"
+    )
+    op.execute(
+        "DROP POLICY IF EXISTS event_consumers_runtime_select ON event_consumers;"
+    )
     op.execute("ALTER TABLE consumer_checkpoints DISABLE ROW LEVEL SECURITY;")
     op.execute("ALTER TABLE event_consumers DISABLE ROW LEVEL SECURITY;")
     op.execute("ALTER TABLE local_auth_credentials DISABLE ROW LEVEL SECURITY;")

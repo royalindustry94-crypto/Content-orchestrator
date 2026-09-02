@@ -207,6 +207,35 @@ async def test_content_job_blocked_when_monthly_cap_exceeded(client, new_user):
 
 
 @pytest.mark.asyncio
+async def test_zero_cost_stage_is_allowed_when_caps_are_positive():
+    """A local $0 stage is valid unless an operator set a hard-zero cap."""
+    async with AsyncSessionLocal() as session:
+        ws, _user_id, item = await _user_workspace(session)
+        run = PipelineRun(
+            id=uuid.uuid4(),
+            workspace_id=ws.id,
+            content_item_id=item.id,
+            status=PipelineRunStatus.RUNNING,
+            correlation_id=uuid.uuid4(),
+        )
+        session.add(run)
+        await session.flush()
+
+        reservation = await controller.reserve_spend(
+            session,
+            run=run,
+            stage="scripting",
+            provider="draft_desk",
+            estimated_cost_usd=Decimal("0.00"),
+        )
+
+        assert reservation is not None
+        assert Decimal(reservation.estimated_cost_usd) == Decimal("0")
+        assert run.status == PipelineRunStatus.RUNNING
+        await session.rollback()
+
+
+@pytest.mark.asyncio
 async def test_daily_cap_still_enforced():
     async with AsyncSessionLocal() as session:
         ws, user_id, item = await _user_workspace(session)

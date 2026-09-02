@@ -271,8 +271,32 @@ describe("dashboard navigation smoke test", () => {
         default_length_seconds: 60,
       }),
     );
-    expect(await screen.findByRole("heading", { name: "Your first draft is ready for review" })).toBeDefined();
+    expect(await screen.findByRole("heading", { name: "Your content system is ready" })).toBeDefined();
     expect(screen.getByText(/isolated inside Lumora HQ/i)).toBeDefined();
+  });
+
+  it("edits a saved setup without creating a duplicate content job", async () => {
+    const api = await import("./api");
+    renderShell();
+    expect(await screen.findByRole("heading", { name: "Your content system is ready" })).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit setup" }));
+    fireEvent.change(screen.getByLabelText("Business name"), {
+      target: { value: "Lumora Updated" },
+    });
+    for (let index = 0; index < 4; index += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+    }
+    expect(screen.queryByLabelText("First content topic")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save setup" }));
+
+    await waitFor(() => expect(api.saveContentProfile).toHaveBeenCalledWith(
+      "t",
+      "ws-1",
+      expect.objectContaining({ business_name: "Lumora Updated" }),
+    ));
+    expect(api.createContentJob).not.toHaveBeenCalled();
+    expect(await screen.findByRole("heading", { name: "Your content system is ready" })).toBeDefined();
   });
 
   it("loads Home with a truthful health footer (not a fake 'operational')", async () => {

@@ -1,8 +1,9 @@
 # Launch Blockers
 
 **Repository:** Content Orchestrator  
-**Updated:** 2026-08-29  
+**Updated:** 2026-09-02
 **Audited baseline:** `main` @ `abb20981f68cb0de8e3ed75af9759e0b5b6fb656`  
+**Remediation candidate:** `cursor/simplified-five-step-setup`, migration head `0052` — independent re-audit pending
 **Source of truth:** exact-head CI, retained browser evidence, repository/runtime probes — not prior chat claims
 
 ## Rule
@@ -44,7 +45,7 @@ Safety boundaries remain explicit:
 ### Verified engineering evidence
 
 - API: **299 passed**, **81.09% coverage** (75% gate)
-- Alembic: current audited head **`0050`**
+- Alembic: merged audited `main` head **`0050`**; current feature candidate head **`0052`**
 - Migration lifecycle: upgrade → full downgrade to base → re-upgrade **PASS**
 - Worker: **PASS**
 - Web lint/build/tests/high-severity dependency audit: **PASS**
@@ -98,7 +99,7 @@ No autonomous/external publishing milestone is authorized. Any future enablement
 
 ## Historical P0/P1 baseline
 
-Previously closed P0/P1 engineering controls remain closed unless new evidence demonstrates regression. Their historical records remain in release/audit documents; this file reflects the current `0050` codebase and the verified repository-protection state.
+Previously closed P0/P1 engineering controls remain closed unless new evidence demonstrates regression. Their historical records remain in release/audit documents. This file distinguishes the merged `0050` baseline from the unmerged `0052` remediation candidate and does not self-certify the candidate.
 
 ---
 

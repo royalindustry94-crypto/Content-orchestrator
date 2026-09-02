@@ -184,7 +184,7 @@ const loginInfo = await evaluate(`(async () => {
   if (!r.ok) return { ok:false, status:r.status, body: await r.text() };
   const auth = await r.json();
   const ws = await (await fetch('/api/workspaces', {headers:{Authorization:'Bearer '+auth.access_token}})).json();
-  sessionStorage.setItem('lumora.missionControl.session', JSON.stringify({token:auth.access_token, workspaceId: ws[0].id, email: auth.email}));
+  sessionStorage.setItem('businessManager.session', JSON.stringify({token:auth.access_token, workspaceId: ws[0].id, email: auth.email}));
   return { ok:true, workspaces: ws.length };
 })()`);
 console.log("login:", JSON.stringify(loginInfo));
@@ -218,7 +218,7 @@ if (setupNeeded) {
   await sleep(1800);
 }
 const setupVerification = await evaluate(`(async () => {
-  const session = JSON.parse(sessionStorage.getItem('lumora.missionControl.session'));
+  const session = JSON.parse(sessionStorage.getItem('businessManager.session'));
   const response = await fetch('/api/workspaces/' + session.workspaceId + '/content-profile', {
     headers: { Authorization: 'Bearer ' + session.token },
   });
@@ -235,7 +235,7 @@ if (!setupVerification.saved || !setupVerification.completeView) {
   throw new Error(`Five-step setup did not persist: ${JSON.stringify(setupVerification)}`);
 }
 const backendTruth = await evaluate(`(async () => {
-  const session = JSON.parse(sessionStorage.getItem('lumora.missionControl.session'));
+  const session = JSON.parse(sessionStorage.getItem('businessManager.session'));
   const headers = { Authorization: 'Bearer ' + session.token };
   const [health, alerts] = await Promise.all([
     fetch('/api/workspaces/' + session.workspaceId + '/operations/health', { headers }).then(r => r.json()),

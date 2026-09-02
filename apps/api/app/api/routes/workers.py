@@ -358,6 +358,7 @@ async def claim_assignment_endpoint(
         assignment_out = None
         if result.assignment is not None:
             from app.models.content import ContentItem
+            from app.models.content_profile import WorkspaceContentProfile
             from app.models.pipeline import PipelineRun
 
             run = await session.get(PipelineRun, result.assignment.pipeline_run_id)
@@ -373,6 +374,16 @@ async def claim_assignment_endpoint(
                 assignment_out.content_item_id = item.id
                 assignment_out.topic = item.topic
                 assignment_out.target_length_seconds = item.target_length_seconds
+                profile = await session.get(
+                    WorkspaceContentProfile, result.assignment.workspace_id
+                )
+                if profile is not None:
+                    assignment_out.business_name = profile.business_name
+                    assignment_out.offer = profile.offer
+                    assignment_out.target_audience = profile.target_audience
+                    assignment_out.brand_voice = profile.brand_voice
+                    assignment_out.content_goal = profile.content_goal
+                    assignment_out.target_platform = profile.target_platform
         await session.commit()
     audit(
         request,

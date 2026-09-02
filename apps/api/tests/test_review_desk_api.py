@@ -172,6 +172,41 @@ async def test_saved_content_profile_is_durable_reused_and_workspace_isolated(cl
         headers=outsider_headers,
     )
     assert forbidden.status_code == 403
+    forbidden_update = await client.put(
+        f"/workspaces/{workspace_id}/content-profile",
+        headers=outsider_headers,
+        json={**profile_payload, "business_name": "Cross-tenant overwrite"},
+    )
+    assert forbidden_update.status_code == 403
+
+    reviewer_id = str(uuid.uuid4())
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("INSERT INTO auth.users (id, email) VALUES (:id, :email)"),
+            {"id": reviewer_id, "email": f"{reviewer_id}@example.com"},
+        )
+        await session.commit()
+    reviewer_headers = {
+        "Authorization": f"Bearer {make_token(user_id=reviewer_id)}"
+    }
+    await _add_member(
+        client,
+        workspace_id=workspace_id,
+        admin_headers=headers,
+        member_user_id=reviewer_id,
+        role=WorkspaceRole.REVIEWER.value,
+    )
+    reviewer_read = await client.get(
+        f"/workspaces/{workspace_id}/content-profile",
+        headers=reviewer_headers,
+    )
+    assert reviewer_read.status_code == 200
+    reviewer_update = await client.put(
+        f"/workspaces/{workspace_id}/content-profile",
+        headers=reviewer_headers,
+        json={**profile_payload, "business_name": "Reviewer overwrite"},
+    )
+    assert reviewer_update.status_code == 403
 
 
 @pytest.mark.asyncio

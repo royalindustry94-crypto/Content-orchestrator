@@ -24,7 +24,9 @@ Compose overrides DB hostnames to the `postgres` service; keep the local
 
 ```bash
 cp .env.example .env
-# set at least SUPABASE_JWT_SECRET
+# set SUPABASE_JWT_SECRET plus unique 32+ character POSTGRES_PASSWORD and
+# APP_RUNTIME_PASSWORD values, then place their URL-encoded forms in the two
+# STAGING_*_DATABASE_URL values
 
 docker compose -f docker-compose.staging.yml up --build
 ```
@@ -60,8 +62,9 @@ See `.env.example` for the full annotated list. Staging-relevant knobs:
 | Variable | Default / notes |
 |----------|-----------------|
 | `ENVIRONMENT` | `staging` in compose override |
-| `AUTH_MODE` | `local` (default): `POST /auth/signup|/login` mint Supabase-shaped JWTs. `supabase`: local auth routes return 404; use Supabase-issued tokens. |
-| `ENVIRONMENT` | `development` enables `/docs`, `/redoc`, `/openapi.json`. Any other value (including `staging` / `production` / `test`) disables them (P-005). |
+| `AUTH_MODE` | `supabase` (secure default): local auth routes return 404. Set `local` explicitly only for approved local/private-beta environments. |
+| `POSTGRES_PASSWORD` / `APP_RUNTIME_PASSWORD` | Required, distinct, and at least 32 characters in staging compose. |
+| OpenAPI docs | `ENVIRONMENT=development` enables `/docs`, `/redoc`, `/openapi.json`; staging/production/test disable them. |
 | `CORS_ALLOW_ORIGINS` | Include the web origin, e.g. `["http://localhost:8080"]` |
 | `RUN_MIGRATIONS` | Set to `1` on the API container for migrate-on-start |
 | `OUTBOX_RELAY_INTERVAL_SECONDS` | API outbox relay tick |

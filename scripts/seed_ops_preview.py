@@ -17,7 +17,7 @@ from urllib import error, request
 API = os.environ.get("API_BASE_URL", "http://127.0.0.1:8000").rstrip("/")
 EMAIL = os.environ["OPS_PREVIEW_EMAIL"]
 PASSWORD = os.environ["OPS_PREVIEW_PASSWORD"]
-WORKSPACE_NAME = os.environ.get("OPS_PREVIEW_WORKSPACE", "Lumora HQ")
+WORKSPACE_NAME = os.environ.get("OPS_PREVIEW_WORKSPACE", "The Business Manager HQ")
 
 
 def _http(method: str, path: str, *, token: str | None = None, body: dict | None = None):

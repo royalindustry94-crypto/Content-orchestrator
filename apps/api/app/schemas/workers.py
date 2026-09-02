@@ -188,6 +188,12 @@ class ClaimedAssignmentOut(BaseModel):
     content_item_id: uuid.UUID | None = None
     topic: str | None = None
     target_length_seconds: int | None = None
+    business_name: str | None = None
+    offer: str | None = None
+    target_audience: str | None = None
+    brand_voice: str | None = None
+    content_goal: str | None = None
+    target_platform: str | None = None
     provider: str | None = None
 
 

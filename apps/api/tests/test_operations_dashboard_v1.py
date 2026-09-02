@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
@@ -118,7 +119,9 @@ async def test_operations_dashboard_real_data(client, new_user, monkeypatch):
         # RETRY + the real review-timeout job created by Content Desk.
         assert summary["jobs_queued"] == 2
         assert summary["human_reviews_waiting"] == 1
-        assert float(summary["spend_today_usd"]) > 0
+        # Draft Desk is local deterministic code, so its truthful external
+        # provider cost is zero even though the job and review gate are real.
+        assert Decimal(summary["spend_today_usd"]) == Decimal("0")
         assert summary["deployment"]["git_branch"] == "main"
         assert summary["deployment"]["ci_status"] == "success"
 
