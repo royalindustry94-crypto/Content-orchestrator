@@ -6,8 +6,9 @@ protected table. The original `memberships_select_same_workspace` and
 within their own USING clauses, triggering the same policies recursively until
 PostgreSQL raised InvalidObjectDefinitionError: infinite recursion detected.
 
-Fix: two SECURITY DEFINER helper functions that run as the table owner (who
-has BYPASSRLS) break the cycle.
+Fix: two SECURITY DEFINER helper functions that run as the table owner. In the
+managed path that defining/migration owner must have BYPASSRLS so FORCE RLS
+does not re-enter these helper queries.
 
 Revision ID: 0021
 Revises: 0020
@@ -28,8 +29,9 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # Helper that checks whether `uid` is any member of workspace `wsid`.
-    # SECURITY DEFINER + SET search_path means it runs as the defining role
-    # (table owner) which bypasses RLS — breaking the self-reference cycle.
+    # SECURITY DEFINER + SET search_path means it runs as the defining role.
+    # That role must have BYPASSRLS in managed environments to break the
+    # FORCE-RLS self-reference cycle.
     op.execute(
         """
         CREATE OR REPLACE FUNCTION is_workspace_member(wsid uuid, uid uuid)

@@ -28,7 +28,7 @@ DOMAIN_TABLES = [
     "assets", "publish_jobs", "review_decisions", "analytics_snapshots",
     "spend_logs", "spend_reservations", "provider_usage",
     "webhook_events", "dead_letter_jobs",
-    "leads", "worker_logs",
+    "leads", "worker_logs", "workspace_content_profiles",
 ]
 
 IMMUTABLE_TABLES = [
@@ -54,13 +54,37 @@ async def test_rls_forced_on_every_domain_table():
     async with AsyncSessionLocal() as s:
         rows = await s.execute(
             text(
-                "SELECT relname FROM pg_class "
-                "WHERE relrowsecurity AND relforcerowsecurity AND relkind = 'r'"
+                "SELECT c.relname "
+                "FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "JOIN pg_attribute a ON a.attrelid = c.oid "
+                "WHERE n.nspname = 'public' AND c.relkind = 'r' "
+                "AND a.attname = 'workspace_id' AND NOT a.attisdropped "
+                "AND (NOT c.relrowsecurity OR NOT c.relforcerowsecurity)"
             )
         )
-        forced = {r[0] for r in rows}
-    missing = [t for t in DOMAIN_TABLES if t not in forced]
+        missing = sorted(r[0] for r in rows)
     assert not missing, f"RLS not FORCED on: {missing}"
+
+
+@pytest.mark.asyncio
+async def test_non_forced_rls_tables_are_only_intentional_system_tables():
+    async with AsyncSessionLocal() as session:
+        rows = await session.execute(
+            text(
+                "SELECT c.relname FROM pg_class c "
+                "JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = 'public' AND c.relkind = 'r' "
+                "AND c.relrowsecurity AND NOT c.relforcerowsecurity"
+            )
+        )
+        non_forced = {row[0] for row in rows}
+    assert non_forced == {
+        "alembic_version",
+        "consumer_checkpoints",
+        "event_consumers",
+        "local_auth_credentials",
+    }
 
 
 @pytest.mark.asyncio

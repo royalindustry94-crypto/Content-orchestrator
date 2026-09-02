@@ -777,7 +777,15 @@ async def reserve_spend(
         daily_cap = Decimal(str(cap.daily_cap_usd))
         monthly_cap = Decimal(str(cap.monthly_cap_usd))
         exceeded = None
-        if daily + estimated_cost_usd > daily_cap:
+        # A hard-zero cap is an explicit workspace kill switch, including for
+        # locally executed stages whose truthful external-provider cost is $0.
+        # Without this branch, ``0 + 0 > 0`` is false and a disabled workspace
+        # can still create work and enter the review queue.
+        if daily_cap <= 0:
+            exceeded = "daily"
+        elif monthly_cap <= 0:
+            exceeded = "monthly"
+        elif daily + estimated_cost_usd > daily_cap:
             exceeded = "daily"
         elif monthly + estimated_cost_usd > monthly_cap:
             exceeded = "monthly"

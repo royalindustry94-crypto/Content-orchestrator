@@ -33,6 +33,7 @@ from app.models.content_department import (  # noqa: F401
     CreativeDirection,
     OriginalityFingerprint,
 )
+from app.models.content_profile import WorkspaceContentProfile  # noqa: F401
 from app.models.delivery import Asset, PublishJob  # noqa: F401
 from app.models.events import ConsumerCheckpoint, EventConsumer, OutboxEvent  # noqa: F401
 from app.models.history import AnalyticsSnapshot, ProviderUsage, ReviewDecision  # noqa: F401
@@ -90,6 +91,7 @@ __all__ = [
     "ContentItem",
     "ContentVersion",
     "ContentLineage",
+    "WorkspaceContentProfile",
     "ArtifactPublicationEligibility",
     "ArtifactRightsEvidence",
     "AuditGateManifest",

@@ -146,13 +146,27 @@ vi.mock("./api", () => ({
   getNotifications: vi.fn(async () => ({ notifications: [], generated_at: "" })),
   listReviewGates: vi.fn(async () => []),
   listWorkspaces: vi.fn(async () => [{ id: "ws-1", name: "Lumora HQ" }]),
+  getContentProfile: vi.fn(async () => ({
+    workspace_id: "ws-1", service_mode: "own", business_name: "Lumora",
+    offer: "Business management", target_audience: "Small business owners",
+    brand_voice: "Clear and practical", target_platform: "Instagram",
+    content_goal: "Generate qualified enquiries", default_length_seconds: 60,
+    created_by: "user-1", updated_by: "user-1", created_at: "", updated_at: "",
+  })),
+  saveContentProfile: vi.fn(async (_token: string, workspaceId: string, payload: object) => ({
+    workspace_id: workspaceId, ...payload, created_by: "user-1", updated_by: "user-1",
+    created_at: "", updated_at: "",
+  })),
   decideReviewGate: vi.fn(async () => ({})),
   createLead: vi.fn(async () => ({})),
   updateLead: vi.fn(async () => ({})),
   globalSearch: vi.fn(async () => ({ query: "", results: [], total: 0, generated_at: "" })),
   askMissionAssistant: vi.fn(async () => ({ question: "", intent: "", answer: "", facts: [], generated_at: "" })),
   postMissionAction: vi.fn(async () => ({ action: "", ok: true, affected: 0, message: "", details: {} })),
-  createContentJob: vi.fn(async () => ({})),
+  createContentJob: vi.fn(async () => ({
+    content_item_id: "content-1", pipeline_run_id: "run-1", review_gate_id: "gate-1",
+    topic: "First topic", current_stage: "review", run_status: "running", gate_status: "awaiting",
+  })),
   createWorkspace: vi.fn(async () => ({ id: "ws-2", name: "New" })),
 }));
 
@@ -170,6 +184,7 @@ function renderShell() {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.localStorage.clear();
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 
@@ -208,6 +223,82 @@ describe("Mission Control destructive-action interlock", () => {
 });
 
 describe("dashboard navigation smoke test", () => {
+  it("turns the five-step done-for-you setup into a Human Review draft", async () => {
+    const api = await import("./api");
+    (api.getContentProfile as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null);
+    renderShell();
+    expect(await screen.findByRole("heading", { name: "Set up content creation" })).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: /Done-for-you client/i }));
+    fireEvent.change(screen.getByLabelText("Business name"), { target: { value: "Northside Strength" } });
+    fireEvent.change(screen.getByLabelText("What do you sell?"), { target: { value: "Beginner strength coaching" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+
+    fireEvent.change(screen.getByLabelText("Who is this content for?"), { target: { value: "Busy adults returning to the gym" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+
+    fireEvent.change(screen.getByLabelText("Brand voice"), { target: { value: "Direct, encouraging, practical" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+
+    fireEvent.change(screen.getByLabelText("Primary platform"), { target: { value: "Instagram" } });
+    fireEvent.change(screen.getByLabelText("Content goal"), { target: { value: "Build trust and generate trial enquiries" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+
+    fireEvent.change(screen.getByLabelText("First content topic"), { target: { value: "Three mistakes first-time gym members make" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create first draft" }));
+
+    await waitFor(() => expect(api.createContentJob).toHaveBeenCalledWith(
+      "t",
+      "ws-1",
+      expect.objectContaining({
+        business_name: "Northside Strength",
+        offer: "Beginner strength coaching",
+        target_audience: "Busy adults returning to the gym",
+        brand_voice: "Direct, encouraging, practical",
+        target_platform: "Instagram",
+        content_goal: "Build trust and generate trial enquiries",
+        topic: "Three mistakes first-time gym members make",
+        target_length_seconds: 60,
+        idempotency_key: expect.any(String),
+      }),
+    ));
+    expect(api.saveContentProfile).toHaveBeenCalledWith(
+      "t",
+      "ws-1",
+      expect.objectContaining({
+        service_mode: "client",
+        business_name: "Northside Strength",
+        default_length_seconds: 60,
+      }),
+    );
+    expect(await screen.findByRole("heading", { name: "Your content system is ready" })).toBeDefined();
+    expect(screen.getByText(/isolated inside Lumora HQ/i)).toBeDefined();
+  });
+
+  it("edits a saved setup without creating a duplicate content job", async () => {
+    const api = await import("./api");
+    renderShell();
+    expect(await screen.findByRole("heading", { name: "Your content system is ready" })).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit setup" }));
+    fireEvent.change(screen.getByLabelText("Business name"), {
+      target: { value: "Lumora Updated" },
+    });
+    for (let index = 0; index < 4; index += 1) {
+      fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+    }
+    expect(screen.queryByLabelText("First content topic")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Save setup" }));
+
+    await waitFor(() => expect(api.saveContentProfile).toHaveBeenCalledWith(
+      "t",
+      "ws-1",
+      expect.objectContaining({ business_name: "Lumora Updated" }),
+    ));
+    expect(api.createContentJob).not.toHaveBeenCalled();
+    expect(await screen.findByRole("heading", { name: "Your content system is ready" })).toBeDefined();
+  });
+
   it("loads Home with a truthful health footer (not a fake 'operational')", async () => {
     renderShell();
     expect(await screen.findByRole("heading", { name: "Home" })).toBeDefined();

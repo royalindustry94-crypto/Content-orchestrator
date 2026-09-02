@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.audit import audit
@@ -12,6 +13,7 @@ from app.core.authorization import require_workspace_content_author
 from app.core.config import get_settings
 from app.core.security import AuthenticatedUser, get_current_user
 from app.db.session import AsyncSessionLocal
+from app.models.content_profile import WorkspaceContentProfile
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.content_desk import ContentJobCreate, ContentJobOut
 from app.services import billing as billing_service
@@ -40,15 +42,31 @@ async def create_content_job(
                 await billing_service.require_entitlement_for_workspace(
                     session, workspace_id=workspace_id
                 )
+            profile = (
+                await session.execute(
+                    select(WorkspaceContentProfile).where(
+                        WorkspaceContentProfile.workspace_id == workspace_id
+                    )
+                )
+            ).scalar_one_or_none()
             result = await content_desk.create_content_job(
                 session,
                 workspace_id=workspace_id,
                 actor_id=uuid.UUID(user.id),
                 topic=payload.topic.strip(),
+                business_name=payload.business_name or (profile.business_name if profile else None),
+                offer=payload.offer or (profile.offer if profile else None),
+                target_audience=payload.target_audience
+                or (profile.target_audience if profile else None),
+                brand_voice=payload.brand_voice or (profile.brand_voice if profile else None),
+                content_goal=payload.content_goal or (profile.content_goal if profile else None),
+                target_platform=payload.target_platform
+                or (profile.target_platform if profile else None),
                 script_body=payload.script_body or "",
                 script_hook=payload.script_hook,
                 script_cta=payload.script_cta,
-                target_length_seconds=payload.target_length_seconds,
+                target_length_seconds=payload.target_length_seconds
+                or (profile.default_length_seconds if profile else None),
                 idempotency_key=payload.idempotency_key,
             )
             await session.commit()

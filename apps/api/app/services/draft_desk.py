@@ -16,13 +16,19 @@ class DraftDeskOutput:
     script_body: str
     script_cta: str
     provider: str = "draft_desk"
-    estimated_cost_usd: str = "0.01"
+    estimated_cost_usd: str = "0.00"
 
 
 def generate_script_draft(
     *,
     topic: str,
     target_length_seconds: int | None = None,
+    business_name: str | None = None,
+    offer: str | None = None,
+    target_audience: str | None = None,
+    brand_voice: str | None = None,
+    content_goal: str | None = None,
+    target_platform: str | None = None,
 ) -> DraftDeskOutput:
     """Generate a complete draft script for the scripting stage."""
     cleaned = " ".join(topic.strip().split())
@@ -34,16 +40,40 @@ def generate_script_draft(
         if target_length_seconds is not None
         else "Keep the piece concise and skimmable."
     )
-    hook = f"What if {cleaned} is the lever your audience has been missing?"
+    business = " ".join((business_name or "").strip().split())
+    product = " ".join((offer or "").strip().split())
+    audience = " ".join((target_audience or "").strip().split())
+    voice = " ".join((brand_voice or "").strip().split())
+    goal = " ".join((content_goal or "").strip().split())
+    platform = " ".join((target_platform or "").strip().split())
+
+    audience_label = audience or "your audience"
+    hook = f"{audience_label}: what if {cleaned} is the next step you have been missing?"
+    context_lines = [
+        f"Business: {business}." if business else "",
+        f"Offer: {product}." if product else "",
+        f"Audience: {audience}." if audience else "",
+        f"Brand voice: {voice}." if voice else "",
+        f"Content goal: {goal}." if goal else "",
+        f"Intended platform: {platform}." if platform else "",
+    ]
+    context = "\n".join(line for line in context_lines if line)
+    context_block = f"{context}\n\n" if context else "\n"
     body = (
         f"{hook}\n\n"
-        f"Today we unpack {cleaned}. {length_note}\n\n"
+        f"Today we unpack {cleaned}. {length_note}\n"
+        f"{context_block}"
         f"1) Why {cleaned} matters now\n"
-        f"2) The mistake most teams make\n"
+        f"2) The mistake {audience_label} commonly makes\n"
         f"3) A practical next step you can take today\n\n"
         f"Close with a clear takeaway your viewer can repeat."
     )
-    cta = f"If this helped, save it and try one change around {cleaned} this week."
+    if product and business:
+        cta = f"If you want help with {product}, contact {business} and take the next step."
+    elif product:
+        cta = f"If you want help with {product}, take the next step today."
+    else:
+        cta = f"If this helped, save it and try one change around {cleaned} this week."
     return DraftDeskOutput(script_hook=hook, script_body=body, script_cta=cta)
 
 
@@ -61,7 +91,16 @@ def execute_stage(context: dict) -> tuple[bool, dict | None, str]:
         if not topic:
             return False, None, "draft_desk requires topic in assignment context"
         try:
-            draft = generate_script_draft(topic=topic, target_length_seconds=length)
+            draft = generate_script_draft(
+                topic=topic,
+                target_length_seconds=length,
+                business_name=context.get("business_name"),
+                offer=context.get("offer"),
+                target_audience=context.get("target_audience"),
+                brand_voice=context.get("brand_voice"),
+                content_goal=context.get("content_goal"),
+                target_platform=context.get("target_platform"),
+            )
         except ValueError as exc:
             return False, None, str(exc)
         return (
@@ -87,7 +126,7 @@ def execute_stage(context: dict) -> tuple[bool, dict | None, str]:
             "provider": "draft_desk",
             "stage": stage,
             "summary": f"Draft Desk completed stage '{stage}' for topic '{topic or 'n/a'}'.",
-            "estimated_cost_usd": "0.01",
+            "estimated_cost_usd": "0.00",
         },
         "",
     )

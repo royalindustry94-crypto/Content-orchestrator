@@ -57,9 +57,10 @@ docker compose -f docker-compose.staging.yml up --build
 
 ## Auth
 
-- `AUTH_MODE=local` (default): `POST /auth/signup`, `POST /auth/login`
-  mint Supabase-shaped JWTs verified by the API.
-- `AUTH_MODE=supabase`: local signup/login disabled; use Supabase-issued tokens.
+- `AUTH_MODE=supabase` (secure default): local signup/login is disabled; use
+  Supabase-issued tokens.
+- `AUTH_MODE=local`: explicitly enables `POST /auth/signup` and
+  `POST /auth/login` for local/private-beta environments.
 
 ## Key APIs
 

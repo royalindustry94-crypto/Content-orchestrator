@@ -2,15 +2,27 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.authorization import require_workspace_admin, require_workspace_member
+from app.core.audit import audit
+from app.core.authorization import (
+    require_workspace_admin,
+    require_workspace_content_author,
+    require_workspace_member,
+)
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
+from app.models.content_profile import WorkspaceContentProfile
 from app.models.workspace import Workspace
 from app.models.workspace_membership import WorkspaceMembership, WorkspaceRole
-from app.schemas.workspace import WorkspaceCreate, WorkspaceOut, WorkspaceUpdate
+from app.schemas.workspace import (
+    ContentProfileInput,
+    ContentProfileOut,
+    WorkspaceCreate,
+    WorkspaceOut,
+    WorkspaceUpdate,
+)
 from app.services.spend import ensure_default_spend_cap
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
@@ -38,9 +50,7 @@ async def create_workspace(
     db.add(membership)
     # Membership must be visible to RLS helpers before seeding spend_caps.
     await db.flush()
-    await ensure_default_spend_cap(
-        db, workspace_id=workspace.id, actor_id=uuid.UUID(user.id)
-    )
+    await ensure_default_spend_cap(db, workspace_id=workspace.id, actor_id=uuid.UUID(user.id))
     await db.flush()
     return workspace
 
@@ -95,3 +105,48 @@ async def update_workspace(
         workspace.priority_tier = payload.priority_tier
     await db.flush()
     return workspace
+
+
+@router.get("/{workspace_id}/content-profile", response_model=ContentProfileOut | None)
+async def get_content_profile(
+    workspace_id: uuid.UUID,
+    db: AsyncSession = Depends(get_current_session),
+    _membership: WorkspaceMembership = Depends(require_workspace_member()),
+) -> WorkspaceContentProfile | None:
+    """Return reusable content defaults, or null until setup is complete."""
+    return await db.get(WorkspaceContentProfile, workspace_id)
+
+
+@router.put("/{workspace_id}/content-profile", response_model=ContentProfileOut)
+async def save_content_profile(
+    workspace_id: uuid.UUID,
+    payload: ContentProfileInput,
+    request: Request,
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
+    _membership: WorkspaceMembership = Depends(require_workspace_content_author),
+) -> WorkspaceContentProfile:
+    """Create or replace the workspace's durable five-step content setup."""
+    actor_id = uuid.UUID(user.id)
+    profile = await db.get(WorkspaceContentProfile, workspace_id)
+    values = payload.model_dump()
+    if profile is None:
+        profile = WorkspaceContentProfile(
+            workspace_id=workspace_id,
+            created_by=actor_id,
+            updated_by=actor_id,
+            **values,
+        )
+        db.add(profile)
+    else:
+        for field, value in values.items():
+            setattr(profile, field, value)
+        profile.updated_by = actor_id
+    await db.flush()
+    audit(
+        request,
+        "workspace_content_profile_saved",
+        workspace_id=str(workspace_id),
+        service_mode=profile.service_mode,
+    )
+    return profile

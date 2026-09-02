@@ -39,6 +39,22 @@ export type Workspace = {
   name: string;
 };
 
+export type ContentProfile = {
+  workspace_id: string;
+  service_mode: "own" | "client";
+  business_name: string;
+  offer: string;
+  target_audience: string;
+  brand_voice: string;
+  target_platform: string;
+  content_goal: string;
+  default_length_seconds: number;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type DeploymentInfo = {
   ci_status: string;
   ci_url: string | null;
@@ -466,6 +482,31 @@ export function listWorkspaces(token: string): Promise<Workspace[]> {
   return apiFetch<Workspace[]>("/workspaces", token);
 }
 
+export function getContentProfile(
+  token: string,
+  workspaceId: string,
+): Promise<ContentProfile | null> {
+  return apiFetch<ContentProfile | null>(
+    `/workspaces/${workspaceId}/content-profile`,
+    token,
+  );
+}
+
+export function saveContentProfile(
+  token: string,
+  workspaceId: string,
+  payload: Omit<
+    ContentProfile,
+    "workspace_id" | "created_by" | "updated_by" | "created_at" | "updated_at"
+  >,
+): Promise<ContentProfile> {
+  return apiFetch<ContentProfile>(
+    `/workspaces/${workspaceId}/content-profile`,
+    token,
+    { method: "PUT", body: JSON.stringify(payload) },
+  );
+}
+
 export function getExecutiveDashboard(
   token: string,
   workspaceId: string,
@@ -736,9 +777,17 @@ export function createContentJob(
   workspaceId: string,
   payload: {
     topic: string;
+    business_name?: string;
+    offer?: string;
+    target_audience?: string;
+    brand_voice?: string;
+    content_goal?: string;
+    target_platform?: string;
     script_body?: string;
     script_hook?: string;
     script_cta?: string;
+    target_length_seconds?: number;
+    idempotency_key?: string;
   },
 ): Promise<ContentJob> {
   return apiFetch<ContentJob>(`/workspaces/${workspaceId}/content-jobs`, token, {

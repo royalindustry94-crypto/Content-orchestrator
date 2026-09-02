@@ -147,6 +147,41 @@ async def test_successful_claim(ctx):
 
 
 @pytest.mark.asyncio
+async def test_claim_carries_workspace_content_profile(ctx):
+    saved = await ctx["client"].put(
+        f"/workspaces/{ctx['ws']}/content-profile",
+        headers=ctx["headers"],
+        json={
+            "service_mode": "client",
+            "business_name": "North Star Studio",
+            "offer": "content strategy",
+            "target_audience": "independent consultants",
+            "brand_voice": "direct and practical",
+            "target_platform": "LinkedIn",
+            "content_goal": "generate qualified enquiries",
+            "default_length_seconds": 60,
+        },
+    )
+    assert saved.status_code == 200, saved.text
+    provisioned = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
+    worker_headers = await _bring_online(ctx["client"], provisioned)
+    await _seed_assignment(ctx["ws"])
+
+    response = await ctx["client"].post(
+        "/workers/claim", headers=worker_headers, json={}
+    )
+
+    assert response.status_code == 200, response.text
+    assignment = response.json()["assignment"]
+    assert assignment["business_name"] == "North Star Studio"
+    assert assignment["offer"] == "content strategy"
+    assert assignment["target_audience"] == "independent consultants"
+    assert assignment["brand_voice"] == "direct and practical"
+    assert assignment["target_platform"] == "LinkedIn"
+    assert assignment["content_goal"] == "generate qualified enquiries"
+
+
+@pytest.mark.asyncio
 async def test_no_eligible_assignment(ctx):
     prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
     wh = await _bring_online(ctx["client"], prov)

@@ -85,6 +85,38 @@ async function shot(name) {
   writeFileSync(`${OUT}/${name}.png`, Buffer.from(data, "base64"));
 }
 
+async function setLabeledField(label, value) {
+  const changed = await evaluate(`(() => {
+    const element = [...document.querySelectorAll('input, textarea, select')]
+      .find(item => item.getAttribute('aria-label') === ${JSON.stringify(label)});
+    if (!element) return false;
+    const prototype = element instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : element instanceof HTMLSelectElement
+        ? HTMLSelectElement.prototype
+        : HTMLInputElement.prototype;
+    const setter = Object.getOwnPropertyDescriptor(prototype, 'value').set;
+    setter.call(element, ${JSON.stringify(value)});
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  if (!changed) throw new Error(`Unable to find setup field: ${label}`);
+  await sleep(120);
+}
+
+async function clickButton(label) {
+  const clicked = await evaluate(`(() => {
+    const button = [...document.querySelectorAll('button')]
+      .find(item => (item.textContent || '').trim().includes(${JSON.stringify(label)}));
+    if (!button || button.disabled) return false;
+    button.click();
+    return true;
+  })()`);
+  if (!clicked) throw new Error(`Unable to click button: ${label}`);
+  await sleep(180);
+}
+
 async function report() {
   return evaluate(`(() => ({
     textLen: document.body ? document.body.innerText.length : 0,
@@ -118,6 +150,9 @@ async function report() {
       !el.closest('label') &&
       !el.getAttribute('title')
     ).length,
+    setupSmallTouchTargets: [...document.querySelectorAll('.content-setup button, .content-setup input, .content-setup select, .content-setup textarea')]
+      .filter(el => el.getBoundingClientRect().height < 44).length,
+    businessManagerBrand: /The Business Manager/i.test(document.body?.innerText || ''),
   }))()`);
 }
 
@@ -149,7 +184,7 @@ const loginInfo = await evaluate(`(async () => {
   if (!r.ok) return { ok:false, status:r.status, body: await r.text() };
   const auth = await r.json();
   const ws = await (await fetch('/api/workspaces', {headers:{Authorization:'Bearer '+auth.access_token}})).json();
-  sessionStorage.setItem('lumora.missionControl.session', JSON.stringify({token:auth.access_token, workspaceId: ws[0].id, email: auth.email}));
+  sessionStorage.setItem('businessManager.session', JSON.stringify({token:auth.access_token, workspaceId: ws[0].id, email: auth.email}));
   return { ok:true, workspaces: ws.length };
 })()`);
 console.log("login:", JSON.stringify(loginInfo));
@@ -162,8 +197,45 @@ const launchObserved = await evaluate(`!!document.querySelector('.business-launc
 console.log("LAUNCH OBSERVED:", launchObserved);
 if (launchObserved) await shot("00-launch");
 await sleep(760);
+const setupNeeded = await evaluate(
+  `!![...document.querySelectorAll('h3')].find(el => /Set up content creation/i.test(el.textContent || ''))`,
+);
+if (setupNeeded) {
+  await shot("01-setup-start");
+  await clickButton("Done-for-you client");
+  await setLabeledField("Business name", "Business Manager Demo Client");
+  await setLabeledField("What do you sell?", "A practical content management service");
+  await clickButton("Save and continue");
+  await setLabeledField("Who is this content for?", "Busy small-business owners");
+  await clickButton("Save and continue");
+  await setLabeledField("Brand voice", "Clear, confident, practical");
+  await clickButton("Save and continue");
+  await setLabeledField("Primary platform", "Instagram");
+  await setLabeledField("Content goal", "Build trust and generate qualified enquiries");
+  await clickButton("Save and continue");
+  await setLabeledField("First content topic", "Three ways to simplify weekly content planning");
+  await clickButton("Create first draft");
+  await sleep(1800);
+}
+const setupVerification = await evaluate(`(async () => {
+  const session = JSON.parse(sessionStorage.getItem('businessManager.session'));
+  const response = await fetch('/api/workspaces/' + session.workspaceId + '/content-profile', {
+    headers: { Authorization: 'Bearer ' + session.token },
+  });
+  const profile = response.ok ? await response.json() : null;
+  return {
+    status: response.status,
+    saved: !!profile,
+    serviceMode: profile?.service_mode || null,
+    completeView: /Content setup complete/i.test(document.body?.innerText || ''),
+  };
+})()`);
+console.log("SETUP:", JSON.stringify(setupVerification));
+if (!setupVerification.saved || !setupVerification.completeView) {
+  throw new Error(`Five-step setup did not persist: ${JSON.stringify(setupVerification)}`);
+}
 const backendTruth = await evaluate(`(async () => {
-  const session = JSON.parse(sessionStorage.getItem('lumora.missionControl.session'));
+  const session = JSON.parse(sessionStorage.getItem('businessManager.session'));
   const headers = { Authorization: 'Bearer ' + session.token };
   const [health, alerts] = await Promise.all([
     fetch('/api/workspaces/' + session.workspaceId + '/operations/health', { headers }).then(r => r.json()),
@@ -252,6 +324,18 @@ await send(
 await navigate(BASE);
 await sleep(1200);
 await shot("89-mobile-home");
+const mobileEditAvailable = await evaluate(`(() => {
+  const button = [...document.querySelectorAll('button')]
+    .find(item => /Edit setup/i.test(item.textContent || ''));
+  if (button) button.click();
+  return !!button;
+})()`);
+if (mobileEditAvailable) {
+  await sleep(500);
+  await shot("89-mobile-setup");
+  const setupReport = await report();
+  results.push({ label: "mobile-five-step-setup", ...setupReport });
+}
 await evaluate(`(() => { const b=[...document.querySelectorAll('button')].find(x=>/open navigation/i.test(x.getAttribute('aria-label')||'')); if(b)b.click(); return !!b; })()`);
 await sleep(500);
 await shot("90-mobile-nav-open");
@@ -280,7 +364,7 @@ for (const label of ["Opportunities", "Strategy", "Content Department", "Produce
   await shot(`9${mobileResults.length}-${label.replace(/\s+/g, "-").toLowerCase()}`);
 }
 
-writeFileSync(`${OUT}/results.json`, JSON.stringify({ results, mobileResults, loginUx, launchObserved, searchResult, consoleProblems, uncaughtExceptions }, null, 2));
+writeFileSync(`${OUT}/results.json`, JSON.stringify({ results, mobileResults, loginUx, launchObserved, searchResult, setupVerification, consoleProblems, uncaughtExceptions }, null, 2));
 const crashes = results.filter((r) => r.crash || r.textLen === 0);
 const accessibilityFailures = results.filter((r) => r.unlabeledControls > 0);
 const mobileFailures = mobileResults.filter((r) => r.crash || r.textLen === 0 || r.horizontalOverflow || r.unlabeledControls > 0);
@@ -299,6 +383,8 @@ const producerResult = results.find((r) => r.label === "Producer");
 const producerTruthWorks = producerResult?.productionProviderNotConfigured && producerResult?.productionJobEmpty;
 const complianceResult = results.find((r) => r.label === "Compliance");
 const complianceTruthWorks = complianceResult?.complianceProviderNotConfigured && complianceResult?.complianceEvidenceEmpty && complianceResult?.compliancePolicyFreshnessUnverified;
+const mobileSetupResult = results.find((r) => r.label === "mobile-five-step-setup");
+const mobileSetupWorks = !!mobileSetupResult && !mobileSetupResult.horizontalOverflow && mobileSetupResult.setupSmallTouchTargets === 0 && mobileSetupResult.businessManagerBrand;
 console.log("ROUTES:", results.length);
 console.log("BLANK/CRASH:", crashes.length);
 console.log("SEARCH:", JSON.stringify(searchResult));
@@ -316,6 +402,7 @@ console.log("STRATEGIST TRUTHFUL NOT-CONFIGURED STATE:", strategistTruthWorks);
 console.log("CONTENT DEPARTMENT TRUTHFUL NOT-CONFIGURED STATE:", contentDepartmentTruthWorks);
 console.log("PRODUCER TRUTHFUL NOT-CONFIGURED STATE:", producerTruthWorks);
 console.log("COMPLIANCE + CHIEF AUDITOR TRUTHFUL NOT-CONFIGURED STATE:", complianceTruthWorks);
+console.log("MOBILE FIVE-STEP SETUP:", mobileSetupWorks);
 for (const r of results) {
   console.log(`  ${r.crash ? "CRASH" : r.textLen === 0 ? "BLANK" : "ok   "} | ${r.label} | textLen=${r.textLen} | footer=${r.footer ?? "-"} | unlabeled=${r.unlabeledControls}`);
 }
@@ -336,6 +423,7 @@ process.exit(
   contentDepartmentTruthWorks &&
   producerTruthWorks &&
   complianceTruthWorks &&
+  mobileSetupWorks &&
   consoleProblems.length === 0 &&
   uncaughtExceptions.length === 0 &&
   searchWorks &&

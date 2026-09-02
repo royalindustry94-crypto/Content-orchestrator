@@ -235,6 +235,12 @@ class ReferenceWorkerClient:
                 "content_item_id",
                 "workspace_id",
                 "target_length_seconds",
+                "business_name",
+                "offer",
+                "target_audience",
+                "brand_voice",
+                "content_goal",
+                "target_platform",
                 "provider",
                 "pipeline_run_id",
             ):

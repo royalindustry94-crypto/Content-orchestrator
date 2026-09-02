@@ -14,7 +14,6 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.models.content import ContentItem, ContentVersion
 from app.models.enums import (
     ContentStage,
@@ -152,6 +151,12 @@ async def create_content_job(
     actor_id: uuid.UUID,
     topic: str,
     script_body: str,
+    business_name: str | None = None,
+    offer: str | None = None,
+    target_audience: str | None = None,
+    brand_voice: str | None = None,
+    content_goal: str | None = None,
+    target_platform: str | None = None,
     script_hook: str | None = None,
     script_cta: str | None = None,
     target_length_seconds: int | None = None,
@@ -211,7 +216,14 @@ async def create_content_job(
         prompt_used = "review_desk_manual_draft"
     else:
         generated = generate_script_draft(
-            topic=topic, target_length_seconds=target_length_seconds
+            topic=topic,
+            target_length_seconds=target_length_seconds,
+            business_name=business_name,
+            offer=offer,
+            target_audience=target_audience,
+            brand_voice=brand_voice,
+            content_goal=content_goal,
+            target_platform=target_platform,
         )
         body = generated.script_body
         hook = script_hook or generated.script_hook
@@ -260,7 +272,9 @@ async def create_content_job(
     item.current_pipeline_run_id = run.id
 
     await controller.start_run(session, run=run, definition=definition)
-    estimate = Decimal(str(get_settings().default_stage_estimate_usd))
+    # Draft Desk is deterministic local code and does not call a paid provider.
+    # Keep the reservation/audit path, but record the truthful external cost.
+    estimate = Decimal("0.00")
     reservation = await controller.reserve_spend(
         session,
         run=run,

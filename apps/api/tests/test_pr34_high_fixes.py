@@ -52,6 +52,11 @@ def test_h1_auth_mode_defaults_to_supabase():
     assert settings.auth_mode == "supabase"
 
 
+def test_h1_rejects_weak_jwt_secret():
+    with pytest.raises(ValidationError, match="at least 32 characters"):
+        Settings(**_base_settings_kwargs(supabase_jwt_secret="too-short"))
+
+
 def test_h1_production_rejects_local_auth_without_override():
     with pytest.raises(ValidationError, match="AUTH_MODE=local is forbidden"):
         Settings(
