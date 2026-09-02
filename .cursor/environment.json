@@ -1,0 +1,28 @@
+{
+  "name": "Content Orchestrator",
+  "user": "ubuntu",
+  "install": "bash .cursor/cloud/install.sh",
+  "start": "bash .cursor/cloud/start.sh",
+  "chromeExecutablePath": "/usr/local/bin/google-chrome",
+  "ports": [
+    { "name": "api", "port": 8000 },
+    { "name": "web", "port": 5173 }
+  ],
+  "terminals": [
+    {
+      "name": "api",
+      "description": "FastAPI backend (uvicorn, autoreload) on http://127.0.0.1:8000 — health at /health/ready.",
+      "command": ". .venv/bin/activate && set -a && . ./.env && set +a && cd apps/api && exec uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
+    },
+    {
+      "name": "worker",
+      "description": "Draft Desk background worker (claim/execute/submit). Idles until worker credentials are provisioned.",
+      "command": ". .venv/bin/activate && set -a && . ./.env && set +a && cd apps/worker && exec python -m worker.main"
+    },
+    {
+      "name": "web",
+      "description": "Vite dev server for the Review Desk UI on http://127.0.0.1:5173 (proxies /api to the backend).",
+      "command": "cd apps/web && exec npm run dev -- --host 127.0.0.1 --port 5173 --strictPort"
+    }
+  ]
+}
