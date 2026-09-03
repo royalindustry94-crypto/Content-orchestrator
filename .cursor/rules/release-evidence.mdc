@@ -1,0 +1,7 @@
+---
+description: Exact-head evidence and honest completion claims for CI, release, audit, and deployment work
+globs: "{.github/workflows/**,docs/**,scripts/**}"
+alwaysApply: false
+---
+
+Use exact commit SHAs and distinguish local checks, hosted CI, preview deployment, and production runtime evidence. A skipped or unavailable check is NOT VERIFIED. Do not claim merge or deploy readiness when required exact-head evidence is absent.
