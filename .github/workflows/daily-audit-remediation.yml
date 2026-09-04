@@ -1,0 +1,44 @@
+name: Daily audit and safe remediation
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 16:00 UTC daily (02:00 AEST / 03:00 AEDT next day in Australia)
+    - cron: "0 16 * * *"
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate audit PDF and evaluate remediation
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: |
+          python apps/api/app/services/daily_audit_remediation.py \
+            --output-pdf /tmp/daily-audit-report.pdf \
+            --ci-workflow ci.yml
+
+      - name: Upload daily audit PDF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-audit-${{ github.sha }}
+          path: /tmp/daily-audit-report.pdf
+          if-no-files-found: error
+          retention-days: 30
