@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import audit
 from app.core.authorization import require_workspace_member, require_workspace_reviewer
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
+from app.db.session import AsyncSessionLocal
 from app.models.enums import ReviewGateStatus
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.content_desk import ReviewDecisionIn, ReviewGateOut
@@ -63,18 +64,19 @@ async def decide_review_gate(
     request: Request,
     user: AuthenticatedUser = Depends(get_current_user),
     _membership: WorkspaceMembership = Depends(require_workspace_reviewer),
-    db: AsyncSession = Depends(get_current_session),
 ) -> ReviewGateOut:
     """Approve or reject a gate. Editors cannot decide (matches review_decisions RLS)."""
     try:
-        row = await content_desk.decide_review_gate(
-            db,
-            workspace_id=workspace_id,
-            gate_id=gate_id,
-            reviewer_id=uuid.UUID(user.id),
-            approved=payload.approved,
-            notes=payload.notes,
-        )
+        async with AsyncSessionLocal() as session:
+            row = await content_desk.decide_review_gate(
+                session,
+                workspace_id=workspace_id,
+                gate_id=gate_id,
+                reviewer_id=uuid.UUID(user.id),
+                approved=payload.approved,
+                notes=payload.notes,
+            )
+            await session.commit()
     except content_desk.ReviewGateNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="review gate not found"

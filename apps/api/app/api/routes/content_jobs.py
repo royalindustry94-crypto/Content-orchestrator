@@ -5,13 +5,13 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 
 from app.core.audit import audit
 from app.core.authorization import require_workspace_content_author
 from app.core.config import get_settings
-from app.core.security import AuthenticatedUser, get_current_session, get_current_user
+from app.core.security import AuthenticatedUser, get_current_user
+from app.db.session import AsyncSessionLocal
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.content_desk import ContentJobCreate, ContentJobOut
 from app.services import billing as billing_service
@@ -27,7 +27,6 @@ async def create_content_job(
     request: Request,
     user: AuthenticatedUser = Depends(get_current_user),
     _membership: WorkspaceMembership = Depends(require_workspace_content_author),
-    db: AsyncSession = Depends(get_current_session),
 ) -> ContentJobOut:
     """Create a content draft and place it in the mandatory Human Review Gate.
 
@@ -36,21 +35,23 @@ async def create_content_job(
     an active/trialing Pro entitlement is required.
     """
     try:
-        if get_settings().billing_enabled:
-            await billing_service.require_entitlement_for_workspace(
-                db, workspace_id=workspace_id
+        async with AsyncSessionLocal() as session:
+            if get_settings().billing_enabled:
+                await billing_service.require_entitlement_for_workspace(
+                    session, workspace_id=workspace_id
+                )
+            result = await content_desk.create_content_job(
+                session,
+                workspace_id=workspace_id,
+                actor_id=uuid.UUID(user.id),
+                topic=payload.topic.strip(),
+                script_body=payload.script_body or "",
+                script_hook=payload.script_hook,
+                script_cta=payload.script_cta,
+                target_length_seconds=payload.target_length_seconds,
+                idempotency_key=payload.idempotency_key,
             )
-        result = await content_desk.create_content_job(
-            db,
-            workspace_id=workspace_id,
-            actor_id=uuid.UUID(user.id),
-            topic=payload.topic.strip(),
-            script_body=payload.script_body or "",
-            script_hook=payload.script_hook,
-            script_cta=payload.script_cta,
-            target_length_seconds=payload.target_length_seconds,
-            idempotency_key=payload.idempotency_key,
-        )
+            await session.commit()
     except billing_service.BillingError as exc:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
