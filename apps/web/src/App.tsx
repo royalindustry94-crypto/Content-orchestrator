@@ -7,6 +7,7 @@ import {
 } from "./api";
 import LumoraDashboard from "./LumoraDashboard";
 import { BusinessManagerMark } from "./BusinessManagerMark";
+import ThemeToggle from "./ThemeToggle";
 
 type Session = {
   token: string;
@@ -121,6 +122,7 @@ export default function App() {
 
   return (
     <main className="auth-shell auth-shell--approved">
+      <ThemeToggle className="theme-toggle--auth" />
       <section className="auth-card" aria-labelledby="auth-title">
         <div className="auth-lockup" aria-label="The Business Manager — Business Operating System">
           <BusinessManagerMark className="auth-lockup__mark" />

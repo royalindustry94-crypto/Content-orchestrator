@@ -3,7 +3,10 @@ import ReactDOM from "react-dom/client";
 
 import App from "./App";
 import ErrorBoundary from "./ErrorBoundary";
+import { applyTheme, readStoredTheme } from "./theme";
 import "./app.css";
+
+applyTheme(readStoredTheme());
 
 const rootElement = document.getElementById("root");
 if (!rootElement) {
