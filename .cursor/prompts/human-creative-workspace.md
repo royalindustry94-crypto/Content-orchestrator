@@ -20,3 +20,20 @@ states, and no horizontal overflow. Publishing remains disabled.
 
 Finish with a structured handoff at the exact committed SHA. Do not merge or
 deploy. Any audit result must be a verified downloadable PDF outside Git.
+
+## Required visual evidence pack
+
+Capture and inspect fresh screenshots from the running candidate. Save both
+desktop and exact 390px mobile views for:
+
+- the complete Home screen;
+- sidebar and mobile navigation drawer, open and closed;
+- every visible button, menu, card, form and interactive control;
+- all five setup steps and completed/edit states;
+- Human Review and Human Creative Workspace;
+- loading, empty, error, blocked and provider-not-configured states.
+
+Create a labelled component/state inventory that a designer can use to make a
+replacement template. Do not use old screenshots as current audit evidence.
+If Mitch later supplies a template, preserve backend contracts and safety
+controls while implementing the selected visual source screen-for-screen.

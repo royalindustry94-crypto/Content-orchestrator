@@ -17,3 +17,12 @@ this slice.
 Commit only on the Codex lane branch and publish a structured handoff. Do not
 merge or deploy. Any audit result must be a verified downloadable PDF outside
 Git.
+
+Before the media slice, close and regression-test the current audit findings:
+
+- refuse approval when the gate's content version is no longer current;
+- default-deny every worker stage except the explicitly supported allowlist;
+- fail closed when a chargeable successful stage has no spend reservation;
+- move tenant hot-path reads toward the RLS runtime session where policy allows;
+- harden staging bootstrap so special characters in runtime passwords are not
+  interpolated into shell source text.

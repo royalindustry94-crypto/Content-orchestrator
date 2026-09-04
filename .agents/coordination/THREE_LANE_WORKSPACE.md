@@ -90,7 +90,11 @@ Reference repositories, not approved dependencies:
 Acceptance boundary: existing API contracts or an agreed contract fixture;
 desktop and 390px mobile; keyboard and screen-reader labels; no embedded API
 keys; no local fake success; external publishing remains disabled. Cursor does
-not create migrations or alter backend authorization.
+not create migrations or alter backend authorization. The handoff includes a
+fresh screenshot pack covering Home, navigation, every interactive control,
+the five-step setup, Human Review, Human Creative Workspace and all important
+loading/empty/error/blocked states, plus a labelled UI inventory for an
+external template designer.
 
 ## Lane 3 - Copilot: Daily Assurance Worker
 
