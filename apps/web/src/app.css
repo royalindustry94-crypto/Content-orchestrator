@@ -4100,3 +4100,18 @@ button.side-link--active {
     background: rgba(45, 226, 230, 0.04);
   }
 }
+
+.creative-preview-banner {
+  position: sticky;
+  z-index: 80;
+  top: 0;
+  margin: 0;
+  padding: 0.55rem 1rem;
+  border-bottom: 1px solid rgba(255, 138, 76, 0.28);
+  background: rgba(255, 77, 141, 0.14);
+  color: #ffe4d6;
+  font-size: 0.74rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  text-align: center;
+}

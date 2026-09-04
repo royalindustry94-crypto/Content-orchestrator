@@ -21,6 +21,18 @@ If the Founder later holds an Adobe Stock licence for `#235999682`:
 
 This repository therefore ships only converted app code. Keep any purchased download, invoice, or licence key off public GitHub.
 
+## Public visual preview
+
+Vercel preview builds set `VITE_CREATIVE_PREVIEW=1`. That build installs a **browser-only** fetch adapter so the themed UI can be opened without a managed database. The adapter is inert in normal Docker/`AUTH_MODE=local` builds.
+
+Preview rules:
+
+- Sign-in accepts any email/password and opens a labeled disposable workspace.
+- Home Bankroll remains **Not connected**.
+- Human Review Approve/Reject updates only this browser tab.
+- Operator actions (emergency stop, DLQ clear) return `ok: false` and change nothing live.
+- A persistent banner states that the preview is disposable fixture data.
+
 ## Controls preserved
 
 - Human Review Gate approve/reject and version binding are unchanged.
