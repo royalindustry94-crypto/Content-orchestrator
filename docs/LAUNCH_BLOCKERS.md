@@ -1,8 +1,11 @@
 # Launch Blockers
 
-**Repository:** Content Orchestrator  
-**Updated:** 2026-08-28  
-**Audited baseline:** `main` after PR #49 governance merge  
+**Repository:** Content Orchestrator
+
+**Updated:** 2026-09-03
+
+**Audited baseline:** `main` at `abb20981f68cb0de8e3ed75af9759e0b5b6fb656` after PR #51
+
 **Source of truth:** exact-head CI, retained browser evidence, repository/runtime probes — not prior chat claims
 
 ## Rule
@@ -16,7 +19,7 @@ Nothing is considered deployable or releasable from documentation alone. The cur
 | Target | Status | Reason |
 |---|---|---|
 | Product code baseline | **PRIVATE-BETA CAPABLE** | Business Manager + audited Research → Strategy → Content → Production → Compliance preview is merged and fail-closed |
-| Development governance | **CONDITIONAL** | Independent audit standard is merged; GitHub `main` branch protection is still disabled (issue #50) |
+| Development governance | **PASS** | Active repository ruleset `Protect main` requires a PR, one approval, resolved conversations and all six strict CI checks; issue #50 is closed |
 | Operational private beta | **CONDITIONAL / NOT YET RUNTIME-VERIFIED** | Managed deployment/Supabase runtime evidence and current operator verification are not established in this audit |
 | Production | **BLOCKED** | Live providers, production auth/runtime evidence, managed PITR, billing go-live, policy/rights adapters and external publishing remain separate gates |
 
@@ -57,19 +60,20 @@ Safety boundaries remain explicit:
 
 ## Open blockers / conditions
 
-### GOV-001 — Protect `main` — **HIGH / OPEN**
+### GOV-001 — Protect `main` — **CLOSED**
 
-Tracked by GitHub issue **#50**.
+Tracked and closed by GitHub issue **#50**.
 
-Required before scaling development throughput or relying on repository enforcement:
+Live GitHub evidence captured on 2026-09-03:
 
-- Require pull requests before merge.
-- Require relevant CI gates before merge.
-- Block force pushes and branch deletion.
-- Keep emergency bypass Founder-controlled and documented.
-- Independently verify the active branch protection/ruleset after configuration.
+- `main` reports `protected: true` at `abb20981f68cb0de8e3ed75af9759e0b5b6fb656`.
+- Repository ruleset `Protect main` (`21731627`) is active for `~DEFAULT_BRANCH`.
+- Pull requests require one approval, dismissal of stale approvals, last-push approval and resolved review conversations.
+- Strict required checks are `api`, `worker`, `web`, `security`, `docker-build` and `browser-smoke`.
+- Branch deletion and non-fast-forward updates are blocked.
+- The ruleset has no bypass actors and reports `current_user_can_bypass: never`.
 
-Current evidence: GitHub reports `main` as unprotected with no required status checks enforced.
+This closes the repository-enforcement gap. It does not replace exact-head audit evidence or authorize a merge when a required check is absent or failing.
 
 ### RUNTIME-001 — Managed Supabase/runtime verification — **OPEN**
 
@@ -103,4 +107,4 @@ Previously closed P0/P1 engineering controls remain closed unless new evidence d
 - `docs/FINAL_RELEASE_AUDIT.md`
 - `docs/DISASTER_RECOVERY_REPORT.md`
 - `docs/BETA_RELEASE_CHECKLIST.md`
-- GitHub issue #50 — protect `main`
+- GitHub issue #50 — protect `main` (**closed**)

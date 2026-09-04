@@ -1,18 +1,25 @@
 # Executive Status Report
 
-**Product:** Content Orchestrator  
-**Audience:** Founder / leadership  
-**Date:** 2026-08-28  
-**Baseline:** `main` after PR #49 governance merge  
+**Product:** Content Orchestrator
+
+**Audience:** Founder / leadership
+
+**Date:** 2026-09-03
+
+**Baseline:** `main` at `abb20981f68cb0de8e3ed75af9759e0b5b6fb656` after PR #51
+
 **Audit model:** `docs/MILESTONE_AUDIT_STANDARD.md`
 
 ---
 
 ## Executive verdict
 
-**PRODUCT CODE BASELINE: PRIVATE-BETA CAPABLE**  
-**DEVELOPMENT GOVERNANCE: CONDITIONAL** — branch protection issue #50 remains open  
-**OPERATIONAL PRIVATE BETA: NOT YET RUNTIME-VERIFIED**  
+**PRODUCT CODE BASELINE: PRIVATE-BETA CAPABLE**
+
+**DEVELOPMENT GOVERNANCE: PASS** — active no-bypass ruleset requires PR review and all six strict CI checks
+
+**OPERATIONAL PRIVATE BETA: NOT YET RUNTIME-VERIFIED**
+
 **PRODUCTION: BLOCKED**
 
 The repository now contains a bounded, fail-closed end-to-end preview from Research through Compliance plus the Business Manager UI. This is materially ahead of the August 3 status report, but it must not be confused with a live-provider or production deployment certification.
@@ -68,36 +75,40 @@ Current preview behavior is deliberately conservative:
 
 ## Material open risks
 
-### 1. `main` branch is not technically protected — HIGH
-
-GitHub currently reports branch protection disabled with no required status checks. The team has followed the audited merge process manually, but GitHub does not yet enforce it. Tracked as **issue #50**.
-
-This should be fixed before development throughput is scaled across multiple builders/workers.
-
-### 2. Managed runtime / Supabase evidence is not verified
+### 1. Managed runtime / Supabase evidence is not verified
 
 The connected Supabase capability has not exposed a project to the current audit session. Therefore managed database configuration, production authentication, deployment state and PITR/backup claims are **NOT VERIFIED** in the current baseline.
 
-### 3. Live provider execution remains deferred
+### 2. Live provider execution remains deferred
 
 OpenAI/Anthropic/Gemini/ElevenLabs/Creatomate/n8n-style live provider paths need a dedicated audited activation milestone covering credentials, provider spend accounting, retries/backoff, idempotency, logging/redaction and supervised failures.
 
-### 4. Production billing and external publishing remain gated
+### 3. Production billing and external publishing remain gated
 
 The existence of billing and publication-policy code does not authorize billing go-live or external publishing. Both require separate current runtime evidence and Founder-approved milestone audits.
+
+## Repository governance evidence
+
+GitHub issue #50 is closed. A live re-probe on 2026-09-03 confirmed:
+
+- `main` reports protected.
+- Ruleset `Protect main` (`21731627`) is active for the default branch.
+- A PR, one approval, resolved conversations and last-push approval are required.
+- Strict required checks are `api`, `worker`, `web`, `security`, `docker-build` and `browser-smoke`.
+- Deletion and non-fast-forward updates are blocked.
+- No bypass actors are configured; the connected user cannot bypass.
 
 ---
 
 ## Recommended next sequence
 
-1. Close issue #50 by enabling and independently verifying `main` protection / required checks.
-2. Establish managed Supabase/runtime visibility and verify deployment/auth/database/PITR facts.
-3. Reconcile and select the first revenue-producing private-beta workflow.
-4. Activate one provider path at a time behind spend controls and Human Review, with independent audit after each milestone.
-5. Do not enable autonomous/external publishing before policy/rights/compliance and exact-artifact Human Review controls receive a separate PASS.
+1. Establish managed Supabase/runtime visibility and verify deployment/auth/database/PITR facts.
+2. Reconcile and select the first revenue-producing private-beta workflow.
+3. Activate one provider path at a time behind spend controls and Human Review, with independent audit after each milestone.
+4. Do not enable autonomous/external publishing before policy/rights/compliance and exact-artifact Human Review controls receive a separate PASS.
 
 ---
 
 ## Leadership interpretation
 
-The system has moved from a partial private-beta engine to a substantially broader audited preview pipeline. Engineering controls are strong; the largest current gaps are **repository enforcement and live-runtime evidence**, not another wave of feature surface area.
+The system has moved from a partial private-beta engine to a substantially broader audited preview pipeline. Repository enforcement now holds. The largest current gap is **live-runtime evidence**, followed by controlled activation of the first revenue-producing provider path.

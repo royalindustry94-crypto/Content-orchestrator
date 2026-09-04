@@ -46,8 +46,9 @@ npm install
 npm run dev
 ```
 
-Visit `http://localhost:5173` — sign up / log in (local auth), submit a
-topic (optional script), approve/reject at the Review Gate.
+With `AUTH_MODE=local` explicitly set for development, visit
+`http://localhost:5173` — sign up / log in, submit a topic (optional script),
+then approve or reject it at the Review Gate.
 
 Full stack (API + worker + web + Postgres):
 
@@ -57,9 +58,12 @@ docker compose -f docker-compose.staging.yml up --build
 
 ## Auth
 
-- `AUTH_MODE=local` (default): `POST /auth/signup`, `POST /auth/login`
-  mint Supabase-shaped JWTs verified by the API.
-- `AUTH_MODE=supabase`: local signup/login disabled; use Supabase-issued tokens.
+- `AUTH_MODE=supabase` (default, fail-closed): local signup/login is disabled;
+  use Supabase-issued tokens.
+- `AUTH_MODE=local` (explicit Private Beta/development opt-in):
+  `POST /auth/signup` and `POST /auth/login` mint Supabase-shaped JWTs verified
+  by the API. Production refuses this mode unless the audited break-glass flag
+  is also explicitly enabled.
 
 ## Key APIs
 

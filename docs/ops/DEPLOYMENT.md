@@ -59,9 +59,8 @@ See `.env.example` for the full annotated list. Staging-relevant knobs:
 
 | Variable | Default / notes |
 |----------|-----------------|
-| `ENVIRONMENT` | `staging` in compose override |
-| `AUTH_MODE` | `local` (default): `POST /auth/signup|/login` mint Supabase-shaped JWTs. `supabase`: local auth routes return 404; use Supabase-issued tokens. |
-| `ENVIRONMENT` | `development` enables `/docs`, `/redoc`, `/openapi.json`. Any other value (including `staging` / `production` / `test`) disables them (P-005). |
+| `ENVIRONMENT` | `staging` in the compose override. `development` enables `/docs`, `/redoc` and `/openapi.json`; every other value disables them (P-005). |
+| `AUTH_MODE` | `supabase` is the fail-closed default: local auth routes return 404 and Supabase-issued tokens are required. Set `local` explicitly only for Private Beta/development; production also requires the audited break-glass flag. |
 | `CORS_ALLOW_ORIGINS` | Include the web origin, e.g. `["http://localhost:8080"]` |
 | `RUN_MIGRATIONS` | Set to `1` on the API container for migrate-on-start |
 | `OUTBOX_RELAY_INTERVAL_SECONDS` | API outbox relay tick |

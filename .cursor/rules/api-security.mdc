@@ -1,0 +1,9 @@
+---
+description: API authorization, tenant isolation, spend, audit, and review-gate requirements
+globs: apps/api/**/*.py
+alwaysApply: false
+---
+
+Follow `apps/api/AGENTS.md` and the root `AGENTS.md`.
+
+Before completing API work, identify whether the change touches authorization, RLS session choice, spend, Human Review, audit events, external input, or secrets. Add negative tests for affected trust boundaries and use real PostgreSQL for isolation claims.
