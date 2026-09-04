@@ -61,10 +61,9 @@ See `.env.example` for the full annotated list. Staging-relevant knobs:
 
 | Variable | Default / notes |
 |----------|-----------------|
-| `ENVIRONMENT` | `staging` in compose override |
-| `AUTH_MODE` | `supabase` (secure default): local auth routes return 404. Set `local` explicitly only for approved local/private-beta environments. |
+| `ENVIRONMENT` | `staging` in the compose override. `development` enables `/docs`, `/redoc` and `/openapi.json`; every other value disables them (P-005). |
+| `AUTH_MODE` | `supabase` is the fail-closed default: local auth routes return 404 and Supabase-issued tokens are required. Set `local` explicitly only for Private Beta/development; production also requires the audited break-glass flag. |
 | `POSTGRES_PASSWORD` / `APP_RUNTIME_PASSWORD` | Required, distinct, and at least 32 characters in staging compose. |
-| OpenAPI docs | `ENVIRONMENT=development` enables `/docs`, `/redoc`, `/openapi.json`; staging/production/test disable them. |
 | `CORS_ALLOW_ORIGINS` | Include the web origin, e.g. `["http://localhost:8080"]` |
 | `RUN_MIGRATIONS` | Set to `1` on the API container for migrate-on-start |
 | `OUTBOX_RELAY_INTERVAL_SECONDS` | API outbox relay tick |
@@ -129,19 +128,25 @@ and `web` wait on that condition.
   alembic current
   ```
 
-- Migrations use `DATABASE_URL` (owner). They create the `app_runtime`
-  role (password `app_runtime` in the local/dev migration) and the
-  `auth.users` shim when absent — see
-  `docs/milestone-2-identity-and-access.md` §6.
-- Against managed Supabase, if `CREATE ROLE` is denied, create
-  `app_runtime` once in the SQL editor, then run Alembic for the rest.
+- Plain PostgreSQL local/CI/staging environments run
+  `scripts/bootstrap_local_postgres.sql` before Alembic to create the local
+  `auth.users` compatibility table and provision the runtime login with an
+  environment-supplied password.
+- Canonical migration `0001` fails closed when `auth.users` is absent. When
+  `app_runtime` is absent it creates a `NOLOGIN NOBYPASSRLS` role without a
+  reusable password.
+- Never run the local bootstrap script against managed Supabase. Follow
+  `docs/runtime/MANAGED_SUPABASE_TEST_RUNBOOK.md`; provision any approved
+  runtime login and strong password out of band through the managed secret
+  process.
 - CI also runs a migration replay: `alembic downgrade base && alembic upgrade head`.
 
 ## Auth note
 
-Private-beta Review Desk expects a Bearer token (Supabase JWT) and a
-workspace id in the UI. Provision users/memberships against the DB (or
-Supabase Auth + profiles) before exercising authenticated routes.
+Private-beta Review Desk expects a Bearer JWT and a workspace id in the UI.
+In explicit local mode the application issues Supabase-shaped test tokens; in
+Supabase mode the token must come from Supabase Auth. Provision users and
+workspace memberships before exercising authenticated routes.
 
 ## Related
 

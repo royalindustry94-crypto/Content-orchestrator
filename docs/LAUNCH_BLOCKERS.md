@@ -1,9 +1,17 @@
 # Launch Blockers
 
-**Repository:** Content Orchestrator  
-**Updated:** 2026-09-02
-**Audited baseline:** `main` @ `abb20981f68cb0de8e3ed75af9759e0b5b6fb656`  
-**Remediation candidate:** `cursor/simplified-five-step-setup`, migration head `0052` — independent re-audit pending
+**Product:** The Business Manager
+
+**Repository:** Content Orchestrator
+
+**Updated:** 2026-09-04
+
+**Audited baseline:** `main` at `abb20981f68cb0de8e3ed75af9759e0b5b6fb656` after PR #51
+
+**Unmerged candidates:** PR #71 at `dcb4b6e7746e330265e362dc8b59f7ae288932c1`
+(migration head `0052`) and PR #72 at
+`f151d7edb0e8b1df7e7fe2a21d9a526e1f765a6e`
+
 **Source of truth:** exact-head CI, retained browser evidence, repository/runtime probes — not prior chat claims
 
 ## Rule
@@ -17,8 +25,8 @@ Nothing is considered deployable or releasable from documentation alone. The cur
 | Target | Status | Reason |
 |---|---|---|
 | Product code baseline | **PRIVATE-BETA CAPABLE** | Business Manager + audited Research → Strategy → Content → Production → Compliance preview is merged and fail-closed |
-| Development governance | **PASS / ENFORCED** | Active `Protect main` ruleset requires PRs and the six strict CI checks; force-push/deletion blocked; no bypass actors |
-| Operational private beta | **CONDITIONAL / REMEDIATION IN PROGRESS** | Isolated managed Supabase test project exists, but schema has not been applied pending issue #60 remediation and exact-head revalidation |
+| Development governance | **PASS** | Active repository ruleset `Protect main` requires a PR, one approval, resolved conversations and all six strict CI checks; issue #50 is closed |
+| Operational private beta | **CONDITIONAL / NOT YET RUNTIME-VERIFIED** | PR #71/#72 integration and managed deployment/Supabase runtime evidence are not yet independently verified |
 | Production | **BLOCKED** | Live providers, production auth/runtime evidence, managed PITR, billing go-live, policy/rights adapters and external publishing remain separate gates |
 
 ---
@@ -45,7 +53,7 @@ Safety boundaries remain explicit:
 ### Verified engineering evidence
 
 - API: **299 passed**, **81.09% coverage** (75% gate)
-- Alembic: merged audited `main` head **`0050`**; current feature candidate head **`0052`**
+- Alembic: merged audited `main` head **`0050`**; unmerged PR #71 candidate head **`0052`**
 - Migration lifecycle: upgrade → full downgrade to base → re-upgrade **PASS**
 - Worker: **PASS**
 - Web lint/build/tests/high-severity dependency audit: **PASS**
@@ -58,16 +66,20 @@ Safety boundaries remain explicit:
 
 ## Open blockers / conditions
 
-### GOV-001 — Protect `main` — **CLOSED / VERIFIED**
+### GOV-001 — Protect `main` — **CLOSED**
 
-GitHub issue **#50** is closed. Live ruleset evidence is recorded in `docs/audit/RULESET_EVIDENCE_2026-08-28.md`.
+Tracked and closed by GitHub issue **#50**.
 
-Verified enforcement:
+Live GitHub evidence captured on 2026-09-03:
 
-- Pull requests required.
-- Strict required checks: `api`, `worker`, `web`, `security`, `docker-build`, `browser-smoke`.
-- Force pushes and deletion blocked.
-- No bypass actors; current user cannot bypass.
+- `main` reports `protected: true` at `abb20981f68cb0de8e3ed75af9759e0b5b6fb656`.
+- Repository ruleset `Protect main` (`21731627`) is active for `~DEFAULT_BRANCH`.
+- Pull requests require one approval, dismissal of stale approvals, last-push approval and resolved review conversations.
+- Strict required checks are `api`, `worker`, `web`, `security`, `docker-build` and `browser-smoke`.
+- Branch deletion and non-fast-forward updates are blocked.
+- The ruleset has no bypass actors and reports `current_user_can_bypass: never`.
+
+This closes the repository-enforcement gap. It does not replace exact-head audit evidence or authorize a merge when a required check is absent or failing.
 
 ### RUNTIME-001 — Managed Supabase/runtime verification — **OPEN / REMEDIATION IN PROGRESS**
 
@@ -114,3 +126,4 @@ Previously closed P0/P1 engineering controls remain closed unless new evidence d
 - `docs/runtime/MANAGED_SUPABASE_TEST_RUNBOOK.md`
 - `docs/audit/RULESET_EVIDENCE_2026-08-28.md`
 - GitHub issue #60 — major managed-runtime audit
+- GitHub issue #50 — protect `main` (**closed**)

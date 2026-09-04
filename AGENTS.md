@@ -55,6 +55,12 @@ docs/         Architecture, ops, audits, work packages
 - Tests: API `pytest --cov-fail-under=75`, worker `pytest`, web `npm test` + build.
 - Auth: `AUTH_MODE=local` for Private Beta; JWTs are Supabase-shaped (`PyJWT`).
 - OpenAPI `/docs` is **development-only** (`ENVIRONMENT=development|dev`).
+- Reusable procedures live under `.agents/skills/`; Cursor reviewers under
+  `.cursor/agents/` are independent and read-only.
+- Use `scripts/agent-check.sh quick` while building and `full` before a release
+  verdict. A `NOT-RUN` result is not evidence of a pass.
+- Use the `agent-handoff` skill when responsibility moves between Cursor,
+  Codex, or another repository-aware agent. The recorded SHA is authoritative.
 
 ## Security checklist for every change
 

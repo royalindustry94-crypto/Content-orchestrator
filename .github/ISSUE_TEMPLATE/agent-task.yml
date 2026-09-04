@@ -1,0 +1,61 @@
+name: Agent task
+description: Give Cursor, Codex, or another repository-aware agent a bounded task with explicit authority.
+title: "agent: "
+labels: ["agent-task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This issue is the durable task record. A handoff changes responsibility, not authorization.
+  - type: input
+    id: outcome
+    attributes:
+      label: Required outcome
+      description: Describe the customer-visible or operational result.
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: In scope
+      description: List the files, components, or behavior the agent may change.
+    validations:
+      required: true
+  - type: textarea
+    id: exclusions
+    attributes:
+      label: Out of scope
+      description: State what must not be changed, merged, deployed, published, or accessed.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Acceptance evidence
+      description: List required tests, browser flows, security checks, and runtime proof.
+    validations:
+      required: true
+  - type: dropdown
+    id: authority
+    attributes:
+      label: Granted authority
+      options:
+        - Read-only audit
+        - Implement and test on a feature branch
+        - Implement, test, and push a feature branch
+    validations:
+      required: true
+  - type: input
+    id: recipient
+    attributes:
+      label: Intended agent
+      description: For example cursor-builder, codex-builder, or release-verifier.
+    validations:
+      required: true
+  - type: checkboxes
+    id: gates
+    attributes:
+      label: Protected actions
+      options:
+        - label: I understand merge, deployment, production migration, real spending, customer-data access, and external publishing require separate approval.
+          required: true

@@ -1,0 +1,7 @@
+---
+description: Business Manager web truthfulness, accessibility, responsive behavior, and review-state rules
+globs: apps/web/**/*.{ts,tsx,css,html}
+alwaysApply: false
+---
+
+Follow `apps/web/AGENTS.md`. Verify customer-visible changes at desktop and 390px widths. Preserve truthful failure states and the distinction between workflow completion, Human Review approval, and external publication.

@@ -1,0 +1,28 @@
+{
+  "name": "The Business Manager",
+  "user": "ubuntu",
+  "install": "bash .cursor/cloud/install.sh",
+  "start": "bash .cursor/cloud/start.sh",
+  "chromeExecutablePath": "/usr/local/bin/google-chrome",
+  "ports": [
+    { "name": "api", "port": 8000 },
+    { "name": "web", "port": 5173 }
+  ],
+  "terminals": [
+    {
+      "name": "api",
+      "description": "FastAPI backend with local-only credentials; readiness is /health/ready.",
+      "command": ". .venv/bin/activate && set -a && . ./.env && set +a && cd apps/api && exec uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
+    },
+    {
+      "name": "worker",
+      "description": "Draft Desk worker; idles until a worker credential is provisioned.",
+      "command": ". .venv/bin/activate && set -a && . ./.env && set +a && cd apps/worker && exec python -m worker.main"
+    },
+    {
+      "name": "web",
+      "description": "The Business Manager Vite application.",
+      "command": "cd apps/web && exec npm run dev -- --host 127.0.0.1 --port 5173 --strictPort"
+    }
+  ]
+}

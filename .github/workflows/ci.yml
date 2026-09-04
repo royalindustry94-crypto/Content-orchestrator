@@ -48,6 +48,12 @@ jobs:
           alembic upgrade head
       - name: Lint
         run: ruff check .
+      - name: Validate agent configuration
+        run: python ../../scripts/validate_agent_config.py
+      - name: Test agent safety tooling
+        run: python ../../scripts/test_agent_tooling.py
+      - name: Validate published agent handoffs
+        run: python ../../scripts/agent_handoff.py validate-all
       - name: Test with coverage gate
         run: pytest --cov=app --cov-fail-under=75
 

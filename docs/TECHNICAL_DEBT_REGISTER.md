@@ -1,8 +1,10 @@
 # Technical Debt Register
 
-**Repository:** Content Orchestrator  
-**Updated:** 2026-08-28  
-**Current reference:** `main` after PR #49 governance merge
+**Repository:** Content Orchestrator
+
+**Updated:** 2026-09-03
+
+**Current reference:** `main` at `abb20981f68cb0de8e3ed75af9759e0b5b6fb656` after PR #51
 
 Severity: CRITICAL · HIGH · MEDIUM · LOW · INFO
 
@@ -11,20 +13,6 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 ---
 
 ## Current open debt
-
-### HIGH
-
-### TD-070 — `main` branch protection disabled — **OPEN**
-
-| Field | Value |
-|---|---|
-| Severity | HIGH |
-| Evidence | GitHub reports `main` unprotected with no required status checks enforced; tracked by issue #50 |
-| Risk | Direct push or unverified merge can bypass the audited workflow |
-| Recommendation | Require PRs, relevant CI gates, block force push/deletion, tightly control emergency bypass, then independently re-read protection/ruleset state |
-| Effort | S |
-
----
 
 ### MEDIUM
 
@@ -84,6 +72,19 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 
 ## Recently closed / superseded debt
 
+### TD-070 — `main` branch protection disabled — **CLOSED**
+
+Issue #50 is closed. A live GitHub re-probe on 2026-09-03 confirmed `main`
+reports protected and repository ruleset `Protect main` (`21731627`) is active
+for the default branch. It requires a pull request, one approval, stale-approval
+dismissal, last-push approval, resolved conversations and strict success from
+`api`, `worker`, `web`, `security`, `docker-build` and `browser-smoke`. Deletion
+and non-fast-forward updates are blocked. There are no bypass actors and the
+connected user reports `current_user_can_bypass: never`.
+
+This closes the technical enforcement debt; exact-head audit and CI evidence
+remain required for every candidate.
+
 ### TD-032 — No web E2E — **CLOSED / SUPERSEDED**
 
 The old record said the web had Vitest-only coverage. That is no longer accurate.
@@ -134,8 +135,7 @@ The following previously resolved controls remain closed unless new evidence sho
 
 ## Current burn-down priority
 
-1. **TD-070 / issue #50:** technically protect `main`.
-2. **TD-071:** establish managed Supabase/runtime evidence.
-3. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
-4. Activate cost-bearing providers one at a time with spend, retry, idempotency and Human Review controls.
-5. Raise coverage/security/observability depth based on measured risk, not feature-count pressure.
+1. **TD-071:** establish managed Supabase/runtime evidence.
+2. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
+3. Activate cost-bearing providers one at a time with spend, retry, idempotency and Human Review controls.
+4. Raise coverage/security/observability depth based on measured risk, not feature-count pressure.
