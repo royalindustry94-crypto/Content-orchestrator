@@ -31,7 +31,7 @@ class AuditFinding:
     summary: str
     gate: str
     deterministic_repair: bool = False
-    remediation_command: tuple[str, ...] | None = None
+    remediation_command: tuple[tuple[str, ...], ...] | None = None
 
 
 @dataclasses.dataclass(frozen=True)
@@ -54,18 +54,28 @@ PROHIBITED_PATH_PREFIXES = (
 )
 
 ALLOWED_REMEDIATION_PATTERNS = (
-    re.compile(r"^docs/.+\\.md$"),
-    re.compile(r"^.+\\.md$"),
-    re.compile(r"^.+\\.(py|ts|tsx|js|jsx|json|yml|yaml|snap)$"),
+    re.compile(r"^docs/.+\.md$"),
+    re.compile(r"^.+\.md$"),
+    re.compile(r"^.+\.(py|ts|tsx|js|jsx|json|yml|yaml|snap)$"),
 )
 
-SAFE_AUTOFIX_STEPS: dict[tuple[str, str], tuple[str, ...]] = {
-    ("api", "Lint"): ("pip", "install", "-e", ".[dev]", "&&", "ruff", "check", ".", "--fix"),
-    ("worker", "Lint"): ("pip", "install", "-e", ".[dev]", "&&", "ruff", "check", ".", "--fix"),
-    ("web", "Lint"): ("npm", "ci", "&&", "npm", "run", "lint", "--", "--fix"),
+SAFE_AUTOFIX_STEPS: dict[tuple[str, str], tuple[tuple[str, ...], ...]] = {
+    ("api", "Lint"): (
+        ("pip", "install", "-e", ".[dev]"),
+        ("ruff", "check", ".", "--fix"),
+    ),
+    ("worker", "Lint"): (
+        ("pip", "install", "-e", ".[dev]"),
+        ("ruff", "check", ".", "--fix"),
+    ),
+    ("web", "Lint"): (
+        ("npm", "ci"),
+        ("npm", "run", "lint", "--", "--fix"),
+    ),
 }
 
 CRITICAL_GATES = frozenset({"security", "browser-smoke", "docker-build", "api"})
+AUTO_REMEDIATION_BRANCH_PREFIX = "auto-remediation/"
 
 
 class GitHubClient:
@@ -102,8 +112,9 @@ class GitHubClient:
         workflow: str,
         event: str | None = None,
         branch: str | None = None,
+        page: int = 1,
     ) -> list[dict]:
-        params = {"per_page": "20"}
+        params = {"per_page": "20", "page": str(page)}
         if event:
             params["event"] = event
         if branch:
@@ -118,6 +129,9 @@ class GitHubClient:
     def list_jobs(self, run_id: int) -> list[dict]:
         payload = self._request("GET", f"/actions/runs/{run_id}/jobs?per_page=100")
         return payload.get("jobs", [])
+
+    def get_workflow_run(self, run_id: int) -> dict:
+        return self._request("GET", f"/actions/runs/{run_id}")
 
     def list_pulls_with_head(self, owner: str, branch: str) -> list[dict]:
         query = urllib.parse.urlencode(
@@ -136,6 +150,19 @@ class GitHubClient:
 
 def run_command(command: list[str], cwd: Path) -> subprocess.CompletedProcess[str]:
     return subprocess.run(command, cwd=cwd, text=True, capture_output=True, check=False)
+
+
+def run_checked_command(
+    command: list[str],
+    cwd: Path,
+    *,
+    reason: str,
+) -> subprocess.CompletedProcess[str]:
+    result = run_command(command, cwd=cwd)
+    if result.returncode != 0:
+        output = result.stderr or result.stdout
+        raise RuntimeError(f"{reason} failed: {' '.join(command)}\n{output}")
+    return result
 
 
 def is_prohibited_path(path: str) -> bool:
@@ -183,9 +210,14 @@ def classify_finding(gate_name: str, step_name: str | None, conclusion: str) -> 
     )
 
 
-def remediation_fingerprint(sha: str, finding: AuditFinding) -> str:
-    raw = f"{sha}:{finding.code}:{finding.gate}:{finding.summary}"
+def remediation_fingerprint(sha: str, findings: list[AuditFinding]) -> str:
+    stable = "|".join(sorted(f"{f.code}:{f.gate}:{f.summary}" for f in findings))
+    raw = f"{sha}:{stable}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def is_auto_remediation_branch(branch: str) -> bool:
+    return branch.startswith(AUTO_REMEDIATION_BRANCH_PREFIX)
 
 
 def remediation_decision(changed_paths: list[str]) -> RemediationDecision:
@@ -224,6 +256,9 @@ def summarize_changes(repo_root: Path, last_good_sha: str | None, current_sha: s
         cwd=repo_root,
     )
     lines = [f"Last known-good SHA: {last_good_sha}"]
+    if commits.returncode != 0 or files.returncode != 0:
+        lines.append("Unable to diff against last known-good SHA in this checkout.")
+        return lines
     if commits.stdout.strip():
         lines.append("Commits since last known-good:")
         lines.extend(f"  {line}" for line in commits.stdout.strip().splitlines())
@@ -237,6 +272,8 @@ def compute_verdict(findings: list[AuditFinding]) -> str:
     if any(f.severity == "critical" for f in findings):
         return "FAIL"
     if any(f.severity == "high" for f in findings):
+        return "FAIL"
+    if any(f.severity == "medium" for f in findings):
         return "CONDITIONAL"
     return "PASS"
 
@@ -390,6 +427,19 @@ def git_current_branch(repo_root: Path) -> str:
     return branch
 
 
+def resolve_audit_ref(repo_root: Path) -> str:
+    audit_ref = os.environ.get("AUDIT_REF")
+    if audit_ref:
+        return audit_ref
+    ref_name = os.environ.get("GITHUB_REF_NAME")
+    head_ref = os.environ.get("GITHUB_HEAD_REF")
+    if head_ref:
+        return head_ref
+    if ref_name and ref_name != "HEAD":
+        return ref_name
+    return git_current_branch(repo_root)
+
+
 def find_failed_step(job: dict) -> str | None:
     for step in job.get("steps", []):
         if step.get("conclusion") == "failure":
@@ -399,22 +449,17 @@ def find_failed_step(job: dict) -> str | None:
 
 def wait_for_dispatched_run(
     client: GitHubClient,
-    workflow_file: str,
-    sha: str,
-    branch: str,
+    run_id: int,
     timeout_seconds: int = 5400,
 ) -> dict:
     deadline = time.time() + timeout_seconds
     while time.time() < deadline:
-        runs = client.list_workflow_runs(workflow_file, event="workflow_dispatch", branch=branch)
-        for run in runs:
-            if run.get("head_sha") != sha:
-                continue
-            status = run.get("status")
-            if status == "completed":
-                return run
+        run = client.get_workflow_run(run_id)
+        status = run.get("status")
+        if status == "completed":
+            return run
         time.sleep(20)
-    raise TimeoutError("Timed out waiting for dispatched CI run completion")
+    raise TimeoutError(f"Timed out waiting for CI run {run_id} completion")
 
 
 def find_last_known_good_sha(
@@ -422,11 +467,26 @@ def find_last_known_good_sha(
     workflow_file: str,
     branch: str,
     current_sha: str,
+    repo_root: Path,
 ) -> str | None:
-    runs = client.list_workflow_runs(workflow_file, event=None, branch=branch)
-    for run in runs:
-        if run.get("conclusion") == "success" and run.get("head_sha") != current_sha:
-            return run.get("head_sha")
+    for page in range(1, 11):
+        runs = client.list_workflow_runs(workflow_file, event=None, branch=branch, page=page)
+        if not runs:
+            break
+        for run in runs:
+            if run.get("conclusion") != "success":
+                continue
+            if run.get("event") not in {"push", "workflow_dispatch"}:
+                continue
+            candidate_sha = run.get("head_sha")
+            if not candidate_sha or candidate_sha == current_sha:
+                continue
+            ancestry = run_command(
+                ["git", "merge-base", "--is-ancestor", str(candidate_sha), current_sha],
+                cwd=repo_root,
+            )
+            if ancestry.returncode == 0:
+                return str(candidate_sha)
     return None
 
 
@@ -448,8 +508,12 @@ def perform_remediation(
             cwd = worker_root
         else:
             cwd = web_root
-        command = ["bash", "-lc", " ".join(finding.remediation_command)]
-        run_command(command, cwd=cwd)
+        for command in finding.remediation_command:
+            run_checked_command(
+                list(command),
+                cwd=cwd,
+                reason=f"Applying deterministic remediation for {finding.code}",
+            )
 
     changed_after = set(git_changed_paths(repo_root))
     return sorted(changed_after - changed_before)
@@ -460,15 +524,18 @@ def maybe_create_remediation_pr(
     repo_root: Path,
     owner: str,
     base_branch: str,
+    audited_branch: str,
     sha: str,
     findings: list[AuditFinding],
     client: GitHubClient,
 ) -> str | None:
     if not can_create_remediation_pr(findings):
         return None
+    if is_auto_remediation_branch(audited_branch):
+        return None
 
     deterministic = [finding for finding in findings if finding.deterministic_repair]
-    fingerprint = remediation_fingerprint(sha, deterministic[0])
+    fingerprint = remediation_fingerprint(sha, deterministic)
     branch = f"auto-remediation/{sha[:12]}-{fingerprint[:8]}"
     if client.list_pulls_with_head(owner, branch):
         return None
@@ -476,11 +543,19 @@ def maybe_create_remediation_pr(
     changed_paths = git_changed_paths(repo_root)
     decision = remediation_decision(changed_paths)
     if not decision.allowed:
-        return None
+        raise RuntimeError(decision.reason)
 
-    run_command(["git", "checkout", "-b", branch], cwd=repo_root)
-    run_command(["git", "add", "--"] + changed_paths, cwd=repo_root)
-    run_command(
+    run_checked_command(
+        ["git", "checkout", "-b", branch, sha],
+        cwd=repo_root,
+        reason="Creating remediation branch",
+    )
+    run_checked_command(
+        ["git", "add", "--"] + changed_paths,
+        cwd=repo_root,
+        reason="Staging remediation files",
+    )
+    run_checked_command(
         [
             "git",
             "commit",
@@ -488,8 +563,13 @@ def maybe_create_remediation_pr(
             f"chore: safe deterministic remediation for {sha[:12]}",
         ],
         cwd=repo_root,
+        reason="Committing remediation changes",
     )
-    run_command(["git", "push", "origin", branch], cwd=repo_root)
+    run_checked_command(
+        ["git", "push", "origin", branch],
+        cwd=repo_root,
+        reason="Pushing remediation branch",
+    )
 
     pr = client.create_pull_request(
         title=f"[Auto-remediation][draft] Safe fixes for {sha[:12]}",
@@ -507,12 +587,20 @@ def run_audit() -> int:
     parser = argparse.ArgumentParser(description="Daily audit and safe-remediation worker")
     parser.add_argument("--output-pdf", required=True, help="Path to output PDF artifact")
     parser.add_argument("--ci-workflow", default="ci.yml")
+    parser.add_argument(
+        "--ci-run-id",
+        type=int,
+        required=True,
+        help="Workflow run id for the dispatched CI gates run.",
+    )
     args = parser.parse_args()
 
     token = os.environ.get("GITHUB_TOKEN")
     repository = os.environ.get("GITHUB_REPOSITORY")
     if not token or not repository:
         raise RuntimeError("GITHUB_TOKEN and GITHUB_REPOSITORY are required")
+    if "/" not in repository:
+        raise RuntimeError("GITHUB_REPOSITORY must be in 'owner/repo' format")
 
     owner, repo = repository.split("/", maxsplit=1)
 
@@ -523,19 +611,13 @@ def run_audit() -> int:
     web_root = repo_root / "apps" / "web"
 
     sha = git_current_sha(repo_root)
-    branch = git_current_branch(repo_root)
+    branch = resolve_audit_ref(repo_root)
 
     client = GitHubClient(token=token, owner=owner, repo=repo)
 
-    last_known_good_sha = find_last_known_good_sha(
-        client,
-        "daily-audit-remediation.yml",
-        branch,
-        sha,
-    )
+    last_known_good_sha = find_last_known_good_sha(client, args.ci_workflow, branch, sha, repo_root)
 
-    client.dispatch_workflow(args.ci_workflow, ref=branch)
-    ci_run = wait_for_dispatched_run(client, args.ci_workflow, sha, branch)
+    ci_run = wait_for_dispatched_run(client, args.ci_run_id)
     ci_jobs = client.list_jobs(int(ci_run["id"]))
 
     findings: list[AuditFinding] = []
@@ -568,6 +650,7 @@ def run_audit() -> int:
                 repo_root=repo_root,
                 owner=owner,
                 base_branch="main",
+                audited_branch=branch,
                 sha=sha,
                 findings=remediation_candidates,
                 client=client,
@@ -593,7 +676,7 @@ def run_audit() -> int:
         with Path(summary_path).open("a", encoding="utf-8") as handle:
             handle.write(f"Daily audit completed for `{sha}` with verdict **{verdict}**.\n")
 
-    return 0 if verdict == "PASS" else 1
+    return 1 if verdict == "FAIL" else 0
 
 
 if __name__ == "__main__":
