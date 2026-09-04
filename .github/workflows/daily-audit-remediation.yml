@@ -1,0 +1,89 @@
+name: Daily audit and safe remediation
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 16:00 UTC daily (02:00 AEST / 03:00 AEDT next day in Australia)
+    - cron: "0 16 * * *"
+
+jobs:
+  dispatch-ci:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      target_ref: ${{ steps.dispatch.outputs.target_ref }}
+      target_sha: ${{ steps.dispatch.outputs.target_sha }}
+      ci_run_id: ${{ steps.dispatch.outputs.ci_run_id }}
+    steps:
+      - name: Dispatch CI gates workflow
+        id: dispatch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          GH_REF: ${{ github.ref_name }}
+        run: |
+          target_sha="$(gh api "repos/${GH_REPO}/commits/${GH_REF}" --jq '.sha')"
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "repos/${GH_REPO}/actions/workflows/ci.yml/dispatches" \
+            -f "ref=${GH_REF}" >/dev/null
+          ci_run_id=""
+          for _ in $(seq 1 30); do
+            ci_run_id="$(gh api \
+              "repos/${GH_REPO}/actions/workflows/ci.yml/runs?event=workflow_dispatch&branch=${GH_REF}&per_page=20" \
+              --jq ".workflow_runs[] | select(.head_sha == \"${target_sha}\") | .id" | head -n 1)"
+            if [ -n "${ci_run_id}" ]; then
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "${ci_run_id}" ]; then
+            echo "Failed to resolve dispatched CI run id" >&2
+            exit 1
+          fi
+          echo "target_ref=${GH_REF}" >> "$GITHUB_OUTPUT"
+          echo "target_sha=${target_sha}" >> "$GITHUB_OUTPUT"
+          echo "ci_run_id=${ci_run_id}" >> "$GITHUB_OUTPUT"
+
+  audit:
+    runs-on: ubuntu-latest
+    needs: dispatch-ci
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.dispatch-ci.outputs.target_sha }}
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Generate audit PDF and evaluate remediation
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          AUDIT_REF: ${{ needs.dispatch-ci.outputs.target_ref }}
+        run: |
+          python apps/api/app/services/daily_audit_remediation.py \
+            --output-pdf /tmp/daily-audit-report.pdf \
+            --ci-workflow ci.yml \
+            --ci-run-id "${{ needs.dispatch-ci.outputs.ci_run_id }}"
+
+      - name: Upload daily audit PDF
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-audit-${{ needs.dispatch-ci.outputs.target_sha }}
+          path: /tmp/daily-audit-report.pdf
+          if-no-files-found: error
+          retention-days: 30
