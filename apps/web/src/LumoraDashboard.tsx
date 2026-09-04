@@ -8,6 +8,7 @@ import {
 } from "react";
 import ErrorBoundary from "./ErrorBoundary";
 import { BusinessManagerMark } from "./BusinessManagerMark";
+import ThemeToggle from "./ThemeToggle";
 import { useDialogFocus } from "./useDialogFocus";
 import {
   auditOpportunity,
@@ -2012,6 +2013,7 @@ export default function LumoraDashboard({
             />
           </div>
           <div className="topbar-actions">
+            <ThemeToggle />
             <button
               aria-label="Search"
               aria-expanded={mobileSearchOpen}
