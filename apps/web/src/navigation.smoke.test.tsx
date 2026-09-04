@@ -397,4 +397,19 @@ describe("mobile smoke test", () => {
     fireEvent.click(searchToggle);
     expect(searchToggle.getAttribute("aria-expanded")).toBe("true");
   });
+
+  it("exposes a visual dock that routes to existing Human Review, Money, and workspace views", async () => {
+    renderShell();
+    await screen.findByRole("heading", { name: "Home" });
+    const dock = screen.getByRole("navigation", { name: /quick workspace controls/i });
+    expect(within(dock).getByRole("button", { name: /^Human Review$/i })).toBeDefined();
+    expect(within(dock).getByRole("button", { name: /^Money$/i })).toBeDefined();
+    expect(screen.getByLabelText("Workspace")).toBeDefined();
+    fireEvent.click(within(dock).getByRole("button", { name: /^Human Review$/i }));
+    expect(await screen.findByText(/keeps every publish decision/i)).toBeDefined();
+    fireEvent.click(within(dock).getByRole("button", { name: /^Money$/i }));
+    expect(await screen.findByText(/Cost control/i)).toBeDefined();
+    expect(screen.getAllByText("No cap configured").length).toBeGreaterThan(0);
+    expect(screen.queryByText(/The Business Manager hit an unexpected error/i)).toBeNull();
+  });
 });

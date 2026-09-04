@@ -130,6 +130,7 @@ import {
   isWorkersData,
   type DashboardData,
 } from "./dashboardModel";
+import { NeonCapMeter, UnconnectedWaveChart } from "./CreativeVisuals";
 
 type NavKey =
   | "dashboard"
@@ -239,6 +240,15 @@ const NAV: Array<{ id: NavKey; label: string; icon: IconName }> = [
   { id: "customers", label: "Audience", icon: "customers" },
   { id: "mission", label: "Connections", icon: "mission" },
   { id: "settings", label: "Settings", icon: "settings" },
+];
+
+const DOCK: Array<{ id: NavKey; label: string; icon: IconName; name: string }> = [
+  { id: "dashboard", label: "Home", icon: "dashboard", name: "Home" },
+  { id: "analytics", label: "Insights", icon: "analytics", name: "Insights" },
+  { id: "billing", label: "Money", icon: "billing", name: "Money" },
+  { id: "review", label: "Review", icon: "review", name: "Human Review" },
+  { id: "mission", label: "History", icon: "activity", name: "Connections" },
+  { id: "settings", label: "Info", icon: "settings", name: "Settings" },
 ];
 
 function formatDate(value: string | null | undefined): string {
@@ -394,18 +404,21 @@ function DashboardHome({
           </div>
           <p>Connect a financial source to see verified business performance.</p>
         </header>
-        <div className="financial-overview__circle-grid">
-          {(["Revenue", "Spending", "Net profit", "Profit margin"] as const).map((label) => (
-            <article className="financial-overview__circle-card" key={label}>
-              <span>{label}</span>
-              <div className="financial-overview__circle" aria-label={`${label}: financial source not connected`}>
-                <div>
-                  <strong>Not connected</strong>
-                  <small>Source-backed data required</small>
+        <div className="financial-overview__stage">
+          <UnconnectedWaveChart />
+          <div className="financial-overview__circle-grid">
+            {(["Revenue", "Spending", "Net profit", "Profit margin"] as const).map((label, index) => (
+              <article className={`financial-overview__circle-card financial-overview__circle-card--0${index + 1}`} key={label}>
+                <span>{label}</span>
+                <div className="financial-overview__circle" aria-label={`${label}: financial source not connected`}>
+                  <div>
+                    <strong>Not connected</strong>
+                    <small>Source-backed data required</small>
+                  </div>
                 </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            ))}
+          </div>
         </div>
       </section>
 
@@ -1279,6 +1292,20 @@ function ContentDepartmentView({
 function BillingView({ spend, cost }: { spend: SpendDashboard; cost: CostControl }) {
   return (
     <>
+      <section className="spend-hero" aria-label="Workspace spend controls">
+        <header className="spend-hero__header">
+          <div>
+            <p className="financial-overview__eyebrow">Spend controls</p>
+            <h3>Provider spend</h3>
+            <p>Daily and monthly caps stay fail-closed. This view shows workspace-scoped provider cost only — not business profit.</p>
+          </div>
+        </header>
+        <UnconnectedWaveChart tone="cyan" label="Spend visualization shell — series appear after provider usage is recorded" />
+        <div className="spend-hero__caps">
+          <NeonCapMeter cap={spend.daily_cap_usd} label="Daily cap" remaining={spend.budget_remaining_daily_usd} />
+          <NeonCapMeter cap={spend.monthly_cap_usd} label="Monthly cap" remaining={spend.budget_remaining_monthly_usd} />
+        </div>
+      </section>
       <div className="compact-metrics">
         <article><span>Spend today</span><strong>{money(spend.today_usd)}</strong></article>
         <article><span>Spend this month</span><strong>{money(spend.month_usd)}</strong></article>
@@ -1901,7 +1928,7 @@ export default function LumoraDashboard({
   };
 
   return (
-    <div className="lumora-shell">
+    <div className="lumora-shell creative-workspace">
       <CommandPalette navigate={(target) => {
         if (target === "logs") {
           navigateToMissionTab("logs");
@@ -2107,6 +2134,21 @@ export default function LumoraDashboard({
           </div>
         </main>
       </div>
+      <nav aria-label="Quick workspace controls" className="creative-dock">
+        {DOCK.map((item) => (
+          <button
+            aria-current={nav === item.id ? "page" : undefined}
+            aria-label={item.name}
+            className={nav === item.id ? "creative-dock__link creative-dock__link--active" : "creative-dock__link"}
+            key={item.id}
+            onClick={() => navigate(item.id)}
+            type="button"
+          >
+            <Icon name={item.icon} size={16} />
+            <span>{item.label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }

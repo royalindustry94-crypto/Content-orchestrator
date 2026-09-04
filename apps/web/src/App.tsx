@@ -120,7 +120,7 @@ export default function App() {
   }
 
   return (
-    <main className="auth-shell auth-shell--approved">
+    <main className="auth-shell auth-shell--approved creative-workspace">
       <section className="auth-card" aria-labelledby="auth-title">
         <div className="auth-lockup" aria-label="The Business Manager — Business Operating System">
           <BusinessManagerMark className="auth-lockup__mark" />

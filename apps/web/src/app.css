@@ -3633,3 +3633,470 @@ button.side-link--active {
   .compliance-hero h2 { font-size: 1.65rem; }
   .compliance-not-configured { font-size: .78rem; }
 }
+
+/*
+ * Creative Workspace visual theme
+ * Original CSS recreation of a dark neon dashboard language.
+ * Does not embed Adobe Stock #235999682 or any purchased template file.
+ * Control copy, Human Review, spend fail-closed states, and workspace
+ * isolation are unchanged; this layer restyles chrome only.
+ */
+:root {
+  --paper: #121212;
+  --panel: #1a1c22;
+  --panel-raised: #22242c;
+  --panel-soft: #16181e;
+  --line: rgba(255, 255, 255, 0.08);
+  --line-soft: rgba(255, 255, 255, 0.05);
+  --ink: #f7f8fa;
+  --muted: #9aa0ae;
+  --muted-strong: #d5dae3;
+  --accent: #ff4d8d;
+  --accent-bright: #ff8a4c;
+  --accent-dark: #2a1220;
+  --accent-cyan: #2de2e6;
+  --accent-lime: #b8f54a;
+  --hot-gradient: linear-gradient(90deg, #ff4d8d 0%, #ff8a4c 100%);
+  --cyan-glow: rgba(45, 226, 230, 0.18);
+  background: #121212;
+  color-scheme: dark;
+}
+
+body,
+#root,
+.auth-shell,
+.lumora-workspace,
+.lumora-shell {
+  background: #121212;
+  color: var(--ink);
+}
+
+body {
+  background-image:
+    radial-gradient(circle at 12% -8%, rgba(45, 226, 230, 0.16), transparent 28rem),
+    radial-gradient(circle at 88% 0%, rgba(255, 77, 141, 0.14), transparent 26rem),
+    linear-gradient(180deg, #14161c 0%, #121212 38%);
+}
+
+.creative-workspace .lumora-workspace {
+  position: relative;
+  isolation: isolate;
+}
+
+.creative-workspace .lumora-workspace::before {
+  position: absolute;
+  inset: 0 0 auto 0;
+  z-index: 0;
+  height: 18rem;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 18px,
+      rgba(45, 226, 230, 0.045) 18px 19px
+    ),
+    repeating-linear-gradient(
+      180deg,
+      transparent 0 22px,
+      rgba(255, 77, 141, 0.04) 22px 23px
+    ),
+    radial-gradient(circle at 18% 20%, rgba(45, 226, 230, 0.12), transparent 18rem);
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.85), transparent 92%);
+  content: "";
+}
+
+.lumora-sidebar,
+.topbar,
+.sidebar-foot,
+.surface,
+.business-section,
+.financial-overview,
+.ask-business,
+.review-card,
+.worker-card,
+.department-card,
+.decision-card,
+.saas-metric,
+.compact-metrics article,
+.research-status-grid article,
+.producer-status-grid article,
+.compliance-status-grid > div,
+.compliance-chain-grid > div {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(26, 28, 34, 0.88);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.22);
+  backdrop-filter: blur(18px);
+}
+
+.lumora-sidebar {
+  background: rgba(12, 13, 16, 0.96);
+  border-right-color: rgba(255, 255, 255, 0.06);
+}
+
+.brand,
+.topbar {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+.topbar {
+  background: rgba(18, 18, 18, 0.82);
+  backdrop-filter: blur(22px);
+}
+
+.brand-copy small,
+.mobile-brand small,
+.page-kicker,
+.text-button,
+.financial-overview__eyebrow,
+.ask-business__eyebrow,
+.auth-link,
+.auth-shell--approved .auth-lockup__subtitle,
+.business-launch span,
+.department-card__state,
+.research-opportunity header,
+.producer-boundaries__grid strong {
+  color: #ff8a4c;
+}
+
+button.side-link--active {
+  border-color: rgba(255, 77, 141, 0.28);
+  background: linear-gradient(90deg, rgba(255, 77, 141, 0.18), rgba(255, 138, 76, 0.06));
+  box-shadow: inset 2px 0 #ff4d8d;
+  color: #fff;
+}
+
+.side-link--active .ui-icon {
+  color: #ff6b8a;
+}
+
+.button--primary,
+.auth-submit {
+  border: 0;
+  background: var(--hot-gradient);
+  color: #16120f;
+  box-shadow: 0 10px 28px rgba(255, 77, 141, 0.28);
+}
+
+.button--primary:hover,
+.auth-submit:hover {
+  background: linear-gradient(90deg, #ff6b8a 0%, #ffb056 100%);
+  color: #16120f;
+}
+
+.button--approve {
+  border-color: rgba(184, 245, 74, 0.28);
+  background: rgba(184, 245, 74, 0.1);
+  color: #c8ff7a;
+}
+
+.auth-form--approved input,
+.ask-business__form input,
+.workspace-switcher,
+.topbar-search .global-search > input,
+.icon-button {
+  border-color: rgba(255, 255, 255, 0.1);
+  background: #16181e;
+}
+
+.auth-form--approved input:focus,
+.ask-business__form input:focus,
+.inline-form input:focus {
+  border-color: #2de2e6;
+  outline: 2px solid rgba(45, 226, 230, 0.22);
+}
+
+.auth-remember input {
+  accent-color: #ff4d8d;
+}
+
+.auth-shell--approved {
+  background:
+    radial-gradient(circle at 16% 8%, rgba(45, 226, 230, 0.16), transparent 28rem),
+    radial-gradient(circle at 86% 12%, rgba(255, 77, 141, 0.14), transparent 24rem),
+    #101114;
+}
+
+.business-launch {
+  background:
+    radial-gradient(circle at 50% 42%, rgba(255, 77, 141, 0.16), transparent 18rem),
+    #101114;
+}
+
+.business-launch::before {
+  border-color: rgba(255, 77, 141, 0.22);
+  box-shadow: 0 0 0 34px rgba(45, 226, 230, 0.03), 0 0 0 84px rgba(255, 77, 141, 0.025);
+}
+
+.financial-overview {
+  border-radius: 20px;
+  border-color: rgba(255, 77, 141, 0.16);
+  background:
+    linear-gradient(160deg, rgba(255, 77, 141, 0.1), transparent 42%),
+    rgba(22, 24, 30, 0.92);
+}
+
+.financial-overview__stage {
+  display: grid;
+  gap: 1rem;
+}
+
+.financial-overview__circle-card {
+  border-radius: 18px;
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(16, 17, 22, 0.72);
+}
+
+.financial-overview__circle-card > span {
+  color: #ff8a4c;
+}
+
+.financial-overview__circle-card--01 .financial-overview__circle {
+  background:
+    linear-gradient(#16181e, #16181e) padding-box,
+    linear-gradient(135deg, #ff4d8d, #ff8a4c) border-box;
+  box-shadow: 0 0 0 7px rgba(255, 77, 141, 0.06), 0 16px 28px rgba(0, 0, 0, 0.28);
+}
+
+.financial-overview__circle-card--02 .financial-overview__circle {
+  background:
+    linear-gradient(#16181e, #16181e) padding-box,
+    linear-gradient(135deg, #2de2e6, #4d8dff) border-box;
+  box-shadow: 0 0 0 7px rgba(45, 226, 230, 0.06), 0 16px 28px rgba(0, 0, 0, 0.28);
+}
+
+.financial-overview__circle-card--03 .financial-overview__circle {
+  background:
+    linear-gradient(#16181e, #16181e) padding-box,
+    linear-gradient(135deg, #b8f54a, #2de2e6) border-box;
+  box-shadow: 0 0 0 7px rgba(184, 245, 74, 0.06), 0 16px 28px rgba(0, 0, 0, 0.28);
+}
+
+.financial-overview__circle-card--04 .financial-overview__circle {
+  background:
+    linear-gradient(#16181e, #16181e) padding-box,
+    linear-gradient(135deg, #c084fc, #ff4d8d) border-box;
+  box-shadow: 0 0 0 7px rgba(192, 132, 252, 0.06), 0 16px 28px rgba(0, 0, 0, 0.28);
+}
+
+.financial-overview__circle::before {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.creative-wave {
+  margin: 0;
+  padding: 0.2rem 0.15rem 0;
+}
+
+.creative-wave svg {
+  display: block;
+  width: 100%;
+  height: 118px;
+}
+
+.creative-wave figcaption {
+  margin-top: 0.35rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.decision-card {
+  border-radius: 16px;
+  border-left-color: #ff8a4c;
+  background: rgba(16, 17, 22, 0.86);
+}
+
+.decision-card--critical { border-left-color: #f4778b; }
+.decision-card--warning { border-left-color: #ffb056; }
+
+.department-card,
+.review-card,
+.worker-card {
+  border-radius: 16px;
+}
+
+.ask-business {
+  border-radius: 18px;
+  border-color: rgba(45, 226, 230, 0.18);
+  background:
+    linear-gradient(110deg, rgba(45, 226, 230, 0.1), rgba(16, 17, 22, 0.94) 46%);
+}
+
+.live-indicator {
+  border-color: rgba(45, 226, 230, 0.28);
+  background: rgba(45, 226, 230, 0.08);
+  color: #8ff6f8;
+}
+
+.spend-hero {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  padding: clamp(1rem, 2.4vw, 1.5rem);
+  border: 1px solid rgba(45, 226, 230, 0.16);
+  border-radius: 20px;
+  background:
+    linear-gradient(150deg, rgba(45, 226, 230, 0.1), transparent 46%),
+    rgba(22, 24, 30, 0.92);
+}
+
+.spend-hero__header {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.spend-hero__header h3 {
+  margin: 0;
+  font-size: clamp(1.3rem, 2.4vw, 1.85rem);
+  letter-spacing: -0.04em;
+}
+
+.spend-hero__header p {
+  margin: 0.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+.spend-hero__caps {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.neon-cap {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.neon-cap__copy {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  color: var(--muted);
+  font-size: 0.7rem;
+}
+
+.neon-cap__copy strong {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.neon-cap__track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.neon-cap__track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--hot-gradient);
+}
+
+.neon-cap__track--empty i {
+  width: 0;
+}
+
+.creative-dock {
+  display: none;
+}
+
+@media (max-width: 760px) {
+  .creative-dock {
+    position: fixed;
+    z-index: 55;
+    right: 0.7rem;
+    bottom: 0.7rem;
+    left: 0.7rem;
+    display: grid;
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    gap: 0.15rem;
+    padding: 0.45rem 0.35rem 0.4rem;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 22px;
+    background: rgba(16, 17, 22, 0.92);
+    box-shadow: 0 16px 40px rgba(0, 0, 0, 0.38);
+    backdrop-filter: blur(22px);
+  }
+
+  .creative-dock button {
+    display: grid;
+    justify-items: center;
+    gap: 0.18rem;
+    min-height: 52px;
+    padding: 0.35rem 0.1rem;
+    border: 0;
+    border-radius: 14px;
+    background: transparent;
+    color: #8b91a0;
+    font-size: 0.52rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .creative-dock button span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .creative-dock .creative-dock__link--active {
+    background: rgba(255, 77, 141, 0.14);
+    color: #fff;
+  }
+
+  .creative-workspace .lumora-main {
+    padding-bottom: 5.6rem;
+  }
+
+  .spend-hero__header,
+  .spend-hero__caps {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+}
+
+.creative-dock__link--active {
+  background: rgba(255, 77, 141, 0.14);
+  color: #fff;
+}
+
+.workspace-avatar {
+  border-color: rgba(45, 226, 230, 0.28);
+  background: rgba(45, 226, 230, 0.1);
+  color: #8ff6f8;
+}
+
+.profile-button > span {
+  background: var(--hot-gradient);
+  color: #16120f;
+}
+
+.research-not-configured,
+.research-command,
+.strategy-opportunity-picker,
+.content-package,
+.producer-not-configured,
+.compliance-not-configured {
+  border-color: rgba(255, 77, 141, 0.2);
+}
+
+.research-not-configured,
+.producer-not-configured,
+.compliance-not-configured {
+  border-left-color: #ff8a4c;
+  background: rgba(255, 77, 141, 0.06);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .creative-workspace .lumora-workspace::before {
+    background: rgba(45, 226, 230, 0.04);
+  }
+}
