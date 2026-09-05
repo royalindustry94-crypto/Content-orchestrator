@@ -34,7 +34,7 @@ down_revision: str | None = "0052"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-_READ = ["admin", "editor", "reviewer", "viewer"]
+_READ = ["admin", "editor", "reviewer"]
 _AUTHOR = ["admin", "editor"]
 _REVIEW = ["admin", "reviewer"]
 
