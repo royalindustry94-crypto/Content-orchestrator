@@ -81,6 +81,7 @@ function StatusBar() {
 function Wave({ tone, uid }: { tone: "lime" | "cyan"; uid: string }) {
   const stroke = tone === "cyan" ? "#00D9FF" : "#B8F54A";
   const mid = tone === "cyan" ? "#3D8BFF" : "#00D9FF";
+  const accent = tone === "cyan" ? "#FF9A00" : "#FF007A";
   const id = `tpl-wave-${tone}-${uid}`;
   return (
     <svg className="tpl-wave" viewBox="0 0 320 118" aria-hidden="true">
@@ -116,6 +117,13 @@ function Wave({ tone, uid }: { tone: "lime" | "cyan"; uid: string }) {
         stroke={mid}
         strokeWidth="1.4"
       />
+      <path
+        d="M0 92 C 36 70, 70 108, 108 86 S 168 48, 208 72 258 110, 292 90 320 62, 320 62"
+        fill="none"
+        opacity="0.35"
+        stroke={accent}
+        strokeWidth="1.1"
+      />
     </svg>
   );
 }
@@ -126,14 +134,14 @@ function Donut({
   value,
 }: {
   label: string;
-  tone: "cyan" | "lime" | "teal" | "blue";
+  tone: "cyan" | "lime" | "teal" | "hot";
   value: number;
 }) {
   const colors = {
     cyan: "#00D9FF",
     lime: "#B8F54A",
     teal: "#2DE2B8",
-    blue: "#3D8BFF",
+    hot: "#FF007A",
   };
   const circumference = 2 * Math.PI * 15.5;
   const dash = (value / 100) * circumference;
@@ -169,9 +177,10 @@ function SampleRing({ uid }: { uid: string }) {
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor="#00D9FF" />
-            <stop offset="38%" stopColor="#3D8BFF" />
-            <stop offset="72%" stopColor="#B8F54A" />
-            <stop offset="100%" stopColor="#2DE2B8" />
+            <stop offset="42%" stopColor="#3D8BFF" />
+            <stop offset="74%" stopColor="#B8F54A" />
+            <stop offset="90%" stopColor="#FF9A00" />
+            <stop offset="100%" stopColor="#FF007A" />
           </linearGradient>
           <filter id={glowId} x="-40%" y="-40%" width="180%" height="180%">
             <feGaussianBlur stdDeviation="3.6" result="blur" />
@@ -223,7 +232,7 @@ function ScreenBody({ screen, uid }: { screen: Screen; uid: string }) {
           <Donut label="01" tone="cyan" value={78} />
           <Donut label="02" tone="lime" value={56} />
           <Donut label="03" tone="teal" value={84} />
-          <Donut label="04" tone="blue" value={42} />
+          <Donut label="04" tone="hot" value={42} />
         </div>
       </>
     );
@@ -274,7 +283,7 @@ function ScreenBody({ screen, uid }: { screen: Screen; uid: string }) {
             <li><i className="tpl-swatch tpl-swatch--cyan" /> Cyan</li>
             <li><i className="tpl-swatch tpl-swatch--blue" /> Blue</li>
             <li><i className="tpl-swatch tpl-swatch--lime" /> Lime</li>
-            <li><i className="tpl-swatch tpl-swatch--teal" /> Teal</li>
+            <li><i className="tpl-swatch tpl-swatch--hot" /> Magenta</li>
           </ul>
         </div>
       </>

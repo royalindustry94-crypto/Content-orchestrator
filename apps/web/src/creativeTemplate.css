@@ -4,10 +4,11 @@
   overflow-x: hidden;
   background:
     radial-gradient(circle at 8% -6%, rgba(0, 217, 255, 0.28), transparent 28rem),
-    radial-gradient(circle at 94% 2%, rgba(184, 245, 74, 0.18), transparent 26rem),
-    radial-gradient(circle at 50% 110%, rgba(61, 139, 255, 0.16), transparent 30rem),
+    radial-gradient(circle at 94% 2%, rgba(184, 245, 74, 0.16), transparent 24rem),
+    radial-gradient(circle at 78% 8%, rgba(255, 0, 122, 0.08), transparent 18rem),
+    radial-gradient(circle at 50% 110%, rgba(61, 139, 255, 0.14), transparent 30rem),
     repeating-linear-gradient(90deg, transparent 0 28px, rgba(0, 217, 255, 0.045) 28px 29px),
-    repeating-linear-gradient(180deg, transparent 0 28px, rgba(184, 245, 74, 0.035) 28px 29px),
+    repeating-linear-gradient(180deg, transparent 0 28px, rgba(184, 245, 74, 0.03) 28px 29px),
     #0d0d10;
   color: #fff;
   font-family: Inter, "Segoe UI", sans-serif;
@@ -43,7 +44,7 @@
 }
 
 .tpl-topbar__back {
-  background: linear-gradient(90deg, #00d9ff, #b8f54a);
+  background: linear-gradient(90deg, #00d9ff 0%, #b8f54a 78%, #ff9a00 100%);
   color: #0d1210;
 }
 
@@ -234,8 +235,8 @@
 .tpl-face--four {
   background:
     radial-gradient(circle at 50% 30%, #f3c6a8 0 21%, transparent 22%),
-    radial-gradient(circle at 50% 80%, #c084fc 0 34%, transparent 35%),
-    linear-gradient(135deg, #2de2b8, #b8f54a);
+    radial-gradient(circle at 50% 80%, #ff007a 0 34%, transparent 35%),
+    linear-gradient(135deg, #ff007a, #ff9a00);
 }
 
 .tpl-card {
@@ -284,7 +285,7 @@
 
 .tpl-donut--lime svg { filter: drop-shadow(0 0 8px rgba(184, 245, 74, 0.3)); }
 .tpl-donut--teal svg { filter: drop-shadow(0 0 8px rgba(45, 226, 184, 0.3)); }
-.tpl-donut--blue svg { filter: drop-shadow(0 0 8px rgba(61, 139, 255, 0.3)); }
+.tpl-donut--hot svg { filter: drop-shadow(0 0 8px rgba(255, 0, 122, 0.32)); }
 
 .tpl-ring {
   position: relative;
@@ -330,7 +331,7 @@
   grid-column: 1 / -1;
   height: 4px;
   border-radius: 999px;
-  background: linear-gradient(90deg, #00d9ff, #b8f54a);
+  background: linear-gradient(90deg, #00d9ff 0%, #b8f54a 82%, #ff9a00 100%);
   box-shadow: 0 0 10px rgba(0, 217, 255, 0.35);
 }
 
@@ -346,7 +347,7 @@
 .tpl-mini-bars span {
   flex: 1;
   border-radius: 7px 7px 2px 2px;
-  background: linear-gradient(180deg, #00d9ff, #b8f54a);
+  background: linear-gradient(180deg, #00d9ff 0%, #b8f54a 78%, #ff9a00 100%);
   box-shadow: 0 0 12px rgba(184, 245, 74, 0.22);
 }
 
@@ -375,7 +376,7 @@
   border-radius: 50%;
   background:
     radial-gradient(circle at 50% 50%, #1c1c21 0 34%, transparent 35%),
-    conic-gradient(#00d9ff 0 35%, #3d8bff 35% 58%, #b8f54a 58% 82%, #2de2b8 82% 100%);
+    conic-gradient(#00d9ff 0 38%, #3d8bff 38% 64%, #b8f54a 64% 84%, #ff007a 84% 93%, #ff9a00 93% 100%);
   box-shadow: 0 0 22px rgba(0, 217, 255, 0.22);
 }
 
@@ -403,7 +404,7 @@
 .tpl-swatch--cyan { background: #00d9ff; }
 .tpl-swatch--blue { background: #3d8bff; }
 .tpl-swatch--lime { background: #b8f54a; }
-.tpl-swatch--teal { background: #2de2b8; }
+.tpl-swatch--hot { background: #ff007a; }
 
 .tpl-calendar {
   display: grid;
@@ -420,8 +421,8 @@
 }
 .tpl-calendar__day--empty { visibility: hidden; }
 .tpl-calendar__day--hot {
-  background: linear-gradient(135deg, #00d9ff, #b8f54a);
-  box-shadow: 0 0 14px rgba(0, 217, 255, 0.4);
+  background: linear-gradient(135deg, #ff007a, #ff9a00);
+  box-shadow: 0 0 14px rgba(255, 0, 122, 0.4);
   color: #16120f;
   font-weight: 800;
 }

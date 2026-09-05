@@ -23,7 +23,7 @@ This repository therefore ships only converted app code. Keep any purchased down
 
 ## Visual template gallery
 
-`#/template` (also “View neon dashboard template” on sign-in) opens an original five-phone kit on a dark grid — Dashboard, Stats, Transfer, Planning, History — in charcoal `#121212` / panel `#1C1C21` with a cyan `#00D9FF` / blue `#3D8BFF` / lime `#B8F54A` / teal `#2DE2B8` lead. Sample figures such as `$1,490.00` are decorative template chrome and never appear on Home Bankroll.
+`#/template` (also “View neon dashboard template” on sign-in) opens an original five-phone kit on a dark grid — Dashboard, Stats, Transfer, Planning, History. Cyan `#00D9FF`, blue `#3D8BFF`, lime `#B8F54A`, and teal `#2DE2B8` lead. Magenta `#FF007A` and orange `#FF9A00` stay as small accents. Sample figures such as `$1,490.00` are decorative template chrome and never appear on Home Bankroll.
 
 ## Public visual preview
 

@@ -3656,7 +3656,7 @@ button.side-link--active {
   --accent-dark: #102428;
   --accent-cyan: #2de2e6;
   --accent-lime: #b8f54a;
-  --hot-gradient: linear-gradient(90deg, #00d9ff 0%, #b8f54a 100%);
+  --hot-gradient: linear-gradient(90deg, #00d9ff 0%, #b8f54a 82%, #ff9a00 100%);
   --cyan-glow: rgba(45, 226, 230, 0.18);
   background: #121212;
   color-scheme: dark;
@@ -3675,6 +3675,7 @@ body {
   background-image:
     radial-gradient(circle at 12% -8%, rgba(45, 226, 230, 0.16), transparent 28rem),
     radial-gradient(circle at 88% 0%, rgba(184, 245, 74, 0.12), transparent 26rem),
+    radial-gradient(circle at 72% 4%, rgba(255, 0, 122, 0.07), transparent 18rem),
     linear-gradient(180deg, #14161c 0%, #121212 38%);
 }
 
@@ -3779,7 +3780,7 @@ button.side-link--active {
 
 .button--primary:hover,
 .auth-submit:hover {
-  background: linear-gradient(90deg, #00d9ff 0%, #b8f54a 100%);
+  background: linear-gradient(90deg, #00d9ff 0%, #b8f54a 78%, #ff9a00 100%);
   color: #16120f;
 }
 
