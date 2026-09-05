@@ -242,6 +242,7 @@ describe("dashboard navigation smoke test", () => {
     }
     expect(screen.getAllByText("Not connected").length).toBe(4);
     expect(screen.getAllByText("Source-backed data required").length).toBe(4);
+    expect(screen.getAllByText("30D").length).toBe(4);
     expect(screen.queryByText(/\$0/)).toBeNull();
   });
 

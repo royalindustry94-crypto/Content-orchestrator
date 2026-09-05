@@ -130,7 +130,7 @@ import {
   isWorkersData,
   type DashboardData,
 } from "./dashboardModel";
-import { NeonCapMeter, UnconnectedWaveChart } from "./CreativeVisuals";
+import { BankrollQuad, NeonCapMeter, UnconnectedWaveChart } from "./CreativeVisuals";
 
 type NavKey =
   | "dashboard"
@@ -405,20 +405,7 @@ function DashboardHome({
           <p>Connect a financial source to see verified business performance.</p>
         </header>
         <div className="financial-overview__stage">
-          <UnconnectedWaveChart />
-          <div className="financial-overview__circle-grid">
-            {(["Revenue", "Spending", "Net profit", "Profit margin"] as const).map((label, index) => (
-              <article className={`financial-overview__circle-card financial-overview__circle-card--0${index + 1}`} key={label}>
-                <span>{label}</span>
-                <div className="financial-overview__circle" aria-label={`${label}: financial source not connected`}>
-                  <div>
-                    <strong>Not connected</strong>
-                    <small>Source-backed data required</small>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
+          <BankrollQuad />
         </div>
       </section>
 

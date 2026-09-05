@@ -43,3 +43,4 @@ Preview rules:
 - Workspace switcher and membership-scoped API calls are unchanged.
 - Spend reads still come from workspace spend/cost-control endpoints; caps remain fail-closed.
 - Home Bankroll still renders **Not connected** until a financial source exists. No synthetic `$0`, profit, or completion percentage was added.
+- Home uses a 2×2 ring layout (Revenue, Spending, Net profit, Profit margin) with 3D–1Y range pills. Changing a range does not invent a series.

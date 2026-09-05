@@ -3299,52 +3299,83 @@ button.side-link--active {
 /* Founder direction override: four financial circles on Home. */
 .financial-overview__circle-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: clamp(.75rem, 1.5vw, 1.2rem);
-  align-items: start;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(1rem, 2.4vw, 1.8rem) clamp(0.85rem, 2vw, 1.6rem);
+  align-items: stretch;
 }
 .financial-overview__circle-card {
-  display: grid;
-  justify-items: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.62rem;
   min-width: 0;
-  padding: .9rem .7rem .75rem;
-  border: 1px solid rgba(212,175,55,.14);
-  border-radius: 13px;
-  background: rgba(10,13,18,.54);
+  padding: 0.35rem 0.2rem;
+  border: 0;
+  background: transparent;
+}
+.financial-overview__circle-card.is-flipped {
+  flex-direction: column-reverse;
 }
 .financial-overview__circle-card > span {
-  margin-bottom: .58rem;
-  color: #E2C45A;
-  font-size: .68rem;
+  color: #B8F54A;
+  font-size: clamp(0.72rem, 1.3vw, 0.92rem);
   font-weight: 780;
-  letter-spacing: .11em;
+  letter-spacing: 0.14em;
   text-align: center;
   text-transform: uppercase;
+}
+.bankroll-period {
+  display: flex;
+  width: min(100%, 228px);
+  padding: 2px;
+  border: 1px solid rgba(184, 245, 74, 0.22);
+  border-radius: 999px;
+  background: rgba(18, 18, 18, 0.72);
+}
+.bankroll-period__tab {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 22px;
+  padding: 0.18rem 0.08rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: #8b91a0;
+  font-size: 0.56rem;
+  font-weight: 750;
+  letter-spacing: 0.03em;
+}
+.bankroll-period__tab.is-active {
+  background: #B8F54A;
+  color: #121212;
 }
 .financial-overview__circle {
   position: relative;
   display: grid;
-  width: min(100%, 156px);
+  width: min(100%, 210px);
   aspect-ratio: 1;
   place-items: center;
-  border: 9px solid transparent;
-  border-radius: 50%;
-  background:
-    linear-gradient(#0E1218, #0E1218) padding-box,
-    linear-gradient(135deg, #E2C45A 0%, #D4AF37 42%, #72D398 72%, #D4AF37 100%) border-box;
-  box-shadow: 0 0 0 7px rgba(212,175,55,.045), 0 16px 28px rgba(0,0,0,.22);
 }
-.financial-overview__circle::before {
+.bankroll-ring {
   position: absolute;
-  inset: 12px;
-  border-radius: 50%;
-  border: 1px solid rgba(212,175,55,.12);
-  content: "";
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 0 10px rgba(184, 245, 74, 0.12));
+}
+.financial-overview__circle-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  width: 58%;
+  text-align: center;
 }
 .financial-overview__circle strong,
-.financial-overview__circle small { position: relative; z-index: 1; display: block; text-align: center; }
-.financial-overview__circle strong { color: #F7F8FA; font-size: .82rem; letter-spacing: -.02em; }
-.financial-overview__circle small { margin-top: .28rem; color: #9CA3AF; font-size: .58rem; line-height: 1.25; }
+.financial-overview__circle small { display: block; text-align: center; }
+.financial-overview__circle strong { color: #F7F8FA; font-size: 0.82rem; letter-spacing: -0.02em; }
+.financial-overview__circle small { margin-top: 0.28rem; color: #9CA3AF; font-size: 0.58rem; line-height: 1.25; }
 
 /* Founder direction override: markedly larger logo/name, restrained subtitle. */
 .auth-shell--approved .auth-lockup {
@@ -3358,17 +3389,15 @@ button.side-link--active {
 .auth-shell--approved .auth-lockup__mark { width: clamp(100px, 13vw, 148px); height: clamp(100px, 13vw, 148px); }
 .auth-shell--approved .auth-lockup__name { margin-top: .35rem; color: #F7F8FA; font-size: clamp(2rem, 3.25vw, 3.25rem); font-weight: 790; letter-spacing: -.055em; line-height: .95; text-align: center; }
 .auth-shell--approved .auth-lockup__subtitle { margin-top: .45rem; color: #D4AF37; font-size: clamp(.48rem, .75vw, .65rem); font-weight: 760; letter-spacing: .2em; text-align: center; text-transform: uppercase; }
-@media (max-width: 980px) {
-  .financial-overview__circle-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
 @media (max-width: 760px) {
-  .financial-overview__circle-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .62rem; }
-  .financial-overview__circle-card { padding: .68rem .42rem .58rem; }
-  .financial-overview__circle-card > span { min-height: 2.25em; margin-bottom: .4rem; font-size: .58rem; line-height: 1.16; }
-  .financial-overview__circle { width: min(100%, 128px); border-width: 7px; }
-  .financial-overview__circle::before { inset: 9px; }
-  .financial-overview__circle strong { font-size: .68rem; }
-  .financial-overview__circle small { font-size: .51rem; }
+  .financial-overview__circle-grid { gap: 0.85rem 0.55rem; }
+  .financial-overview__circle-card { padding: 0.15rem 0; gap: 0.45rem; }
+  .financial-overview__circle-card > span { font-size: 0.62rem; letter-spacing: 0.1em; }
+  .bankroll-period { width: min(100%, 168px); }
+  .bankroll-period__tab { min-height: 20px; font-size: 0.48rem; }
+  .financial-overview__circle { width: min(100%, 148px); }
+  .financial-overview__circle strong { font-size: 0.68rem; }
+  .financial-overview__circle small { font-size: 0.51rem; }
   .auth-shell--approved .auth-lockup { margin-bottom: 1.65rem; }
   .auth-shell--approved .auth-lockup__mark { width: 118px; height: 118px; }
   .auth-shell--approved .auth-lockup__name { font-size: 2.05rem; }
@@ -3837,49 +3866,26 @@ button.side-link--active {
 
 .financial-overview__stage {
   display: grid;
-  gap: 1rem;
+  gap: 0;
+  padding: clamp(0.85rem, 2.2vw, 1.45rem) clamp(0.7rem, 2vw, 1.3rem);
+  border: 1px solid rgba(184, 245, 74, 0.42);
+  border-radius: 22px;
+  background: #121212;
 }
 
 .financial-overview__circle-card {
-  border-radius: 18px;
-  border-color: rgba(255, 255, 255, 0.08);
-  background: rgba(16, 17, 22, 0.72);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
 }
 
 .financial-overview__circle-card > span {
   color: #b8f54a;
 }
 
-.financial-overview__circle-card--01 .financial-overview__circle {
-  background:
-    linear-gradient(#16181e, #16181e) padding-box,
-    linear-gradient(135deg, #00d9ff, #b8f54a) border-box;
-  box-shadow: 0 0 0 7px rgba(0, 217, 255, 0.06), 0 16px 28px rgba(0, 0, 0, 0.28);
-}
-
-.financial-overview__circle-card--02 .financial-overview__circle {
-  background:
-    linear-gradient(#16181e, #16181e) padding-box,
-    linear-gradient(135deg, #2de2e6, #4d8dff) border-box;
-  box-shadow: 0 0 0 7px rgba(45, 226, 230, 0.06), 0 16px 28px rgba(0, 0, 0, 0.28);
-}
-
-.financial-overview__circle-card--03 .financial-overview__circle {
-  background:
-    linear-gradient(#16181e, #16181e) padding-box,
-    linear-gradient(135deg, #b8f54a, #2de2e6) border-box;
-  box-shadow: 0 0 0 7px rgba(184, 245, 74, 0.06), 0 16px 28px rgba(0, 0, 0, 0.28);
-}
-
-.financial-overview__circle-card--04 .financial-overview__circle {
-  background:
-    linear-gradient(#16181e, #16181e) padding-box,
-    linear-gradient(135deg, #c084fc, #00d9ff) border-box;
-  box-shadow: 0 0 0 7px rgba(192, 132, 252, 0.06), 0 16px 28px rgba(0, 0, 0, 0.28);
-}
-
-.financial-overview__circle::before {
-  border-color: rgba(255, 255, 255, 0.08);
+.financial-overview__circle-card--02 .bankroll-ring,
+.financial-overview__circle-card--04 .bankroll-ring {
+  filter: drop-shadow(0 0 10px rgba(0, 217, 255, 0.16));
 }
 
 .creative-wave {
