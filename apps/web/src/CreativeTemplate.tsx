@@ -28,39 +28,39 @@ function DockIcon({ id, active }: { id: Screen; active: boolean }) {
   if (id === "dashboard") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="4" y="4" width="7" height="7" rx="1.4" fill="none" stroke={stroke} strokeWidth="1.7" />
-        <rect x="13" y="4" width="7" height="7" rx="1.4" fill="none" stroke={stroke} strokeWidth="1.7" />
-        <rect x="4" y="13" width="7" height="7" rx="1.4" fill="none" stroke={stroke} strokeWidth="1.7" />
-        <rect x="13" y="13" width="7" height="7" rx="1.4" fill="none" stroke={stroke} strokeWidth="1.7" />
+        <rect x="4" y="4" width="7" height="7" rx="1.2" fill="none" stroke={stroke} strokeWidth="1.15" />
+        <rect x="13" y="4" width="7" height="7" rx="1.2" fill="none" stroke={stroke} strokeWidth="1.15" />
+        <rect x="4" y="13" width="7" height="7" rx="1.2" fill="none" stroke={stroke} strokeWidth="1.15" />
+        <rect x="13" y="13" width="7" height="7" rx="1.2" fill="none" stroke={stroke} strokeWidth="1.15" />
       </svg>
     );
   }
   if (id === "stats") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M6 17V9M12 17V6M18 17v-5" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M6 17V9M12 17V6M18 17v-5" fill="none" stroke={stroke} strokeWidth="1.15" strokeLinecap="round" />
       </svg>
     );
   }
   if (id === "transfer") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 8h13l-3.2-3M19 16H6l3.2 3" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M5 8h13l-3.2-3M19 16H6l3.2 3" fill="none" stroke={stroke} strokeWidth="1.15" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
   if (id === "planning") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="5" y="6" width="14" height="13" rx="2" fill="none" stroke={stroke} strokeWidth="1.7" />
-        <path d="M8 4v4M16 4v4M5 10h14" fill="none" stroke={stroke} strokeWidth="1.7" strokeLinecap="round" />
+        <rect x="5" y="6" width="14" height="13" rx="1.6" fill="none" stroke={stroke} strokeWidth="1.15" />
+        <path d="M8 4v4M16 4v4M5 10h14" fill="none" stroke={stroke} strokeWidth="1.15" strokeLinecap="round" />
       </svg>
     );
   }
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="7.2" fill="none" stroke={stroke} strokeWidth="1.7" />
-      <path d="M12 8.2v4.2l2.6 1.6" fill="none" stroke={stroke} strokeWidth="1.7" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="7.2" fill="none" stroke={stroke} strokeWidth="1.15" />
+      <path d="M12 8.2v4.2l2.6 1.6" fill="none" stroke={stroke} strokeWidth="1.15" strokeLinecap="round" />
     </svg>
   );
 }
@@ -87,17 +87,10 @@ function Wave({ tone, uid }: { tone: "hot" | "cyan"; uid: string }) {
     <svg className="tpl-wave" viewBox="0 0 320 118" aria-hidden="true">
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={stroke} stopOpacity="0.85" />
-          <stop offset="42%" stopColor={mid} stopOpacity="0.35" />
+          <stop offset="0%" stopColor={stroke} stopOpacity="0.22" />
+          <stop offset="55%" stopColor={mid} stopOpacity="0.08" />
           <stop offset="100%" stopColor={stroke} stopOpacity="0" />
         </linearGradient>
-        <filter id={`${id}-glow`} x="-30%" y="-60%" width="160%" height="220%">
-          <feGaussianBlur stdDeviation="3.2" result="blur" />
-          <feMerge>
-            <feMergeNode in="blur" />
-            <feMergeNode in="SourceGraphic" />
-          </feMerge>
-        </filter>
       </defs>
       <path
         d="M0 78 C 26 50, 48 102, 84 74 S 142 22, 180 56 238 112, 274 76 320 38, 320 38 V 118 H 0 Z"
@@ -106,23 +99,22 @@ function Wave({ tone, uid }: { tone: "hot" | "cyan"; uid: string }) {
       <path
         d="M0 78 C 26 50, 48 102, 84 74 S 142 22, 180 56 238 112, 274 76 320 38, 320 38"
         fill="none"
-        filter={`url(#${id}-glow)`}
         stroke={stroke}
-        strokeWidth="3.4"
+        strokeWidth="1.25"
       />
       <path
         d="M0 86 C 30 62, 58 104, 96 80 S 154 36, 192 64 246 108, 282 84 320 52, 320 52"
         fill="none"
-        opacity="0.45"
+        opacity="0.55"
         stroke={mid}
-        strokeWidth="1.4"
+        strokeWidth="0.8"
       />
       <path
         d="M0 92 C 36 70, 70 108, 108 86 S 168 48, 208 72 258 110, 292 90 320 62, 320 62"
         fill="none"
-        opacity="0.35"
+        opacity="0.4"
         stroke={accent}
-        strokeWidth="1.1"
+        strokeWidth="0.7"
       />
     </svg>
   );
@@ -143,22 +135,22 @@ function Donut({
     lime: "#B8F54A",
     orange: "#FF9A00",
   };
-  const circumference = 2 * Math.PI * 15.5;
+  const circumference = 2 * Math.PI * 16.4;
   const dash = (value / 100) * circumference;
   return (
     <article className={`tpl-donut tpl-donut--${tone}`}>
       <span>{label}</span>
       <svg viewBox="0 0 44 44" aria-hidden="true">
-        <circle cx="22" cy="22" r="15.5" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="6.2" />
+        <circle cx="22" cy="22" r="16.4" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1.6" />
         <circle
           cx="22"
           cy="22"
-          r="15.5"
+          r="16.4"
           fill="none"
           stroke={colors[tone]}
           strokeDasharray={`${dash} ${circumference}`}
           strokeLinecap="round"
-          strokeWidth="6.2"
+          strokeWidth="1.6"
           transform="rotate(-90 22 22)"
         />
       </svg>
@@ -168,8 +160,7 @@ function Donut({
 
 function SampleRing({ uid }: { uid: string }) {
   const gradId = `tpl-ring-grad-${uid}`;
-  const glowId = `tpl-ring-glow-${uid}`;
-  const radius = 58;
+  const radius = 66;
   const circ = 2 * Math.PI * radius;
   return (
     <div className="tpl-ring" aria-label="Template sample ring 55 percent">
@@ -181,25 +172,17 @@ function SampleRing({ uid }: { uid: string }) {
             <stop offset="72%" stopColor="#B8F54A" />
             <stop offset="100%" stopColor="#FF9A00" />
           </linearGradient>
-          <filter id={glowId} x="-40%" y="-40%" width="180%" height="180%">
-            <feGaussianBlur stdDeviation="3.6" result="blur" />
-            <feMerge>
-              <feMergeNode in="blur" />
-              <feMergeNode in="SourceGraphic" />
-            </feMerge>
-          </filter>
         </defs>
-        <circle cx="80" cy="80" r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="16" />
+        <circle cx="80" cy="80" r={radius} fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="4.2" />
         <circle
           cx="80"
           cy="80"
           r={radius}
           fill="none"
-          filter={`url(#${glowId})`}
           stroke={`url(#${gradId})`}
           strokeDasharray={`${circ * 0.55} ${circ}`}
           strokeLinecap="round"
-          strokeWidth="16"
+          strokeWidth="4.2"
           transform="rotate(-90 80 80)"
         />
       </svg>

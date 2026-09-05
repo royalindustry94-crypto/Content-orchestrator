@@ -3985,7 +3985,7 @@ button.side-link--active {
 }
 
 .neon-cap__track {
-  height: 8px;
+  height: 3px;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);

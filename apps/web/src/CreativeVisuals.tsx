@@ -23,9 +23,9 @@ export function UnconnectedWaveChart({
       <svg viewBox="0 0 360 120" role="img" aria-hidden="true">
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={stroke} stopOpacity="0.42" />
-            <stop offset="100%" stopColor={stroke} stopOpacity="0" />
-          </linearGradient>
+          <stop offset="0%" stopColor={stroke} stopOpacity="0.2" />
+          <stop offset="100%" stopColor={stroke} stopOpacity="0" />
+        </linearGradient>
         </defs>
         <path
           d="M0 78 C 36 52, 72 96, 108 70 S 180 40, 216 68 288 110, 324 74 360 48, 360 48 V 120 H 0 Z"
@@ -35,15 +35,15 @@ export function UnconnectedWaveChart({
           d="M0 78 C 36 52, 72 96, 108 70 S 180 40, 216 68 288 110, 324 74 360 48, 360 48"
           fill="none"
           stroke={stroke}
-          strokeWidth="2.4"
+          strokeWidth="1.3"
           strokeLinecap="round"
         />
         <path
           d="M0 86 C 40 64, 80 102, 118 78 S 190 50, 228 74 296 108, 332 84 360 58, 360 58"
           fill="none"
-          opacity="0.35"
+          opacity="0.4"
           stroke={accent}
-          strokeWidth="1.2"
+          strokeWidth="0.8"
           strokeLinecap="round"
         />
       </svg>
