@@ -278,9 +278,12 @@ async def decide_prompt_pack(
     approved: bool,
     notes: str | None,
 ) -> PromptPackDecision:
-    await get_project(
-        session, workspace_id=workspace_id, project_id=project_id, for_update=True
-    )
+    # Reviewers deliberately have read + decision-insert privileges, but no
+    # UPDATE privilege on the project.  PostgreSQL applies UPDATE policies to
+    # SELECT FOR UPDATE, so locking the project here would make a legitimate
+    # reviewer unable to see it under FORCE RLS.  The prompt pack is immutable
+    # and the database uniqueness/FK constraints serialize the decision itself.
+    await get_project(session, workspace_id=workspace_id, project_id=project_id)
     latest_pack = await _latest_prompt_pack(
         session, workspace_id=workspace_id, project_id=project_id
     )

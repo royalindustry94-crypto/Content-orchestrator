@@ -285,6 +285,7 @@ def upgrade() -> None:
         ("ix_prompt_decisions_workspace_project", ["workspace_id", "project_id"]),
         ("ix_prompt_decisions_project", ["project_id"]),
         ("ix_prompt_decisions_pack", ["prompt_pack_version_id"]),
+        ("ix_prompt_decisions_fingerprint", ["prompt_pack_fingerprint"]),
         ("ix_prompt_decisions_reviewer", ["reviewer_id"]),
     ):
         op.create_index(name, "prompt_pack_decisions", columns)
