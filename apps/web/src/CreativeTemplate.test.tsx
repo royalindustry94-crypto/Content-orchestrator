@@ -17,6 +17,8 @@ describe("neon dashboard template", () => {
     expect(screen.getAllByText("$1,490.00").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Send to friends").length).toBeGreaterThan(0);
     expect(screen.getAllByText("July").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Template colours")).toBeDefined();
+    expect(screen.getAllByText("#FF007A").length).toBeGreaterThan(0);
   });
 
   it("switches the live phone to the Info screen from the template dock", () => {

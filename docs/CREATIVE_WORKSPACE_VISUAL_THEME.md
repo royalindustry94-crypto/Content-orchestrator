@@ -23,7 +23,7 @@ This repository therefore ships only converted app code. Keep any purchased down
 
 ## Visual template gallery
 
-`#/template` (also “View neon dashboard template” on sign-in) opens an original five-screen mobile gallery in the same charcoal / magenta / orange / cyan language: Dashboard, Stats, Transfer, Planning, History, plus Info. Sample figures such as `$1,490.00` are decorative template chrome and never appear on Home Bankroll.
+`#/template` (also “View neon dashboard template” on sign-in) opens an original five-screen mobile kit in the same charcoal `#121212` / panel `#1C1C21` / magenta `#FF007A` / orange `#FF9A00` / cyan `#00D9FF` / lime `#B8F54A` language: Dashboard, Stats, Transfer, Planning, History, plus Info. Sample figures such as `$1,490.00` are decorative template chrome and never appear on Home Bankroll.
 
 ## Public visual preview
 
