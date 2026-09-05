@@ -122,6 +122,64 @@ async def test_member_can_leave_but_not_remove_others(client, new_user):
 
 
 @pytest.mark.asyncio
+async def test_membership_mutations_emit_structured_audit_events(client, new_user, caplog):
+    admin_id, _, admin_headers = new_user
+    create = await client.post(
+        "/workspaces", json={"name": "Audited Team"}, headers=admin_headers
+    )
+    workspace_id = create.json()["id"]
+
+    member_id = str(_uuid.uuid4())
+    await _register_user(member_id)
+
+    with caplog.at_level("INFO", logger="audit"):
+        invited = await client.post(
+            f"/workspaces/{workspace_id}/memberships",
+            json={"user_id": member_id, "role": "editor"},
+            headers=admin_headers,
+        )
+        assert invited.status_code == 201, invited.text
+
+        changed = await client.patch(
+            f"/workspaces/{workspace_id}/memberships/{member_id}",
+            json={"role": "reviewer"},
+            headers=admin_headers,
+        )
+        assert changed.status_code == 200, changed.text
+
+        removed = await client.delete(
+            f"/workspaces/{workspace_id}/memberships/{member_id}",
+            headers=admin_headers,
+        )
+        assert removed.status_code == 204, removed.text
+
+    records = {
+        record.audit_event: record
+        for record in caplog.records
+        if getattr(record, "audit_event", "").startswith("workspace_member_")
+    }
+    assert set(records) == {
+        "workspace_member_invited",
+        "workspace_member_role_changed",
+        "workspace_member_removed",
+    }
+
+    invited_record = records["workspace_member_invited"]
+    assert invited_record.workspace_id == workspace_id
+    assert invited_record.actor_user_id == admin_id
+    assert invited_record.target_user_id == member_id
+    assert invited_record.role == "editor"
+
+    changed_record = records["workspace_member_role_changed"]
+    assert changed_record.previous_role == "editor"
+    assert changed_record.new_role == "reviewer"
+
+    removed_record = records["workspace_member_removed"]
+    assert removed_record.removed_role == "reviewer"
+    assert removed_record.self_leave is False
+
+
+@pytest.mark.asyncio
 async def test_last_admin_cannot_be_removed(client, new_user):
     admin_id, _, admin_headers = new_user
     create = await client.post("/workspaces", json={"name": "Solo Admin"}, headers=admin_headers)

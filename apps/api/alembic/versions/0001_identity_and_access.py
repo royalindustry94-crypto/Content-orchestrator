@@ -7,6 +7,11 @@ Create Date: 2026-07-21
 Creates profiles/workspaces/workspace_memberships, the app_runtime role
 used for RLS-enforced request traffic, and the RLS policies themselves.
 See docs/milestone-2-identity-and-access.md for the design rationale.
+
+Local/CI Postgres parity is intentionally provisioned outside Alembic by
+`scripts/bootstrap_local_postgres.sql`. Managed Supabase already owns the
+`auth` schema and `auth.users`; this migration must never create or redefine
+those managed objects.
 """
 
 from __future__ import annotations
@@ -28,34 +33,35 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto;")
 
-    # --- auth.users shim for local dev / CI parity -------------------
-    # On real Supabase, `auth` and `auth.users` already exist with the
-    # platform's own columns — these are no-ops there. In plain Postgres
-    # (Docker/CI), this creates just enough surface for the profile
-    # trigger and FK integrity to be testable end-to-end.
-    op.execute("CREATE SCHEMA IF NOT EXISTS auth;")
+    # --- managed auth precondition -------------------------------------
+    # Supabase owns auth.users. Plain Postgres used by local/CI must run
+    # scripts/bootstrap_local_postgres.sql before Alembic. Fail closed if
+    # neither environment has provided the expected auth surface.
     op.execute(
         """
-        CREATE TABLE IF NOT EXISTS auth.users (
-            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-            email text
-        );
+        DO $$
+        BEGIN
+            IF to_regclass('auth.users') IS NULL THEN
+                RAISE EXCEPTION
+                    'auth.users is required; run scripts/bootstrap_local_postgres.sql for local/CI Postgres';
+            END IF;
+        END
+        $$;
         """
     )
 
     # --- app_runtime role ---------------------------------------------
-    # Non-owner role that request traffic connects as (APP_DATABASE_URL),
-    # so RLS policies actually apply instead of being bypassed by table
-    # ownership. Deploying against real Supabase: create this role (or an
-    # equivalent) once via the SQL editor if the migration role lacks
-    # CREATE ROLE privilege there — the GRANTs below are what matter and
-    # are safe to re-run.
+    # Canonical schema migration never provisions a reusable login
+    # credential. It creates a NOLOGIN, NOBYPASSRLS role only when absent.
+    # Local/CI bootstrap explicitly converts this role to a local-only login.
+    # Managed runtime credentials must be created out-of-band and stored in
+    # the deployment secret store, never in source control or migration SQL.
     op.execute(
         """
         DO $$
         BEGIN
             IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_runtime') THEN
-                CREATE ROLE app_runtime LOGIN PASSWORD 'app_runtime' NOBYPASSRLS NOCREATEROLE NOCREATEDB;
+                CREATE ROLE app_runtime NOLOGIN NOBYPASSRLS NOCREATEROLE NOCREATEDB;
             END IF;
         END
         $$;
@@ -193,34 +199,39 @@ def upgrade() -> None:
     )
 
     # --- profile-on-signup trigger -----------------------------------------
-    # No-op-safe on real Supabase in the sense that it only ever inserts
-    # into `profiles`, which this migration owns; it does not touch
-    # Supabase's own auth schema beyond attaching a trigger to auth.users.
+    # This is an application-owned trigger attached to Supabase's managed
+    # auth.users table. It does not create, replace, or alter auth.users.
+    # The SECURITY DEFINER function pins search_path to prevent object-shadowing.
     op.execute(
         """
-        CREATE OR REPLACE FUNCTION handle_new_auth_user() RETURNS trigger AS $$
+        CREATE OR REPLACE FUNCTION public.content_orchestrator_handle_new_auth_user()
+        RETURNS trigger AS $$
         BEGIN
-            INSERT INTO profiles (id, email)
+            INSERT INTO public.profiles (id, email)
             VALUES (NEW.id, COALESCE(NEW.email, ''))
             ON CONFLICT (id) DO NOTHING;
             RETURN NEW;
         END;
-        $$ LANGUAGE plpgsql SECURITY DEFINER;
+        $$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp;
         """
     )
-    op.execute("DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;")
+    op.execute(
+        "DROP TRIGGER IF EXISTS content_orchestrator_on_auth_user_created ON auth.users;"
+    )
     op.execute(
         """
-        CREATE TRIGGER on_auth_user_created
+        CREATE TRIGGER content_orchestrator_on_auth_user_created
             AFTER INSERT ON auth.users
-            FOR EACH ROW EXECUTE FUNCTION handle_new_auth_user();
+            FOR EACH ROW EXECUTE FUNCTION public.content_orchestrator_handle_new_auth_user();
         """
     )
 
 
 def downgrade() -> None:
-    op.execute("DROP TRIGGER IF EXISTS on_auth_user_created ON auth.users;")
-    op.execute("DROP FUNCTION IF EXISTS handle_new_auth_user();")
+    op.execute(
+        "DROP TRIGGER IF EXISTS content_orchestrator_on_auth_user_created ON auth.users;"
+    )
+    op.execute("DROP FUNCTION IF EXISTS public.content_orchestrator_handle_new_auth_user();")
 
     op.execute("DROP POLICY IF EXISTS memberships_write_admin_only ON workspace_memberships;")
     op.execute("DROP POLICY IF EXISTS memberships_select_same_workspace ON workspace_memberships;")

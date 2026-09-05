@@ -1,10 +1,13 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import {
+  decideReviewGate,
+  getContentProfile,
   getExecutiveDashboard,
   getOperationsAlerts,
   getPipelineMonitor,
   getWorkerMonitor,
   listReviewGates,
+  saveContentProfile,
 } from "./api";
 
 describe("review desk api client", () => {
@@ -22,6 +25,7 @@ describe("review desk api client", () => {
           workspace_id: "ws-1",
           pipeline_run_id: "run-1",
           content_item_id: "item-1",
+          content_version_id: "version-1",
           topic: "Topic",
           stage: "review",
           status: "awaiting",
@@ -49,6 +53,80 @@ describe("review desk api client", () => {
     );
     const headers = fetchMock.mock.calls[0]?.[1]?.headers as Headers;
     expect(headers.get("Authorization")).toBe("Bearer token-123");
+  });
+
+  it("binds a review decision to the exact displayed content version", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await decideReviewGate(
+      "token-123",
+      "ws-1",
+      "gate-1",
+      true,
+      "version-1",
+      "Checked by the Founder",
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/workspaces/ws-1/review-gates/gate-1/decision",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          approved: true,
+          content_version_id: "version-1",
+          notes: "Checked by the Founder",
+        }),
+      }),
+    );
+  });
+
+  it("loads and saves the durable workspace content profile", async () => {
+    const profile = {
+      workspace_id: "ws-1",
+      service_mode: "client" as const,
+      business_name: "Northside Strength",
+      offer: "Coaching",
+      target_audience: "Busy adults",
+      brand_voice: "Practical",
+      target_platform: "Instagram",
+      content_goal: "Generate enquiries",
+      default_length_seconds: 60,
+      created_by: "user-1",
+      updated_by: "user-1",
+      created_at: "",
+      updated_at: "",
+    };
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => profile,
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(getContentProfile("token-123", "ws-1")).resolves.toEqual(profile);
+    await saveContentProfile("token-123", "ws-1", {
+      service_mode: profile.service_mode,
+      business_name: profile.business_name,
+      offer: profile.offer,
+      target_audience: profile.target_audience,
+      brand_voice: profile.brand_voice,
+      target_platform: profile.target_platform,
+      content_goal: profile.content_goal,
+      default_length_seconds: profile.default_length_seconds,
+    });
+
+    expect(fetchMock.mock.calls.map((call) => call[0])).toEqual([
+      "/api/workspaces/ws-1/content-profile",
+      "/api/workspaces/ws-1/content-profile",
+    ]);
+    expect(fetchMock.mock.calls[1]?.[1]).toEqual(
+      expect.objectContaining({ method: "PUT" }),
+    );
   });
 });
 

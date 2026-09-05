@@ -10,6 +10,12 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class ContentJobCreate(BaseModel):
     topic: str = Field(min_length=1, max_length=500)
+    business_name: str | None = Field(default=None, max_length=200)
+    offer: str | None = Field(default=None, max_length=1000)
+    target_audience: str | None = Field(default=None, max_length=1000)
+    brand_voice: str | None = Field(default=None, max_length=500)
+    content_goal: str | None = Field(default=None, max_length=1000)
+    target_platform: str | None = Field(default=None, max_length=80)
     script_hook: str | None = Field(default=None, max_length=2000)
     script_body: str | None = Field(default=None, max_length=50000)
     script_cta: str | None = Field(default=None, max_length=2000)
@@ -31,6 +37,7 @@ class ContentJobOut(BaseModel):
 
 class ReviewDecisionIn(BaseModel):
     approved: bool
+    content_version_id: uuid.UUID
     notes: str | None = Field(default=None, max_length=5000)
 
 
@@ -41,6 +48,7 @@ class ReviewGateOut(BaseModel):
     workspace_id: uuid.UUID
     pipeline_run_id: uuid.UUID
     content_item_id: uuid.UUID
+    content_version_id: uuid.UUID | None
     topic: str
     stage: str
     status: str

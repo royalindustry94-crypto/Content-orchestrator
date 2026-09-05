@@ -14,7 +14,6 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import get_settings
 from app.models.content import ContentItem, ContentVersion
 from app.models.enums import (
     ContentStage,
@@ -152,6 +151,12 @@ async def create_content_job(
     actor_id: uuid.UUID,
     topic: str,
     script_body: str,
+    business_name: str | None = None,
+    offer: str | None = None,
+    target_audience: str | None = None,
+    brand_voice: str | None = None,
+    content_goal: str | None = None,
+    target_platform: str | None = None,
     script_hook: str | None = None,
     script_cta: str | None = None,
     target_length_seconds: int | None = None,
@@ -211,7 +216,14 @@ async def create_content_job(
         prompt_used = "review_desk_manual_draft"
     else:
         generated = generate_script_draft(
-            topic=topic, target_length_seconds=target_length_seconds
+            topic=topic,
+            target_length_seconds=target_length_seconds,
+            business_name=business_name,
+            offer=offer,
+            target_audience=target_audience,
+            brand_voice=brand_voice,
+            content_goal=content_goal,
+            target_platform=target_platform,
         )
         body = generated.script_body
         hook = script_hook or generated.script_hook
@@ -260,7 +272,9 @@ async def create_content_job(
     item.current_pipeline_run_id = run.id
 
     await controller.start_run(session, run=run, definition=definition)
-    estimate = Decimal(str(get_settings().default_stage_estimate_usd))
+    # Draft Desk is deterministic local code and does not call a paid provider.
+    # Keep the reservation/audit path, but record the truthful external cost.
+    estimate = Decimal("0.00")
     reservation = await controller.reserve_spend(
         session,
         run=run,
@@ -340,7 +354,7 @@ async def list_review_gates(
         select(ReviewGate, PipelineRun, ContentItem, ContentVersion)
         .join(PipelineRun, PipelineRun.id == ReviewGate.pipeline_run_id)
         .join(ContentItem, ContentItem.id == PipelineRun.content_item_id)
-        .outerjoin(ContentVersion, ContentVersion.id == ContentItem.current_version_id)
+        .outerjoin(ContentVersion, ContentVersion.id == ReviewGate.content_version_id)
         .where(ReviewGate.workspace_id == workspace_id)
         .order_by(ReviewGate.requested_at.desc())
     )
@@ -361,7 +375,7 @@ async def get_review_gate(
             select(ReviewGate, PipelineRun, ContentItem, ContentVersion)
             .join(PipelineRun, PipelineRun.id == ReviewGate.pipeline_run_id)
             .join(ContentItem, ContentItem.id == PipelineRun.content_item_id)
-            .outerjoin(ContentVersion, ContentVersion.id == ContentItem.current_version_id)
+            .outerjoin(ContentVersion, ContentVersion.id == ReviewGate.content_version_id)
             .where(
                 ReviewGate.workspace_id == workspace_id,
                 ReviewGate.id == gate_id,
@@ -381,6 +395,7 @@ async def decide_review_gate(
     gate_id: uuid.UUID,
     reviewer_id: uuid.UUID,
     approved: bool,
+    expected_content_version_id: uuid.UUID | None = None,
     notes: str | None = None,
 ) -> dict:
     gate = (
@@ -398,11 +413,20 @@ async def decide_review_gate(
     if gate.status != ReviewGateStatus.AWAITING:
         raise ValueError("review gate is not awaiting a decision")
 
+    # HTTP callers must submit the version they displayed (the request schema
+    # requires it). Trusted internal callers created before version binding may
+    # omit it; they are still pinned to this gate's immutable version and the
+    # controller independently rejects a stale current content version.
+    decision_content_version_id = expected_content_version_id or gate.content_version_id
+    if decision_content_version_id is None:
+        raise ValueError("review gate has no bound content version")
+
     event = await controller.submit_review_decision(
         session,
         gate=gate,
         reviewer_id=reviewer_id,
         approved=approved,
+        expected_content_version_id=decision_content_version_id,
         notes=notes,
     )
     # Deliver the exact event just emitted, rather than an arbitrary pending
@@ -435,6 +459,7 @@ def _gate_row(
         "workspace_id": gate.workspace_id,
         "pipeline_run_id": gate.pipeline_run_id,
         "content_item_id": item.id,
+        "content_version_id": gate.content_version_id,
         "topic": item.topic,
         "stage": stage,
         "status": status,

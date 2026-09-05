@@ -1,37 +1,47 @@
 # Executive Status Report
 
-**Product:** Content Orchestrator  
-**Audience:** Founder / leadership  
-**Date:** 2026-08-28  
-**Baseline:** `main` after PR #49 governance merge  
+**Product:** The Business Manager
+
+**Audience:** Founder / leadership
+
+**Date:** 2026-09-04
+
+**Merged baseline:** `main` at `abb20981f68cb0de8e3ed75af9759e0b5b6fb656` after PR #51
+
+**Unmerged candidates:** PR #71 at `dcb4b6e7746e330265e362dc8b59f7ae288932c1`
+and PR #72 at `f151d7edb0e8b1df7e7fe2a21d9a526e1f765a6e`
+
 **Audit model:** `docs/MILESTONE_AUDIT_STANDARD.md`
 
 ---
 
 ## Executive verdict
 
-**PRODUCT CODE BASELINE: PRIVATE-BETA CAPABLE**  
-**DEVELOPMENT GOVERNANCE: CONDITIONAL** — branch protection issue #50 remains open  
-**OPERATIONAL PRIVATE BETA: NOT YET RUNTIME-VERIFIED**  
+**PRODUCT CODE BASELINE: PRIVATE-BETA CAPABLE**
+
+**DEVELOPMENT GOVERNANCE: PASS** — active no-bypass ruleset requires PR review and all six strict CI checks
+
+**OPERATIONAL PRIVATE BETA: CONDITIONAL — PR #71/#72 INTEGRATION AND MANAGED RUNTIME NOT YET VERIFIED**
+
 **PRODUCTION: BLOCKED**
 
-The repository now contains a bounded, fail-closed end-to-end preview from Research through Compliance plus the Business Manager UI. This is materially ahead of the August 3 status report, but it must not be confused with a live-provider or production deployment certification.
+The repository contains a bounded, fail-closed end-to-end preview from Research through Compliance plus the Business Manager UI. Repository protection is now enforced. The remaining near-term work is managed-runtime verification, not another broad feature expansion.
 
 ---
 
 ## What is merged
 
-The audited preview chain now includes:
+The audited preview chain includes:
 
 - Business Manager
 - Scout + independent Research Auditor
-- Strategist + independent Strategy Auditor
+- Strategist + Strategy Auditor
 - Content Department with content-version lineage/audits
-- Producer + independent Media QA
+- Producer + Media QA
 - Compliance + Chief Auditor
-- Human Review package boundary with external publishing still disabled
+- Human Review package boundary with external publishing disabled
 
-PR #48 was independently audited and merged only after exact-head evidence was retained. PR #49 then merged the repository-wide independent milestone audit standard.
+PR #48 was independently audited and merged after exact-head evidence was retained. PR #49 merged the repository-wide milestone audit standard. PR #51 reconciled the audited release state to Alembic head `0050` and the 299-test baseline.
 
 ---
 
@@ -48,19 +58,20 @@ PR #48 was independently audited and merged only after exact-head evidence was r
 | Security | Gitleaks + API/worker dependency audits **PASS** |
 | Docker | API/worker/web builds **PASS** |
 | Browser | exact-head desktop + exact 390px mobile smoke **PASS**, evidence retained |
-| Post-merge validation | PR #48 merge commit six-job CI **PASS** |
-| Milestone governance | PASS/CONDITIONAL/FAIL standard merged via PR #49 |
+| Post-merge validation | audited `main` six-job CI **PASS** |
+| Main protection | active ruleset; PR-only, strict six required checks, no force/deletion, no bypass actors |
+| Milestone governance | PASS/CONDITIONAL/FAIL standard merged |
 
 ---
 
 ## Safety posture
 
-Current preview behavior is deliberately conservative:
+Current behavior remains deliberately conservative:
 
 - Human Review remains mandatory.
-- Workspace isolation/RLS remains a non-negotiable control.
+- Workspace isolation/FORCE RLS remains non-negotiable.
 - Spend caps remain fail-closed.
-- Preview provider states remain explicit `NOT CONFIGURED` rather than fabricated success.
+- Provider states remain explicit `NOT CONFIGURED` rather than fabricated success.
 - External publishing is disabled.
 - No autonomous publishing milestone is authorized.
 
@@ -68,36 +79,58 @@ Current preview behavior is deliberately conservative:
 
 ## Material open risks
 
-### 1. `main` branch is not technically protected — HIGH
+### 1. Managed runtime / Supabase bootstrap — remediation candidate not yet merged
 
-GitHub currently reports branch protection disabled with no required status checks. The team has followed the audited merge process manually, but GitHub does not yet enforce it. Tracked as **issue #50**.
+An isolated managed Supabase test project exists and is healthy, but the Content Orchestrator schema has not been applied.
 
-This should be fixed before development throughput is scaled across multiple builders/workers.
+Independent audit issue #60 correctly blocked the original bootstrap path because canonical migration `0001` mixed local/CI bootstrap behavior with managed-runtime concerns. Remediation work now separates them:
 
-### 2. Managed runtime / Supabase evidence is not verified
+- managed migration path no longer creates/redefines `auth.users`,
+- managed migration path no longer embeds the local `app_runtime` password,
+- local/CI bootstrap is explicit and isolated,
+- the application-owned signup trigger is hardened and named explicitly,
+- a managed pre-apply runbook now defines verification and rollback behavior.
 
-The connected Supabase capability has not exposed a project to the current audit session. Therefore managed database configuration, production authentication, deployment state and PITR/backup claims are **NOT VERIFIED** in the current baseline.
+These changes are present in the unmerged PR #71 candidate. Managed runtime
+application and post-apply evidence remain unverified.
 
-### 3. Live provider execution remains deferred
+Schema application remains blocked until exact-head CI succeeds and independent re-audit can be completed.
 
-OpenAI/Anthropic/Gemini/ElevenLabs/Creatomate/n8n-style live provider paths need a dedicated audited activation milestone covering credentials, provider spend accounting, retries/backoff, idempotency, logging/redaction and supervised failures.
+### 2. Live provider execution remains deferred
 
-### 4. Production billing and external publishing remain gated
+Live OpenAI/Anthropic/Gemini/ElevenLabs/Creatomate/n8n-style paths require a separate audited activation milestone. Issue #58 remains a blocker for live cost-bearing traffic because rate limiting and cost-amplification controls must fail closed first.
 
-The existence of billing and publication-policy code does not authorize billing go-live or external publishing. Both require separate current runtime evidence and Founder-approved milestone audits.
+### 3. Production billing and external publishing remain gated
+
+Billing implementation does not authorize billing go-live. External publishing remains disabled by design. Both require separate runtime evidence and Founder-approved milestones.
+
+## Repository governance evidence
+
+GitHub issue #50 is closed. A live re-probe on 2026-09-03 confirmed:
+
+- `main` reports protected.
+- Ruleset `Protect main` (`21731627`) is active for the default branch.
+- A PR, one approval, resolved conversations and last-push approval are required.
+- Strict required checks are `api`, `worker`, `web`, `security`, `docker-build` and `browser-smoke`.
+- Deletion and non-fast-forward updates are blocked.
+- No bypass actors are configured; the connected user cannot bypass.
 
 ---
 
 ## Recommended next sequence
 
-1. Close issue #50 by enabling and independently verifying `main` protection / required checks.
-2. Establish managed Supabase/runtime visibility and verify deployment/auth/database/PITR facts.
-3. Reconcile and select the first revenue-producing private-beta workflow.
-4. Activate one provider path at a time behind spend controls and Human Review, with independent audit after each milestone.
-5. Do not enable autonomous/external publishing before policy/rights/compliance and exact-artifact Human Review controls receive a separate PASS.
+1. Independently audit PR #71 and PR #72 at their exact head SHAs.
+2. Verify their combined integration candidate with the full six-gate CI/browser/security suite.
+3. Apply only an independently approved schema to the isolated Supabase test project and prove FORCE RLS/cross-workspace isolation in managed runtime.
+4. Select and validate the first revenue-producing private-beta workflow.
+5. Activate one provider path at a time behind spend controls and Human Review, with independent audit after each milestone.
+6. Do not enable autonomous/external publishing before policy, rights, compliance and exact-artifact Human Review controls receive a separate PASS.
 
 ---
 
 ## Leadership interpretation
 
-The system has moved from a partial private-beta engine to a substantially broader audited preview pipeline. Engineering controls are strong; the largest current gaps are **repository enforcement and live-runtime evidence**, not another wave of feature surface area.
+The merged code baseline remains strong and repository governance is enforced.
+The current critical path is independent exact-head review of PR #71 and PR #72,
+followed by a safe, evidence-backed managed test runtime. No production or
+live-provider claim should be inferred from the current state.

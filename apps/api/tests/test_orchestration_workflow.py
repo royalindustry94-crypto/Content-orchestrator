@@ -24,7 +24,12 @@ from app.orchestration import controller
 
 
 async def _make_workspace_item(session):
-    ws, user, item = str(uuid.uuid4()), str(uuid.uuid4()), str(uuid.uuid4())
+    ws, user, item, version = (
+        str(uuid.uuid4()),
+        str(uuid.uuid4()),
+        str(uuid.uuid4()),
+        str(uuid.uuid4()),
+    )
     await session.execute(
         text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
         {"id": user, "e": f"{user}@x.com"},
@@ -36,6 +41,17 @@ async def _make_workspace_item(session):
     await session.execute(
         text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't')"),
         {"id": item, "ws": ws},
+    )
+    await session.execute(
+        text(
+            "INSERT INTO content_versions (id, workspace_id, content_item_id, script_body) "
+            "VALUES (:id, :ws, :item, 'review me')"
+        ),
+        {"id": version, "ws": ws, "item": item},
+    )
+    await session.execute(
+        text("UPDATE content_items SET current_version_id = :version WHERE id = :item"),
+        {"version": version, "item": item},
     )
     return uuid.UUID(ws), uuid.UUID(user), uuid.UUID(item)
 
@@ -124,7 +140,14 @@ async def test_review_approval_resumes_and_reaches_terminal_stage():
         )
         gate = result.scalar_one()
 
-        await controller.submit_review_decision(session, gate=gate, reviewer_id=user, approved=True)
+        assert gate.content_version_id is not None
+        await controller.submit_review_decision(
+            session,
+            gate=gate,
+            reviewer_id=user,
+            approved=True,
+            expected_content_version_id=gate.content_version_id,
+        )
         await session.commit()
 
         # The review.approved event was emitted; the relay + registered

@@ -18,6 +18,31 @@ async def test_scripting_generates_non_empty_draft():
     assert result["provider"] == "draft_desk"
     assert "agency retention" in result["script_body"]
     assert result["script_body"].strip() != ""
+    assert result["estimated_cost_usd"] == "0.00"
+
+
+@pytest.mark.asyncio
+async def test_scripting_preserves_workspace_profile_context():
+    ok, result, err = await draft_desk_executor(
+        {
+            "stage": "scripting",
+            "topic": "weekly planning",
+            "business_name": "North Star Studio",
+            "offer": "content strategy",
+            "target_audience": "independent consultants",
+            "brand_voice": "direct and practical",
+            "content_goal": "generate qualified enquiries",
+            "target_platform": "LinkedIn",
+        }
+    )
+
+    assert ok is True
+    assert err == ""
+    assert result is not None
+    assert "Business: North Star Studio." in result["script_body"]
+    assert "Audience: independent consultants." in result["script_body"]
+    assert "Intended platform: LinkedIn." in result["script_body"]
+    assert "contact North Star Studio" in result["script_cta"]
 
 
 @pytest.mark.asyncio
@@ -35,3 +60,12 @@ async def test_review_stage_rejected():
     )
     assert ok is False
     assert "human" in err.lower() or "review" in err.lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["visuals", "rendering", "published", "", "unknown"])
+async def test_every_unsupported_stage_is_rejected(stage: str):
+    ok, result, err = await draft_desk_executor({"stage": stage, "topic": "x"})
+    assert ok is False
+    assert result is None
+    assert "does not support" in err

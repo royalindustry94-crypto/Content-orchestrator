@@ -1,0 +1,7 @@
+---
+description: Alembic and PostgreSQL migration safety rules
+globs: apps/api/alembic/**/*.py
+alwaysApply: false
+---
+
+Follow `apps/api/alembic/AGENTS.md` and use the `safe-migration` skill. Never rewrite applied history or run downgrade replay outside a disposable localhost `_test` database.

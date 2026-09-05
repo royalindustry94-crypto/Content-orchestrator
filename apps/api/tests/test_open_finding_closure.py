@@ -444,6 +444,47 @@ async def test_h3_worker_failure_submit_releases_reservation():
         )
 
 
+@pytest.mark.asyncio
+async def test_successful_worker_submit_requires_open_spend_reservation():
+    """A missing reservation must never become an untracked successful stage."""
+    async with AsyncSessionLocal() as session:
+        await _park_all_workers(session)
+        ws = await _make_workspace(session)
+        run = await _make_run(session, ws)
+        worker = WorkerRegistration(
+            id=uuid.uuid4(), workspace_id=None, name=f"w-{uuid.uuid4().hex[:6]}",
+            supported_stages=[STAGE], status=WorkerStatus.ONLINE, max_concurrency=2,
+            current_load=0, health_score=100, last_heartbeat_at=datetime.now(UTC),
+            registered_at=datetime.now(UTC),
+        )
+        session.add(worker)
+        await session.commit()
+
+        dispatched = await dispatcher.dispatch_stage(
+            session, workspace_id=ws, pipeline_run_id=run.id, stage=STAGE,
+            attempt_number=1, correlation_id=uuid.uuid4(), trace_id=None,
+        )
+        await session.commit()
+        assert dispatched.assignment is not None
+        reservations = await _open_reservations(session, run.id)
+        assert len(reservations) == 1
+        await session.delete(reservations[0])
+        await session.commit()
+
+        with pytest.raises(dispatcher.LeaseConflict) as exc_info:
+            await dispatcher.submit_result(
+                session,
+                assignment=dispatched.assignment,
+                success=True,
+                result={"estimated_cost_usd": "0.00"},
+            )
+        assert exc_info.value.code == "spend_reservation_missing"
+        assert dispatched.assignment.status == StageAssignmentStatus.DISPATCHED
+
+        await session.refresh(run)
+        assert run.status == "running"
+
+
 # --- M-C: crashed attempts consume an attempt, bounded by max_attempts ----
 
 

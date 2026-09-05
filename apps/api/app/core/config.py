@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     # JWT shape with this secret (Private Beta / staging without Supabase).
     # Default is supabase (fail-closed): local issuance must be opted in
     # explicitly via AUTH_MODE=local (see .env.example for Private Beta).
-    supabase_jwt_secret: str
+    supabase_jwt_secret: str = Field(min_length=32)
     supabase_jwt_algorithm: str = Field(default="HS256")
     supabase_jwt_audience: str = Field(default="authenticated")
     auth_mode: str = Field(default="supabase")  # local | supabase

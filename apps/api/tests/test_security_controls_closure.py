@@ -356,7 +356,9 @@ async def test_mh_review_gate_decision_cannot_cross_workspaces(client):
         f"/workspaces/{victim['workspace_id']}/review-gates/{uuid.uuid4()}/decision"
     )
     res = await client.post(
-        foreign_path, headers=attacker["headers"], json={"approved": True}
+        foreign_path,
+        headers=attacker["headers"],
+        json={"approved": True, "content_version_id": str(uuid.uuid4())},
     )
     assert res.status_code in (403, 404), res.text
 
@@ -364,7 +366,9 @@ async def test_mh_review_gate_decision_cannot_cross_workspaces(client):
         f"/workspaces/{attacker['workspace_id']}/review-gates/{uuid.uuid4()}/decision"
     )
     res2 = await client.post(
-        own_path, headers=attacker["headers"], json={"approved": True}
+        own_path,
+        headers=attacker["headers"],
+        json={"approved": True, "content_version_id": str(uuid.uuid4())},
     )
     assert res2.status_code == 404, res2.text
 

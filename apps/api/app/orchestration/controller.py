@@ -574,6 +574,22 @@ async def resume_from_review(session: AsyncSession, *, gate: ReviewGate, approve
     run = await session.get(PipelineRun, gate.pipeline_run_id)
     if run is None:
         raise ValueError(f"review_gate {gate.id} has no pipeline_run")
+    if approved:
+        # Bind the decision to the immutable content version that the human
+        # actually reviewed. Lock the item so a concurrent revision cannot
+        # race the comparison and advance stale content.
+        item = await session.get(ContentItem, run.content_item_id, with_for_update=True)
+        if item is None:
+            raise ValueError(f"review_gate {gate.id} has no content_item")
+        if (
+            gate.content_version_id is None
+            or item.current_version_id is None
+            or gate.content_version_id != item.current_version_id
+        ):
+            raise ValueError(
+                "reviewed content version no longer matches the current content; "
+                "open a new Human Review Gate"
+            )
     gate.status = ReviewGateStatus.APPROVED if approved else ReviewGateStatus.REJECTED
     gate.decided_at = datetime.now(UTC)
     if not approved:
@@ -777,7 +793,15 @@ async def reserve_spend(
         daily_cap = Decimal(str(cap.daily_cap_usd))
         monthly_cap = Decimal(str(cap.monthly_cap_usd))
         exceeded = None
-        if daily + estimated_cost_usd > daily_cap:
+        # A hard-zero cap is an explicit workspace kill switch, including for
+        # locally executed stages whose truthful external-provider cost is $0.
+        # Without this branch, ``0 + 0 > 0`` is false and a disabled workspace
+        # can still create work and enter the review queue.
+        if daily_cap <= 0:
+            exceeded = "daily"
+        elif monthly_cap <= 0:
+            exceeded = "monthly"
+        elif daily + estimated_cost_usd > daily_cap:
             exceeded = "daily"
         elif monthly + estimated_cost_usd > monthly_cap:
             exceeded = "monthly"
@@ -956,6 +980,7 @@ async def submit_review_decision(
     gate: ReviewGate,
     reviewer_id: uuid.UUID,
     approved: bool,
+    expected_content_version_id: uuid.UUID,
     notes: str | None = None,
 ) -> OutboxEvent:
     """The orchestration hook a future review API calls: records the M3
@@ -975,11 +1000,26 @@ async def submit_review_decision(
     run = await session.get(PipelineRun, gate.pipeline_run_id)
     if run is None or run.content_item_id is None:
         raise ValueError(f"review_gate {gate.id} missing pipeline run / content item")
+    item = await session.get(ContentItem, run.content_item_id, with_for_update=True)
+    if item is None:
+        raise ValueError(f"review_gate {gate.id} missing content item")
+    if run.workspace_id != gate.workspace_id or item.workspace_id != gate.workspace_id:
+        raise ValueError("review gate workspace does not match its pipeline content")
+    if gate.content_version_id is None:
+        raise ValueError("review gate has no bound content version")
+    if expected_content_version_id != gate.content_version_id:
+        raise ValueError("review decision content version does not match the review gate")
+    if item.current_version_id != gate.content_version_id:
+        raise ValueError(
+            "reviewed content version no longer matches the current content; "
+            "open a new Human Review Gate"
+        )
     gate.decided_by = reviewer_id
     decision = ReviewDecision(
         id=uuid.uuid4(),
         workspace_id=gate.workspace_id,
         content_item_id=run.content_item_id,
+        content_version_id=gate.content_version_id,
         reviewer_id=reviewer_id,
         decision=ReviewDecisionValue.APPROVED if approved else ReviewDecisionValue.REJECTED,
         notes=notes,
@@ -997,6 +1037,10 @@ async def submit_review_decision(
         correlation_id=(run.correlation_id if run.correlation_id else uuid.uuid4()),
         trace_id=trace_id,
         span_id=span_id,
-        payload={"review_gate_id": str(gate.id), "decision_id": str(decision.id)},
+        payload={
+            "review_gate_id": str(gate.id),
+            "decision_id": str(decision.id),
+            "content_version_id": str(gate.content_version_id),
+        },
         produced_by="review_hook",
     )

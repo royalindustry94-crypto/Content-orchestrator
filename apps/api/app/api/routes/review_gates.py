@@ -73,6 +73,7 @@ async def decide_review_gate(
                 gate_id=gate_id,
                 reviewer_id=uuid.UUID(user.id),
                 approved=payload.approved,
+                expected_content_version_id=payload.content_version_id,
                 notes=payload.notes,
             )
             await session.commit()
@@ -94,6 +95,7 @@ async def decide_review_gate(
         workspace_id=str(workspace_id),
         review_gate_id=str(gate_id),
         approved=payload.approved,
+        content_version_id=str(payload.content_version_id),
         reviewer_id=user.id,
     )
     return ReviewGateOut.model_validate(row)

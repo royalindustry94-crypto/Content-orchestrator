@@ -13,6 +13,7 @@ export type ReviewGate = {
   workspace_id: string;
   pipeline_run_id: string;
   content_item_id: string;
+  content_version_id: string | null;
   topic: string;
   stage: string;
   status: string;
@@ -37,6 +38,22 @@ export type AuthToken = {
 export type Workspace = {
   id: string;
   name: string;
+};
+
+export type ContentProfile = {
+  workspace_id: string;
+  service_mode: "own" | "client";
+  business_name: string;
+  offer: string;
+  target_audience: string;
+  brand_voice: string;
+  target_platform: string;
+  content_goal: string;
+  default_length_seconds: number;
+  created_by: string | null;
+  updated_by: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
 export type DeploymentInfo = {
@@ -466,6 +483,31 @@ export function listWorkspaces(token: string): Promise<Workspace[]> {
   return apiFetch<Workspace[]>("/workspaces", token);
 }
 
+export function getContentProfile(
+  token: string,
+  workspaceId: string,
+): Promise<ContentProfile | null> {
+  return apiFetch<ContentProfile | null>(
+    `/workspaces/${workspaceId}/content-profile`,
+    token,
+  );
+}
+
+export function saveContentProfile(
+  token: string,
+  workspaceId: string,
+  payload: Omit<
+    ContentProfile,
+    "workspace_id" | "created_by" | "updated_by" | "created_at" | "updated_at"
+  >,
+): Promise<ContentProfile> {
+  return apiFetch<ContentProfile>(
+    `/workspaces/${workspaceId}/content-profile`,
+    token,
+    { method: "PUT", body: JSON.stringify(payload) },
+  );
+}
+
 export function getExecutiveDashboard(
   token: string,
   workspaceId: string,
@@ -736,9 +778,17 @@ export function createContentJob(
   workspaceId: string,
   payload: {
     topic: string;
+    business_name?: string;
+    offer?: string;
+    target_audience?: string;
+    brand_voice?: string;
+    content_goal?: string;
+    target_platform?: string;
     script_body?: string;
     script_hook?: string;
     script_cta?: string;
+    target_length_seconds?: number;
+    idempotency_key?: string;
   },
 ): Promise<ContentJob> {
   return apiFetch<ContentJob>(`/workspaces/${workspaceId}/content-jobs`, token, {
@@ -764,6 +814,7 @@ export function decideReviewGate(
   workspaceId: string,
   gateId: string,
   approved: boolean,
+  contentVersionId: string,
   notes?: string,
 ): Promise<ReviewGate> {
   return apiFetch<ReviewGate>(
@@ -771,7 +822,11 @@ export function decideReviewGate(
     token,
     {
       method: "POST",
-      body: JSON.stringify({ approved, notes }),
+      body: JSON.stringify({
+        approved,
+        content_version_id: contentVersionId,
+        notes,
+      }),
     },
   );
 }

@@ -186,7 +186,7 @@ async def lifespan(app: FastAPI):
 
 # P-005: Swagger/ReDoc/OpenAPI JSON only when ENVIRONMENT is development.
 app = FastAPI(
-    title="Content Orchestrator API",
+    title="The Business Manager API",
     version="0.1.0",
     lifespan=lifespan,
     **openapi_route_kwargs(settings.environment),
