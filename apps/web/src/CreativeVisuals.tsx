@@ -16,7 +16,7 @@ export function UnconnectedWaveChart({
   label?: string;
 }) {
   const gradientId = `cw-wave-${tone}-${useId().replaceAll(":", "")}`;
-  const stroke = tone === "cyan" ? "#2DE2E6" : "#FF6B8A";
+  const stroke = tone === "cyan" ? "#2DE2E6" : "#B8F54A";
   return (
     <figure className={`creative-wave creative-wave--${tone}`} aria-label={label}>
       <svg viewBox="0 0 360 120" role="img" aria-hidden="true">

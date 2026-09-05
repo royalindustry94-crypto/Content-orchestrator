@@ -24,7 +24,7 @@ const FRIENDS = [
 const JULY_LEAD_EMPTY = 3;
 
 function DockIcon({ id, active }: { id: Screen; active: boolean }) {
-  const stroke = active ? "#FF007A" : "#7A8190";
+  const stroke = active ? "#00D9FF" : "#7A8190";
   if (id === "dashboard") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -78,9 +78,9 @@ function StatusBar() {
   );
 }
 
-function Wave({ tone, uid }: { tone: "hot" | "cyan"; uid: string }) {
-  const stroke = tone === "cyan" ? "#00D9FF" : "#FF007A";
-  const mid = tone === "cyan" ? "#2DE2E6" : "#FF9A00";
+function Wave({ tone, uid }: { tone: "lime" | "cyan"; uid: string }) {
+  const stroke = tone === "cyan" ? "#00D9FF" : "#B8F54A";
+  const mid = tone === "cyan" ? "#3D8BFF" : "#00D9FF";
   const id = `tpl-wave-${tone}-${uid}`;
   return (
     <svg className="tpl-wave" viewBox="0 0 320 118" aria-hidden="true">
@@ -126,14 +126,14 @@ function Donut({
   value,
 }: {
   label: string;
-  tone: "hot" | "cyan" | "lime" | "violet";
+  tone: "cyan" | "lime" | "teal" | "blue";
   value: number;
 }) {
   const colors = {
-    hot: "#FF007A",
     cyan: "#00D9FF",
     lime: "#B8F54A",
-    violet: "#C084FC",
+    teal: "#2DE2B8",
+    blue: "#3D8BFF",
   };
   const circumference = 2 * Math.PI * 15.5;
   const dash = (value / 100) * circumference;
@@ -168,10 +168,10 @@ function SampleRing({ uid }: { uid: string }) {
       <svg viewBox="0 0 160 160" aria-hidden="true">
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0%" stopColor="#FF007A" />
-            <stop offset="38%" stopColor="#00D9FF" />
+            <stop offset="0%" stopColor="#00D9FF" />
+            <stop offset="38%" stopColor="#3D8BFF" />
             <stop offset="72%" stopColor="#B8F54A" />
-            <stop offset="100%" stopColor="#FF9A00" />
+            <stop offset="100%" stopColor="#2DE2B8" />
           </linearGradient>
           <filter id={glowId} x="-40%" y="-40%" width="180%" height="180%">
             <feGaussianBlur stdDeviation="3.6" result="blur" />
@@ -217,13 +217,13 @@ function ScreenBody({ screen, uid }: { screen: Screen; uid: string }) {
         </header>
         <section className="tpl-card">
           <p className="tpl-kicker">Statistic graph</p>
-          <Wave tone="hot" uid={uid} />
+          <Wave tone="lime" uid={uid} />
         </section>
         <div className="tpl-donut-row">
-          <Donut label="01" tone="hot" value={78} />
-          <Donut label="02" tone="cyan" value={56} />
-          <Donut label="03" tone="lime" value={84} />
-          <Donut label="04" tone="violet" value={42} />
+          <Donut label="01" tone="cyan" value={78} />
+          <Donut label="02" tone="lime" value={56} />
+          <Donut label="03" tone="teal" value={84} />
+          <Donut label="04" tone="blue" value={42} />
         </div>
       </>
     );
@@ -271,10 +271,10 @@ function ScreenBody({ screen, uid }: { screen: Screen; uid: string }) {
         <div className="tpl-pie-wrap">
           <div className="tpl-pie" aria-hidden="true" />
           <ul className="tpl-legend">
-            <li><i className="tpl-swatch tpl-swatch--hot" /> Magenta</li>
-            <li><i className="tpl-swatch tpl-swatch--orange" /> Orange</li>
             <li><i className="tpl-swatch tpl-swatch--cyan" /> Cyan</li>
-            <li><i className="tpl-swatch tpl-swatch--violet" /> Violet</li>
+            <li><i className="tpl-swatch tpl-swatch--blue" /> Blue</li>
+            <li><i className="tpl-swatch tpl-swatch--lime" /> Lime</li>
+            <li><i className="tpl-swatch tpl-swatch--teal" /> Teal</li>
           </ul>
         </div>
       </>
