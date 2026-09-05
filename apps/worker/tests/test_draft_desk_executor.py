@@ -60,3 +60,12 @@ async def test_review_stage_rejected():
     )
     assert ok is False
     assert "human" in err.lower() or "review" in err.lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("stage", ["visuals", "rendering", "published", "", "unknown"])
+async def test_every_unsupported_stage_is_rejected(stage: str):
+    ok, result, err = await draft_desk_executor({"stage": stage, "topic": "x"})
+    assert ok is False
+    assert result is None
+    assert "does not support" in err

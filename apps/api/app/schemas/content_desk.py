@@ -37,6 +37,7 @@ class ContentJobOut(BaseModel):
 
 class ReviewDecisionIn(BaseModel):
     approved: bool
+    content_version_id: uuid.UUID
     notes: str | None = Field(default=None, max_length=5000)
 
 
@@ -47,6 +48,7 @@ class ReviewGateOut(BaseModel):
     workspace_id: uuid.UUID
     pipeline_run_id: uuid.UUID
     content_item_id: uuid.UUID
+    content_version_id: uuid.UUID | None
     topic: str
     stage: str
     status: str

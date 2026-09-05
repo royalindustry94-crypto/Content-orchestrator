@@ -354,7 +354,7 @@ async def list_review_gates(
         select(ReviewGate, PipelineRun, ContentItem, ContentVersion)
         .join(PipelineRun, PipelineRun.id == ReviewGate.pipeline_run_id)
         .join(ContentItem, ContentItem.id == PipelineRun.content_item_id)
-        .outerjoin(ContentVersion, ContentVersion.id == ContentItem.current_version_id)
+        .outerjoin(ContentVersion, ContentVersion.id == ReviewGate.content_version_id)
         .where(ReviewGate.workspace_id == workspace_id)
         .order_by(ReviewGate.requested_at.desc())
     )
@@ -375,7 +375,7 @@ async def get_review_gate(
             select(ReviewGate, PipelineRun, ContentItem, ContentVersion)
             .join(PipelineRun, PipelineRun.id == ReviewGate.pipeline_run_id)
             .join(ContentItem, ContentItem.id == PipelineRun.content_item_id)
-            .outerjoin(ContentVersion, ContentVersion.id == ContentItem.current_version_id)
+            .outerjoin(ContentVersion, ContentVersion.id == ReviewGate.content_version_id)
             .where(
                 ReviewGate.workspace_id == workspace_id,
                 ReviewGate.id == gate_id,
@@ -395,6 +395,7 @@ async def decide_review_gate(
     gate_id: uuid.UUID,
     reviewer_id: uuid.UUID,
     approved: bool,
+    expected_content_version_id: uuid.UUID,
     notes: str | None = None,
 ) -> dict:
     gate = (
@@ -417,6 +418,7 @@ async def decide_review_gate(
         gate=gate,
         reviewer_id=reviewer_id,
         approved=approved,
+        expected_content_version_id=expected_content_version_id,
         notes=notes,
     )
     # Deliver the exact event just emitted, rather than an arbitrary pending
@@ -449,6 +451,7 @@ def _gate_row(
         "workspace_id": gate.workspace_id,
         "pipeline_run_id": gate.pipeline_run_id,
         "content_item_id": item.id,
+        "content_version_id": gate.content_version_id,
         "topic": item.topic,
         "stage": stage,
         "status": status,

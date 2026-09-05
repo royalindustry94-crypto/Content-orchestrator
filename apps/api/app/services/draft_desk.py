@@ -119,14 +119,4 @@ def execute_stage(context: dict) -> tuple[bool, dict | None, str]:
     if stage == "review":
         return False, None, "review stage is human-gated; workers must not execute it"
 
-    # Other stages: produce an explicit structured artifact rather than {}.
-    return (
-        True,
-        {
-            "provider": "draft_desk",
-            "stage": stage,
-            "summary": f"Draft Desk completed stage '{stage}' for topic '{topic or 'n/a'}'.",
-            "estimated_cost_usd": "0.00",
-        },
-        "",
-    )
+    return False, None, f"draft_desk does not support stage '{stage or '<empty>'}'"

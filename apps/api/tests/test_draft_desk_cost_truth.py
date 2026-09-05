@@ -36,3 +36,11 @@ def test_worker_stage_path_keeps_saved_profile_context() -> None:
     assert "Audience: independent consultants." in result["script_body"]
     assert "Intended platform: LinkedIn." in result["script_body"]
     assert "contact North Star Studio" in result["script_cta"]
+
+
+def test_draft_desk_rejects_every_unsupported_stage() -> None:
+    for stage in ("visuals", "rendering", "published", "", "unknown"):
+        ok, result, error = execute_stage({"stage": stage, "topic": "x"})
+        assert ok is False
+        assert result is None
+        assert "does not support" in error

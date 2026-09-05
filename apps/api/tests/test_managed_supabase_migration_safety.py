@@ -14,6 +14,7 @@ API_ROOT = REPO_ROOT / "apps/api"
 MIGRATION_0001 = API_ROOT / "alembic/versions/0001_identity_and_access.py"
 MIGRATION_0051 = API_ROOT / "alembic/versions/0051_managed_supabase_public_acl_hardening.py"
 LOCAL_BOOTSTRAP = REPO_ROOT / "scripts/bootstrap_local_postgres.sql"
+STAGING_COMPOSE = REPO_ROOT / "docker-compose.staging.yml"
 
 
 def _run_psql(psql: str, url: str, sql: str) -> subprocess.CompletedProcess[str]:
@@ -66,6 +67,14 @@ def test_local_bootstrap_is_explicitly_local_only_and_self_refuses_managed() -> 
     assert "CREATE TABLE IF NOT EXISTS auth.users" in source
     assert "PASSWORD :'app_runtime_password'" in source
     assert "PASSWORD 'app_runtime'" not in source
+
+
+def test_staging_bootstrap_passes_runtime_password_via_environment() -> None:
+    source = STAGING_COMPOSE.read_text()
+    bootstrap = source.split("  database-bootstrap:", 1)[1].split("\n  api:", 1)[0]
+    assert "APP_RUNTIME_PASSWORD: ${APP_RUNTIME_PASSWORD:" in bootstrap
+    assert '-v app_runtime_password="$$APP_RUNTIME_PASSWORD"' in bootstrap
+    assert '-v app_runtime_password="${APP_RUNTIME_PASSWORD:' not in bootstrap
 
 
 def test_managed_acl_hardening_is_forward_only_and_explicit() -> None:

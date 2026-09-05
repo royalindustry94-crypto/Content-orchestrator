@@ -38,6 +38,7 @@ services:
     restart: "no"
     environment:
       PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the staging environment}
+      APP_RUNTIME_PASSWORD: ${APP_RUNTIME_PASSWORD:?Set APP_RUNTIME_PASSWORD in the staging environment}
     volumes:
       - ./scripts/bootstrap_local_postgres.sql:/bootstrap_local_postgres.sql:ro
     command:
@@ -46,7 +47,7 @@ services:
       - >-
         psql -h postgres -U postgres -d content_orchestrator
         -v ON_ERROR_STOP=1
-        -v app_runtime_password="${APP_RUNTIME_PASSWORD:?Set APP_RUNTIME_PASSWORD in the staging environment}"
+        -v app_runtime_password="$$APP_RUNTIME_PASSWORD"
         -f /bootstrap_local_postgres.sql
     depends_on:
       postgres:

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
 import {
+  decideReviewGate,
   getContentProfile,
   getExecutiveDashboard,
   getOperationsAlerts,
@@ -24,6 +25,7 @@ describe("review desk api client", () => {
           workspace_id: "ws-1",
           pipeline_run_id: "run-1",
           content_item_id: "item-1",
+          content_version_id: "version-1",
           topic: "Topic",
           stage: "review",
           status: "awaiting",
@@ -51,6 +53,36 @@ describe("review desk api client", () => {
     );
     const headers = fetchMock.mock.calls[0]?.[1]?.headers as Headers;
     expect(headers.get("Authorization")).toBe("Bearer token-123");
+  });
+
+  it("binds a review decision to the exact displayed content version", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({}),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    await decideReviewGate(
+      "token-123",
+      "ws-1",
+      "gate-1",
+      true,
+      "version-1",
+      "Checked by the Founder",
+    );
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/workspaces/ws-1/review-gates/gate-1/decision",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          approved: true,
+          content_version_id: "version-1",
+          notes: "Checked by the Founder",
+        }),
+      }),
+    );
   });
 
   it("loads and saves the durable workspace content profile", async () => {

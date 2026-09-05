@@ -868,10 +868,10 @@ function ReviewQueue({
                 <span><b>Stage</b>{gate.stage.replaceAll("_", " ")}</span>
               </div>
               <footer>
-                <button className="button button--approve" disabled={busy === gate.id} onClick={() => void onDecision(gate, true)} type="button">
+                <button className="button button--approve" disabled={busy === gate.id || !gate.content_version_id} onClick={() => void onDecision(gate, true)} title={!gate.content_version_id ? "This historical review has no bound content version" : undefined} type="button">
                   <Icon name="check" size={15} /> Approve
                 </button>
-                <button className="button button--reject" disabled={busy === gate.id} onClick={() => void onDecision(gate, false)} type="button">
+                <button className="button button--reject" disabled={busy === gate.id || !gate.content_version_id} onClick={() => void onDecision(gate, false)} title={!gate.content_version_id ? "This historical review has no bound content version" : undefined} type="button">
                   <Icon name="close" size={15} /> Reject
                 </button>
                 <button className="button button--open" onClick={() => setSelected(gate)} type="button">Open <Icon name="arrow" size={14} /></button>
@@ -899,10 +899,11 @@ function ReviewQueue({
               {selected.script_cta ? <section><h4>Call to action</h4><p>{selected.script_cta}</p></section> : null}
               {!selected.script_hook && !selected.script_body && !selected.script_cta ? <p>No text content was attached to this review.</p> : null}
             </div>
+            {!selected.content_version_id ? <p className="error" role="alert">This historical review is missing its exact content version. Open a new Human Review Gate before deciding.</p> : null}
             {selected.status === "awaiting" ? (
               <footer className="drawer-actions">
-                <button className="button button--reject" disabled={busy === selected.id} onClick={() => void onDecision(selected, false)} type="button">Reject</button>
-                <button className="button button--approve" disabled={busy === selected.id} onClick={() => void onDecision(selected, true)} type="button">Approve content</button>
+                <button className="button button--reject" disabled={busy === selected.id || !selected.content_version_id} onClick={() => void onDecision(selected, false)} type="button">Reject</button>
+                <button className="button button--approve" disabled={busy === selected.id || !selected.content_version_id} onClick={() => void onDecision(selected, true)} type="button">Approve content</button>
               </footer>
             ) : null}
           </aside>
@@ -2084,10 +2085,14 @@ export default function LumoraDashboard({
   const healthLevel = aggregateHealth(displayedHealth);
 
   const decide = async (gate: ReviewGate, approved: boolean) => {
+    if (!gate.content_version_id) {
+      setReviewActionError("This review is missing its exact content version. Open a new Human Review Gate.");
+      return;
+    }
     setReviewBusy(gate.id);
     setReviewActionError(null);
     try {
-      await decideReviewGate(token, workspaceId, gate.id, approved);
+      await decideReviewGate(token, workspaceId, gate.id, approved, gate.content_version_id);
       await load();
     } catch (cause) {
       setReviewActionError(cause instanceof Error ? cause.message : "Unable to save the review decision.");

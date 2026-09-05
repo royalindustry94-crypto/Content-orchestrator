@@ -433,6 +433,30 @@ async def submit_result(
             "lease has expired; assignment is eligible for recovery",
         )
 
+    run = await session.get(PipelineRun, assignment.pipeline_run_id)
+    if run is None:
+        raise LeaseConflict(
+            "pipeline_run_missing",
+            "assignment pipeline run no longer exists",
+        )
+    open_reservation = (
+        await session.execute(
+            select(SpendReservation)
+            .where(
+                SpendReservation.pipeline_run_id == run.id,
+                SpendReservation.stage == assignment.stage,
+                SpendReservation.status == ReservationStatus.RESERVED,
+            )
+            .order_by(SpendReservation.created_at.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if success and open_reservation is None:
+        raise LeaseConflict(
+            "spend_reservation_missing",
+            "successful stage submission requires an open spend reservation",
+        )
+
     assignment.status = StageAssignmentStatus.COMPLETED if success else StageAssignmentStatus.FAILED
     assignment.completed_at = now
     assignment.result = result
@@ -445,10 +469,6 @@ async def submit_result(
             worker.current_load -= 1
             if worker.status == WorkerStatus.BUSY and worker.current_load < worker.max_concurrency:
                 worker.status = WorkerStatus.ONLINE
-
-    run = await session.get(PipelineRun, assignment.pipeline_run_id)
-    if run is None:
-        return
 
     stage_run = PipelineStageRun(
         id=_uuid.uuid4(), workspace_id=assignment.workspace_id,
@@ -478,40 +498,27 @@ async def submit_result(
             },
             produced_by="dispatcher",
         )
-    open_reservation = (
-        await session.execute(
-            select(SpendReservation)
-            .where(
-                SpendReservation.pipeline_run_id == run.id,
-                SpendReservation.stage == assignment.stage,
-                SpendReservation.status == ReservationStatus.RESERVED,
-            )
-            .order_by(SpendReservation.created_at.desc())
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-
     if success:
-        if open_reservation is not None:
-            actual = Decimal(str(get_settings().default_stage_estimate_usd))
-            if isinstance(result, dict) and result.get("estimated_cost_usd") is not None:
-                try:
-                    actual = Decimal(str(result["estimated_cost_usd"]))
-                except Exception:
-                    logger.warning(
-                        "spend_commit_invalid_worker_cost",
-                        extra={
-                            "assignment_id": str(assignment.id),
-                            "reported": result.get("estimated_cost_usd"),
-                        },
-                    )
-                    actual = Decimal(str(get_settings().default_stage_estimate_usd))
-            await controller.commit_spend(
-                session,
-                run=run,
-                reservation=open_reservation,
-                actual_cost_usd=actual,
-            )
+        assert open_reservation is not None
+        actual = Decimal(str(get_settings().default_stage_estimate_usd))
+        if isinstance(result, dict) and result.get("estimated_cost_usd") is not None:
+            try:
+                actual = Decimal(str(result["estimated_cost_usd"]))
+            except Exception:
+                logger.warning(
+                    "spend_commit_invalid_worker_cost",
+                    extra={
+                        "assignment_id": str(assignment.id),
+                        "reported": result.get("estimated_cost_usd"),
+                    },
+                )
+                actual = Decimal(str(get_settings().default_stage_estimate_usd))
+        await controller.commit_spend(
+            session,
+            run=run,
+            reservation=open_reservation,
+            actual_cost_usd=actual,
+        )
         await controller.handle_stage_success(
             session, run=run, stage=assignment.stage, result_context=result or {}
         )

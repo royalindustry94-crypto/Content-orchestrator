@@ -438,6 +438,49 @@ describe("dashboard navigation smoke test", () => {
     }
   });
 
+  it("refuses decisions for a historical gate without a bound content version", async () => {
+    const api = await import("./api");
+    const listReviews = vi.mocked(api.listReviewGates);
+    listReviews.mockResolvedValue([
+      {
+        id: "legacy-gate",
+        workspace_id: "ws-1",
+        pipeline_run_id: "run-1",
+        content_item_id: "item-1",
+        content_version_id: null,
+        topic: "Legacy review",
+        stage: "review",
+        status: "awaiting",
+        requested_at: "2026-08-07T00:00:00Z",
+        timeout_at: null,
+        decided_at: null,
+        decided_by: null,
+        script_hook: null,
+        script_body: "Unbound historical text",
+        script_cta: null,
+        run_status: "paused",
+      },
+    ]);
+
+    renderShell();
+    await screen.findByRole("heading", { name: "Home" });
+    const nav = screen.getByRole("navigation", { name: /primary navigation/i });
+    fireEvent.click(within(nav).getByRole("button", { name: /^Human Review$/i }));
+
+    const card = (await screen.findByText("Legacy review")).closest("article");
+    expect(card).not.toBeNull();
+    const approve = within(card as HTMLElement).getByRole("button", { name: /^Approve$/i });
+    const reject = within(card as HTMLElement).getByRole("button", { name: /^Reject$/i });
+    expect((approve as HTMLButtonElement).disabled).toBe(true);
+    expect((reject as HTMLButtonElement).disabled).toBe(true);
+
+    fireEvent.click(within(card as HTMLElement).getByRole("button", { name: /^Open/i }));
+    expect(
+      await screen.findByText(/missing its exact content version/i),
+    ).toBeDefined();
+    listReviews.mockResolvedValue([]);
+  });
+
   it("surfaces a retryable error state instead of crashing when a route fails", async () => {
     const api = await import("./api");
     // Reject a route-only endpoint so the initial dashboard load still succeeds.

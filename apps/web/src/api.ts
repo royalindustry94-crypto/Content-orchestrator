@@ -13,6 +13,7 @@ export type ReviewGate = {
   workspace_id: string;
   pipeline_run_id: string;
   content_item_id: string;
+  content_version_id: string | null;
   topic: string;
   stage: string;
   status: string;
@@ -813,6 +814,7 @@ export function decideReviewGate(
   workspaceId: string,
   gateId: string,
   approved: boolean,
+  contentVersionId: string,
   notes?: string,
 ): Promise<ReviewGate> {
   return apiFetch<ReviewGate>(
@@ -820,7 +822,11 @@ export function decideReviewGate(
     token,
     {
       method: "POST",
-      body: JSON.stringify({ approved, notes }),
+      body: JSON.stringify({
+        approved,
+        content_version_id: contentVersionId,
+        notes,
+      }),
     },
   );
 }

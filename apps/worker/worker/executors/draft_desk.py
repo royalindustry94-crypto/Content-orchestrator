@@ -80,13 +80,4 @@ async def draft_desk_executor(assignment_context: dict) -> tuple[bool, dict | No
             "",
         )
 
-    return (
-        True,
-        {
-            "provider": "draft_desk",
-            "stage": stage,
-            "summary": f"Draft Desk completed stage '{stage}' for topic '{topic or 'n/a'}'.",
-            "estimated_cost_usd": "0.00",
-        },
-        "",
-    )
+    return False, None, f"draft_desk does not support stage '{stage or '<empty>'}'"
