@@ -3651,12 +3651,12 @@ button.side-link--active {
   --ink: #f7f8fa;
   --muted: #9aa0ae;
   --muted-strong: #d5dae3;
-  --accent: #00d9ff;
-  --accent-bright: #b8f54a;
-  --accent-dark: #102428;
-  --accent-cyan: #2de2e6;
+  --accent: #ff007a;
+  --accent-bright: #ff9a00;
+  --accent-dark: #2a1220;
+  --accent-cyan: #00d9ff;
   --accent-lime: #b8f54a;
-  --hot-gradient: linear-gradient(90deg, #00d9ff 0%, #b8f54a 82%, #ff9a00 100%);
+  --hot-gradient: linear-gradient(90deg, #ff007a 0%, #ff9a00 100%);
   --cyan-glow: rgba(45, 226, 230, 0.18);
   background: #121212;
   color-scheme: dark;
@@ -3674,8 +3674,7 @@ body,
 body {
   background-image:
     radial-gradient(circle at 12% -8%, rgba(45, 226, 230, 0.16), transparent 28rem),
-    radial-gradient(circle at 88% 0%, rgba(184, 245, 74, 0.12), transparent 26rem),
-    radial-gradient(circle at 72% 4%, rgba(255, 0, 122, 0.07), transparent 18rem),
+    radial-gradient(circle at 88% 0%, rgba(255, 0, 122, 0.16), transparent 26rem),
     linear-gradient(180deg, #14161c 0%, #121212 38%);
 }
 
@@ -3760,14 +3759,14 @@ body {
 }
 
 button.side-link--active {
-  border-color: rgba(0, 217, 255, 0.28);
-  background: linear-gradient(90deg, rgba(0, 217, 255, 0.18), rgba(184, 245, 74, 0.06));
-  box-shadow: inset 2px 0 #00d9ff;
+  border-color: rgba(255, 0, 122, 0.28);
+  background: linear-gradient(90deg, rgba(255, 0, 122, 0.18), rgba(255, 154, 0, 0.06));
+  box-shadow: inset 2px 0 #ff007a;
   color: #fff;
 }
 
 .side-link--active .ui-icon {
-  color: #00d9ff;
+  color: #ff007a;
 }
 
 .button--primary,
@@ -3775,12 +3774,12 @@ button.side-link--active {
   border: 0;
   background: var(--hot-gradient);
   color: #16120f;
-  box-shadow: 0 10px 28px rgba(0, 217, 255, 0.28);
+  box-shadow: 0 10px 28px rgba(255, 0, 122, 0.28);
 }
 
 .button--primary:hover,
 .auth-submit:hover {
-  background: linear-gradient(90deg, #00d9ff 0%, #b8f54a 78%, #ff9a00 100%);
+  background: linear-gradient(90deg, #ff007a 0%, #ff9a00 100%);
   color: #16120f;
 }
 
@@ -3807,7 +3806,7 @@ button.side-link--active {
 }
 
 .auth-remember input {
-  accent-color: #00d9ff;
+  accent-color: #ff007a;
 }
 
 .auth-shell--approved {
