@@ -39,5 +39,9 @@ describe("Creative workspace visuals", () => {
     expect(screen.getAllByText("Not connected").length).toBe(4);
     expect(screen.queryByText(/\$/)).toBeNull();
     expect(screen.queryByText(/%/)).toBeNull();
+    const markup = document.body.innerHTML;
+    expect(markup).toContain("#FF007A");
+    expect(markup).toContain("#FF9A00");
+    expect(markup).toContain("#FF3358");
   });
 });

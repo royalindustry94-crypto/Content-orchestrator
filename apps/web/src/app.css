@@ -3318,21 +3318,27 @@ button.side-link--active {
   flex-direction: column-reverse;
 }
 .financial-overview__circle-card > span {
-  color: #B8F54A;
   font-size: clamp(0.72rem, 1.3vw, 0.92rem);
   font-weight: 780;
   letter-spacing: 0.14em;
   text-align: center;
   text-transform: uppercase;
 }
+.financial-overview__circle-card--01 > span { color: #FF007A; }
+.financial-overview__circle-card--02 > span { color: #FF9A00; }
+.financial-overview__circle-card--03 > span { color: #B8F54A; }
+.financial-overview__circle-card--04 > span { color: #FF3358; }
 .bankroll-period {
   display: flex;
   width: min(100%, 228px);
   padding: 2px;
-  border: 1px solid rgba(184, 245, 74, 0.22);
+  border: 1px solid rgba(255, 0, 122, 0.22);
   border-radius: 999px;
   background: rgba(18, 18, 18, 0.72);
 }
+.financial-overview__circle-card--02 .bankroll-period { border-color: rgba(255, 154, 0, 0.28); }
+.financial-overview__circle-card--03 .bankroll-period { border-color: rgba(184, 245, 74, 0.28); }
+.financial-overview__circle-card--04 .bankroll-period { border-color: rgba(255, 51, 88, 0.3); }
 .bankroll-period__tab {
   flex: 1 1 0;
   min-width: 0;
@@ -3347,8 +3353,20 @@ button.side-link--active {
   letter-spacing: 0.03em;
 }
 .bankroll-period__tab.is-active {
+  background: #FF007A;
+  color: #fff;
+}
+.financial-overview__circle-card--02 .bankroll-period__tab.is-active {
+  background: #FF9A00;
+  color: #121212;
+}
+.financial-overview__circle-card--03 .bankroll-period__tab.is-active {
   background: #B8F54A;
   color: #121212;
+}
+.financial-overview__circle-card--04 .bankroll-period__tab.is-active {
+  background: #FF3358;
+  color: #fff;
 }
 .financial-overview__circle {
   position: relative;
@@ -3362,7 +3380,18 @@ button.side-link--active {
   inset: 0;
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 0 10px rgba(184, 245, 74, 0.12));
+}
+.financial-overview__circle-card--01 .bankroll-ring {
+  filter: drop-shadow(0 0 10px rgba(255, 0, 122, 0.22));
+}
+.financial-overview__circle-card--02 .bankroll-ring {
+  filter: drop-shadow(0 0 10px rgba(255, 154, 0, 0.2));
+}
+.financial-overview__circle-card--03 .bankroll-ring {
+  filter: drop-shadow(0 0 10px rgba(184, 245, 74, 0.16));
+}
+.financial-overview__circle-card--04 .bankroll-ring {
+  filter: drop-shadow(0 0 10px rgba(255, 51, 88, 0.2));
 }
 .financial-overview__circle-copy {
   position: relative;
@@ -3868,24 +3897,17 @@ button.side-link--active {
   display: grid;
   gap: 0;
   padding: clamp(0.85rem, 2.2vw, 1.45rem) clamp(0.7rem, 2vw, 1.3rem);
-  border: 1px solid rgba(184, 245, 74, 0.42);
+  border: 1px solid rgba(255, 0, 122, 0.38);
   border-radius: 22px;
-  background: #121212;
+  background:
+    linear-gradient(160deg, rgba(255, 0, 122, 0.08), transparent 36%),
+    #121212;
 }
 
 .financial-overview__circle-card {
   border: 0;
   background: transparent;
   box-shadow: none;
-}
-
-.financial-overview__circle-card > span {
-  color: #b8f54a;
-}
-
-.financial-overview__circle-card--02 .bankroll-ring,
-.financial-overview__circle-card--04 .bankroll-ring {
-  filter: drop-shadow(0 0 10px rgba(0, 217, 255, 0.16));
 }
 
 .creative-wave {

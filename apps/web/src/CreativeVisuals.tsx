@@ -17,10 +17,10 @@ const BANKROLL_METRICS = [
 ] as const;
 
 const RING_STOPS: Record<(typeof BANKROLL_METRICS)[number]["id"], [string, string]> = {
-  "01": ["#B8F54A", "#00D9FF"],
-  "02": ["#00D9FF", "#B8F54A"],
+  "01": ["#FF007A", "#FF9A00"],
+  "02": ["#FF9A00", "#FF3358"],
   "03": ["#B8F54A", "#00D9FF"],
-  "04": ["#00D9FF", "#B8F54A"],
+  "04": ["#FF007A", "#FF3358"],
 };
 
 type WaveTone = "hot" | "cyan";

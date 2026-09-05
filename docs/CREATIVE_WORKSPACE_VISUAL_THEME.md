@@ -44,3 +44,4 @@ Preview rules:
 - Spend reads still come from workspace spend/cost-control endpoints; caps remain fail-closed.
 - Home Bankroll still renders **Not connected** until a financial source exists. No synthetic `$0`, profit, or completion percentage was added.
 - Home uses a 2×2 ring layout (Revenue, Spending, Net profit, Profit margin) with 3D–1Y range pills. Changing a range does not invent a series.
+- Home rings keep the full kit: magenta `#FF007A`, orange `#FF9A00`, red `#FF3358`, plus lime `#B8F54A` and cyan `#00D9FF`. Pink / orange / red are not dropped when greens and blues are present.
