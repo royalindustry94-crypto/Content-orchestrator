@@ -2,16 +2,9 @@ import { useState } from "react";
 import { BusinessManagerMark } from "./BusinessManagerMark";
 import "./creativeTemplate.css";
 
-type Screen = "dashboard" | "stats" | "transfer" | "planning" | "history" | "info";
+type Screen = "dashboard" | "stats" | "transfer" | "planning" | "history";
 
-const PALETTE = [
-  { name: "Charcoal", hex: "#121212" },
-  { name: "Panel", hex: "#1C1C21" },
-  { name: "Magenta", hex: "#FF007A" },
-  { name: "Orange", hex: "#FF9A00" },
-  { name: "Cyan", hex: "#00D9FF" },
-  { name: "Lime", hex: "#B8F54A" },
-];
+const KIT: Screen[] = ["dashboard", "stats", "transfer", "planning", "history"];
 
 const DOCK: Array<{ id: Screen; label: string }> = [
   { id: "dashboard", label: "Dashboard" },
@@ -19,64 +12,55 @@ const DOCK: Array<{ id: Screen; label: string }> = [
   { id: "transfer", label: "Transfer" },
   { id: "planning", label: "Planning" },
   { id: "history", label: "History" },
-  { id: "info", label: "Info" },
 ];
 
 const FRIENDS = [
-  { name: "Alex Rivera", amount: "$8.55", tone: "hot" },
-  { name: "Jordan Blake", amount: "$12.00", tone: "cyan" },
-  { name: "Sam Chen", amount: "$4.20", tone: "lime" },
-  { name: "Riley Ng", amount: "$19.80", tone: "orange" },
+  { name: "Alex Rivera", amount: "$8.55", face: "one" },
+  { name: "Jordan Blake", amount: "$12.00", face: "two" },
+  { name: "Sam Chen", amount: "$4.20", face: "three" },
+  { name: "Riley Ng", amount: "$19.80", face: "four" },
 ] as const;
 
 const JULY_LEAD_EMPTY = 3;
 
 function DockIcon({ id, active }: { id: Screen; active: boolean }) {
-  const stroke = active ? "#FF007A" : "#8B91A0";
+  const stroke = active ? "#FF007A" : "#7A8190";
   if (id === "dashboard") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="3" y="3" width="8" height="8" rx="1.6" fill="none" stroke={stroke} strokeWidth="1.8" />
-        <rect x="13" y="3" width="8" height="8" rx="1.6" fill="none" stroke={stroke} strokeWidth="1.8" />
-        <rect x="3" y="13" width="8" height="8" rx="1.6" fill="none" stroke={stroke} strokeWidth="1.8" />
-        <rect x="13" y="13" width="8" height="8" rx="1.6" fill="none" stroke={stroke} strokeWidth="1.8" />
+        <rect x="4" y="4" width="7" height="7" rx="1.4" fill="none" stroke={stroke} strokeWidth="1.7" />
+        <rect x="13" y="4" width="7" height="7" rx="1.4" fill="none" stroke={stroke} strokeWidth="1.7" />
+        <rect x="4" y="13" width="7" height="7" rx="1.4" fill="none" stroke={stroke} strokeWidth="1.7" />
+        <rect x="13" y="13" width="7" height="7" rx="1.4" fill="none" stroke={stroke} strokeWidth="1.7" />
       </svg>
     );
   }
   if (id === "stats") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M5 18V10M12 18V6M19 18v-7" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" />
+        <path d="M6 17V9M12 17V6M18 17v-5" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" />
       </svg>
     );
   }
   if (id === "transfer") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M4 8h14l-3-3M20 16H6l3 3" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+        <path d="M5 8h13l-3.2-3M19 16H6l3.2 3" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
   }
   if (id === "planning") {
     return (
       <svg viewBox="0 0 24 24" aria-hidden="true">
-        <rect x="4" y="5" width="16" height="15" rx="2" fill="none" stroke={stroke} strokeWidth="1.8" />
-        <path d="M8 3v4M16 3v4M4 10h16" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" />
-      </svg>
-    );
-  }
-  if (id === "history") {
-    return (
-      <svg viewBox="0 0 24 24" aria-hidden="true">
-        <path d="M12 7v5l3 2" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" />
-        <circle cx="12" cy="12" r="8" fill="none" stroke={stroke} strokeWidth="1.8" />
+        <rect x="5" y="6" width="14" height="13" rx="2" fill="none" stroke={stroke} strokeWidth="1.7" />
+        <path d="M8 4v4M16 4v4M5 10h14" fill="none" stroke={stroke} strokeWidth="1.7" strokeLinecap="round" />
       </svg>
     );
   }
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="8" fill="none" stroke={stroke} strokeWidth="1.8" />
-      <path d="M12 11v5M12 8h.01" fill="none" stroke={stroke} strokeWidth="1.8" strokeLinecap="round" />
+      <circle cx="12" cy="12" r="7.2" fill="none" stroke={stroke} strokeWidth="1.7" />
+      <path d="M12 8.2v4.2l2.6 1.6" fill="none" stroke={stroke} strokeWidth="1.7" strokeLinecap="round" />
     </svg>
   );
 }
@@ -96,18 +80,18 @@ function StatusBar() {
 
 function Wave({ tone, uid }: { tone: "hot" | "cyan"; uid: string }) {
   const stroke = tone === "cyan" ? "#00D9FF" : "#FF007A";
-  const mid = tone === "cyan" ? "#00D9FF" : "#FF9A00";
+  const mid = tone === "cyan" ? "#2DE2E6" : "#FF9A00";
   const id = `tpl-wave-${tone}-${uid}`;
   return (
-    <svg className="tpl-wave" viewBox="0 0 320 110" aria-hidden="true">
+    <svg className="tpl-wave" viewBox="0 0 320 118" aria-hidden="true">
       <defs>
         <linearGradient id={id} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={stroke} stopOpacity="0.62" />
-          <stop offset="55%" stopColor={mid} stopOpacity="0.18" />
+          <stop offset="0%" stopColor={stroke} stopOpacity="0.85" />
+          <stop offset="42%" stopColor={mid} stopOpacity="0.35" />
           <stop offset="100%" stopColor={stroke} stopOpacity="0" />
         </linearGradient>
-        <filter id={`${id}-glow`} x="-20%" y="-40%" width="140%" height="180%">
-          <feGaussianBlur stdDeviation="2.4" result="blur" />
+        <filter id={`${id}-glow`} x="-30%" y="-60%" width="160%" height="220%">
+          <feGaussianBlur stdDeviation="3.2" result="blur" />
           <feMerge>
             <feMergeNode in="blur" />
             <feMergeNode in="SourceGraphic" />
@@ -115,15 +99,22 @@ function Wave({ tone, uid }: { tone: "hot" | "cyan"; uid: string }) {
         </filter>
       </defs>
       <path
-        d="M0 74 C 28 46, 52 98, 88 70 S 148 24, 186 58 244 108, 278 72 320 40, 320 40 V 110 H 0 Z"
+        d="M0 78 C 26 50, 48 102, 84 74 S 142 22, 180 56 238 112, 274 76 320 38, 320 38 V 118 H 0 Z"
         fill={`url(#${id})`}
       />
       <path
-        d="M0 74 C 28 46, 52 98, 88 70 S 148 24, 186 58 244 108, 278 72 320 40, 320 40"
+        d="M0 78 C 26 50, 48 102, 84 74 S 142 22, 180 56 238 112, 274 76 320 38, 320 38"
         fill="none"
         filter={`url(#${id}-glow)`}
         stroke={stroke}
-        strokeWidth="2.8"
+        strokeWidth="3.4"
+      />
+      <path
+        d="M0 86 C 30 62, 58 104, 96 80 S 154 36, 192 64 246 108, 282 84 320 52, 320 52"
+        fill="none"
+        opacity="0.45"
+        stroke={mid}
+        strokeWidth="1.4"
       />
     </svg>
   );
@@ -144,22 +135,22 @@ function Donut({
     lime: "#B8F54A",
     violet: "#C084FC",
   };
-  const circumference = 2 * Math.PI * 16;
+  const circumference = 2 * Math.PI * 15.5;
   const dash = (value / 100) * circumference;
   return (
     <article className={`tpl-donut tpl-donut--${tone}`}>
       <span>{label}</span>
       <svg viewBox="0 0 44 44" aria-hidden="true">
-        <circle cx="22" cy="22" r="16" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="5" />
+        <circle cx="22" cy="22" r="15.5" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="6.2" />
         <circle
           cx="22"
           cy="22"
-          r="16"
+          r="15.5"
           fill="none"
           stroke={colors[tone]}
           strokeDasharray={`${dash} ${circumference}`}
           strokeLinecap="round"
-          strokeWidth="5"
+          strokeWidth="6.2"
           transform="rotate(-90 22 22)"
         />
       </svg>
@@ -169,26 +160,38 @@ function Donut({
 
 function SampleRing({ uid }: { uid: string }) {
   const gradId = `tpl-ring-grad-${uid}`;
+  const glowId = `tpl-ring-glow-${uid}`;
+  const radius = 58;
+  const circ = 2 * Math.PI * radius;
   return (
     <div className="tpl-ring" aria-label="Template sample ring 55 percent">
       <svg viewBox="0 0 160 160" aria-hidden="true">
         <defs>
           <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
             <stop offset="0%" stopColor="#FF007A" />
-            <stop offset="48%" stopColor="#00D9FF" />
+            <stop offset="38%" stopColor="#00D9FF" />
+            <stop offset="72%" stopColor="#B8F54A" />
             <stop offset="100%" stopColor="#FF9A00" />
           </linearGradient>
+          <filter id={glowId} x="-40%" y="-40%" width="180%" height="180%">
+            <feGaussianBlur stdDeviation="3.6" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
         </defs>
-        <circle cx="80" cy="80" r="62" fill="none" stroke="rgba(255,255,255,0.07)" strokeWidth="14" />
+        <circle cx="80" cy="80" r={radius} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="16" />
         <circle
           cx="80"
           cy="80"
-          r="62"
+          r={radius}
           fill="none"
+          filter={`url(#${glowId})`}
           stroke={`url(#${gradId})`}
-          strokeDasharray={`${2 * Math.PI * 62 * 0.55} ${2 * Math.PI * 62}`}
+          strokeDasharray={`${circ * 0.55} ${circ}`}
           strokeLinecap="round"
-          strokeWidth="14"
+          strokeWidth="16"
           transform="rotate(-90 80 80)"
         />
       </svg>
@@ -205,7 +208,7 @@ function ScreenBody({ screen, uid }: { screen: Screen; uid: string }) {
     return (
       <>
         <header className="tpl-profile">
-          <span className="tpl-avatar">F</span>
+          <span className="tpl-face tpl-face--founder" aria-hidden="true" />
           <div>
             <p>Founder</p>
             <strong>The Business Manager</strong>
@@ -217,10 +220,10 @@ function ScreenBody({ screen, uid }: { screen: Screen; uid: string }) {
           <Wave tone="hot" uid={uid} />
         </section>
         <div className="tpl-donut-row">
-          <Donut label="01" tone="hot" value={72} />
-          <Donut label="02" tone="cyan" value={54} />
-          <Donut label="03" tone="lime" value={81} />
-          <Donut label="04" tone="violet" value={46} />
+          <Donut label="01" tone="hot" value={78} />
+          <Donut label="02" tone="cyan" value={56} />
+          <Donut label="03" tone="lime" value={84} />
+          <Donut label="04" tone="violet" value={42} />
         </div>
       </>
     );
@@ -244,7 +247,7 @@ function ScreenBody({ screen, uid }: { screen: Screen; uid: string }) {
           ))}
         </ul>
         <div className="tpl-bars" aria-hidden="true">
-          {[42, 70, 55, 92, 48, 76, 64].map((height, index) => (
+          {[38, 72, 54, 94, 46, 80, 62].map((height, index) => (
             <span key={index} style={{ height: `${height}%` }} />
           ))}
         </div>
@@ -260,7 +263,7 @@ function ScreenBody({ screen, uid }: { screen: Screen; uid: string }) {
         <section className="tpl-card tpl-card--split">
           <Wave tone="cyan" uid={uid} />
           <div className="tpl-mini-bars" aria-hidden="true">
-            {[32, 58, 44, 76, 40].map((height, index) => (
+            {[30, 62, 44, 80, 38].map((height, index) => (
               <span key={index} style={{ height: `${height}%` }} />
             ))}
           </div>
@@ -302,73 +305,45 @@ function ScreenBody({ screen, uid }: { screen: Screen; uid: string }) {
       </>
     );
   }
-  if (screen === "history") {
-    return (
-      <>
-        <label className="tpl-search">
-          <span className="visually-hidden">Search template rows</span>
-          <input placeholder="Search" readOnly />
-        </label>
-        <p className="tpl-kicker">Send to friends</p>
-        <ul className="tpl-tx">
-          {FRIENDS.map((friend) => (
-            <li key={friend.name}>
-              <span className={`tpl-avatar tpl-avatar--sm tpl-avatar--${friend.tone}`}>{friend.name.slice(0, 1)}</span>
-              <div>
-                <strong>{friend.name}</strong>
-                <small>Template sample</small>
-              </div>
-              <b>{friend.amount}</b>
-            </li>
-          ))}
-        </ul>
-      </>
-    );
-  }
   return (
-    <section className="tpl-info">
-      <BusinessManagerMark className="tpl-info__mark" />
-      <h2>Visual template</h2>
-      <p>Original recreation of the dark neon dashboard language. Sample figures are decorative chrome, not workspace money.</p>
-      <ul>
-        <li>Human Review Gate still blocks publish.</li>
-        <li>Spend caps stay fail-closed.</li>
-        <li>No Adobe Stock file is embedded.</li>
+    <>
+      <label className="tpl-search">
+        <span className="visually-hidden">Search template rows</span>
+        <input placeholder="Search" readOnly />
+      </label>
+      <p className="tpl-kicker">Send to friends</p>
+      <ul className="tpl-tx">
+        {FRIENDS.map((friend) => (
+          <li key={friend.name}>
+            <span className={`tpl-face tpl-face--${friend.face}`} aria-hidden="true" />
+            <div>
+              <strong>{friend.name}</strong>
+              <small>Template sample</small>
+            </div>
+            <b>{friend.amount}</b>
+          </li>
+        ))}
       </ul>
-    </section>
+    </>
   );
 }
 
-function Phone({
-  screen,
-  interactive,
-  onScreen,
-}: {
-  screen: Screen;
-  interactive?: boolean;
-  onScreen?: (next: Screen) => void;
-}) {
+function Phone({ screen }: { screen: Screen }) {
   return (
-    <article className={interactive ? "tpl-phone tpl-phone--live" : "tpl-phone"}>
+    <article className="tpl-phone">
       <div className="tpl-phone__bezel">
+        <div className="tpl-phone__ear" aria-hidden="true" />
         <div className="tpl-phone__notch" />
         <StatusBar />
         <div className="tpl-phone__body">
-          <ScreenBody screen={screen} uid={interactive ? "live" : screen} />
+          <ScreenBody screen={screen} uid={screen} />
         </div>
-        <nav aria-label={interactive ? "Template screens" : undefined} className="tpl-dock">
+        <nav className="tpl-dock" aria-hidden="true">
           {DOCK.map((item) => (
-            <button
-              aria-current={screen === item.id ? "page" : undefined}
-              className={screen === item.id ? "is-active" : undefined}
-              disabled={!interactive}
-              key={item.id}
-              onClick={() => onScreen?.(item.id)}
-              type="button"
-            >
+            <span className={screen === item.id ? "is-active" : undefined} key={item.id}>
               <DockIcon active={screen === item.id} id={item.id} />
-              <span>{item.label}</span>
-            </button>
+              <b>{item.label}</b>
+            </span>
           ))}
         </nav>
         <div className="tpl-home-indicator" aria-hidden="true" />
@@ -378,29 +353,33 @@ function Phone({
 }
 
 export default function CreativeTemplate({ onClose }: { onClose: () => void }) {
-  const [screen, setScreen] = useState<Screen>("dashboard");
+  const [about, setAbout] = useState(false);
   return (
     <main className="tpl-shell" aria-labelledby="tpl-title">
-      <header className="tpl-hero">
-        <p className="tpl-kicker">The Business Manager</p>
-        <h1 id="tpl-title">Neon dashboard template</h1>
-        <p>Original five-screen kit in the same charcoal, magenta, orange, cyan, and lime language. Decorative sample figures never write to Home Bankroll.</p>
-        <ul className="tpl-palette" aria-label="Template colours">
-          {PALETTE.map((swatch) => (
-            <li key={swatch.hex}>
-              <i style={{ background: swatch.hex }} />
-              <span>{swatch.name}</span>
-              <small>{swatch.hex}</small>
-            </li>
-          ))}
-        </ul>
-        <button className="button button--primary" onClick={onClose} type="button">Back to sign in</button>
+      <header className="tpl-topbar">
+        <button className="tpl-topbar__back" onClick={onClose} type="button">Back to sign in</button>
+        <div>
+          <p className="tpl-kicker">The Business Manager</p>
+          <h1 id="tpl-title">Neon dashboard template</h1>
+        </div>
+        <button className="tpl-topbar__about" onClick={() => setAbout((open) => !open)} type="button">
+          {about ? "Hide info" : "About this template"}
+        </button>
       </header>
-      <section className="tpl-live" aria-label="Interactive template">
-        <Phone interactive onScreen={setScreen} screen={screen} />
-      </section>
-      <section className="tpl-gallery" aria-label="Template screen set">
-        {(["dashboard", "stats", "transfer", "planning", "history"] as const).map((id) => (
+      {about ? (
+        <section className="tpl-about" aria-label="Template notes">
+          <BusinessManagerMark className="tpl-info__mark" />
+          <h2>Visual template</h2>
+          <p>Original recreation of the dark neon dashboard language. Sample figures are decorative chrome, not workspace money.</p>
+          <ul>
+            <li>Human Review Gate still blocks publish.</li>
+            <li>Spend caps stay fail-closed.</li>
+            <li>No Adobe Stock file is embedded.</li>
+          </ul>
+        </section>
+      ) : null}
+      <section className="tpl-kit" aria-label="Template screen set">
+        {KIT.map((id) => (
           <Phone key={id} screen={id} />
         ))}
       </section>

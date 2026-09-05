@@ -17,14 +17,11 @@ describe("neon dashboard template", () => {
     expect(screen.getAllByText("$1,490.00").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Send to friends").length).toBeGreaterThan(0);
     expect(screen.getAllByText("July").length).toBeGreaterThan(0);
-    expect(screen.getByLabelText("Template colours")).toBeDefined();
-    expect(screen.getAllByText("#FF007A").length).toBeGreaterThan(0);
   });
 
-  it("switches the live phone to the Info screen from the template dock", () => {
+  it("opens the About notes without exposing an Info dock tab", () => {
     render(<CreativeTemplate onClose={() => {}} />);
-    const dock = screen.getByRole("navigation", { name: "Template screens" });
-    fireEvent.click(dock.querySelectorAll("button")[5]);
+    fireEvent.click(screen.getByRole("button", { name: "About this template" }));
     expect(screen.getByText("Visual template")).toBeDefined();
     expect(screen.getByText(/Human Review Gate still blocks publish/)).toBeDefined();
   });
