@@ -395,7 +395,7 @@ async def decide_review_gate(
     gate_id: uuid.UUID,
     reviewer_id: uuid.UUID,
     approved: bool,
-    expected_content_version_id: uuid.UUID,
+    expected_content_version_id: uuid.UUID | None = None,
     notes: str | None = None,
 ) -> dict:
     gate = (
@@ -413,12 +413,20 @@ async def decide_review_gate(
     if gate.status != ReviewGateStatus.AWAITING:
         raise ValueError("review gate is not awaiting a decision")
 
+    # HTTP callers must submit the version they displayed (the request schema
+    # requires it). Trusted internal callers created before version binding may
+    # omit it; they are still pinned to this gate's immutable version and the
+    # controller independently rejects a stale current content version.
+    decision_content_version_id = expected_content_version_id or gate.content_version_id
+    if decision_content_version_id is None:
+        raise ValueError("review gate has no bound content version")
+
     event = await controller.submit_review_decision(
         session,
         gate=gate,
         reviewer_id=reviewer_id,
         approved=approved,
-        expected_content_version_id=expected_content_version_id,
+        expected_content_version_id=decision_content_version_id,
         notes=notes,
     )
     # Deliver the exact event just emitted, rather than an arbitrary pending
