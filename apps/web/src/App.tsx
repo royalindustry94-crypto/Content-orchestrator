@@ -6,6 +6,7 @@ import {
   signup,
 } from "./api";
 import LumoraDashboard from "./LumoraDashboard";
+import CreativeTemplate from "./CreativeTemplate";
 import { BusinessManagerMark } from "./BusinessManagerMark";
 import { isCreativePreview } from "./preview/creativePreview";
 
@@ -39,6 +40,13 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showTemplate, setShowTemplate] = useState(() => window.location.hash === "#/template");
+
+  useEffect(() => {
+    const sync = () => setShowTemplate(window.location.hash === "#/template");
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
 
   useEffect(() => {
     if (!session || launchState !== "visible") return;
@@ -89,6 +97,17 @@ export default function App() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (showTemplate) {
+    return (
+      <CreativeTemplate
+        onClose={() => {
+          window.location.hash = "";
+          setShowTemplate(false);
+        }}
+      />
+    );
   }
 
   const previewBanner = isCreativePreview() ? (
@@ -191,6 +210,16 @@ export default function App() {
               </button>
             </div>
           ) : null}
+          <button
+            className="auth-create"
+            type="button"
+            onClick={() => {
+              window.location.hash = "#/template";
+              setShowTemplate(true);
+            }}
+          >
+            View neon dashboard template
+          </button>
           <button className="button button--primary auth-submit" type="submit" disabled={busy}>
             {busy ? (mode === "login" ? "Signing in…" : "Creating account…") : mode === "login" ? "SIGN IN" : "CREATE ACCOUNT"}
           </button>

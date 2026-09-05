@@ -21,6 +21,10 @@ If the Founder later holds an Adobe Stock licence for `#235999682`:
 
 This repository therefore ships only converted app code. Keep any purchased download, invoice, or licence key off public GitHub.
 
+## Visual template gallery
+
+`#/template` (also “View neon dashboard template” on sign-in) opens an original five-screen mobile gallery in the same charcoal / magenta / orange / cyan language: Dashboard, Stats, Transfer, Planning, History, plus Info. Sample figures such as `$1,490.00` are decorative template chrome and never appear on Home Bankroll.
+
 ## Public visual preview
 
 Vercel preview builds set `VITE_CREATIVE_PREVIEW=1`. That build installs a **browser-only** fetch adapter so the themed UI can be opened without a managed database. The adapter is inert in normal Docker/`AUTH_MODE=local` builds.
