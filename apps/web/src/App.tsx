@@ -6,7 +6,9 @@ import {
   signup,
 } from "./api";
 import LumoraDashboard from "./LumoraDashboard";
+import CreativeTemplate from "./CreativeTemplate";
 import { BusinessManagerMark } from "./BusinessManagerMark";
+import { isCreativePreview } from "./preview/creativePreview";
 
 type Session = {
   token: string;
@@ -38,6 +40,13 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [recoveryNotice, setRecoveryNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showTemplate, setShowTemplate] = useState(() => window.location.hash === "#/template");
+
+  useEffect(() => {
+    const sync = () => setShowTemplate(window.location.hash === "#/template");
+    window.addEventListener("hashchange", sync);
+    return () => window.removeEventListener("hashchange", sync);
+  }, []);
 
   useEffect(() => {
     if (!session || launchState !== "visible") return;
@@ -90,9 +99,27 @@ export default function App() {
     }
   }
 
+  if (showTemplate) {
+    return (
+      <CreativeTemplate
+        onClose={() => {
+          window.location.hash = "";
+          setShowTemplate(false);
+        }}
+      />
+    );
+  }
+
+  const previewBanner = isCreativePreview() ? (
+    <p className="creative-preview-banner" role="status">
+      Disposable visual preview — labeled fixture data only. Human Review still cannot publish externally.
+    </p>
+  ) : null;
+
   if (session) {
     return (
       <>
+        {previewBanner}
         <LumoraDashboard
           token={session.token}
           workspaceId={session.workspaceId}
@@ -120,7 +147,8 @@ export default function App() {
   }
 
   return (
-    <main className="auth-shell auth-shell--approved">
+    <main className="auth-shell auth-shell--approved creative-workspace">
+      {previewBanner}
       <section className="auth-card" aria-labelledby="auth-title">
         <div className="auth-lockup" aria-label="The Business Manager — Business Operating System">
           <BusinessManagerMark className="auth-lockup__mark" />
@@ -129,6 +157,11 @@ export default function App() {
         </div>
         <form className="auth-form auth-form--approved" onSubmit={(event) => void authenticate(mode, event)}>
           <h1 id="auth-title">{mode === "login" ? "Sign in" : "Create account"}</h1>
+          {isCreativePreview() ? (
+            <p className="auth-notice">
+              Visual preview sign-in: any email and password opens a labeled disposable workspace. This is not a live tenant.
+            </p>
+          ) : null}
           <label>
             Email address
             <input
@@ -177,6 +210,16 @@ export default function App() {
               </button>
             </div>
           ) : null}
+          <button
+            className="auth-create"
+            type="button"
+            onClick={() => {
+              window.location.hash = "#/template";
+              setShowTemplate(true);
+            }}
+          >
+            View neon dashboard template
+          </button>
           <button className="button button--primary auth-submit" type="submit" disabled={busy}>
             {busy ? (mode === "login" ? "Signing in…" : "Creating account…") : mode === "login" ? "SIGN IN" : "CREATE ACCOUNT"}
           </button>
