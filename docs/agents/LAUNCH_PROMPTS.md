@@ -1,7 +1,12 @@
 # Launch prompts
 
-Paste one of these into a new Cursor Cloud Agent. Replace the candidate
-SHA/PR if you already know it.
+Dedicated chats already exist:
+
+- Auditor: https://cursor.com/agents/bc-fbcc19be-ddb7-544d-8561-a0988ae4e7bb
+- Continuation: https://cursor.com/agents/bc-e13d6abd-bd20-57a9-afb6-4c9e391089b4
+
+Use those screens. Paste a prompt below only if you need to recreate a chat.
+Replace the candidate SHA/PR if you already know it.
 
 ---
 
