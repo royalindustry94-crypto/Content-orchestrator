@@ -20,6 +20,7 @@ Give the Founder two durable specialist roles:
 - `docs/agents/BUILD_CONTINUATION_AGENT.md`
 - `docs/agents/HANDOFF_PROTOCOL.md`
 - `docs/agents/LAUNCH_PROMPTS.md`
+- `docs/agents/OPEN_OWN_CHATS.md`
 - `docs/agents/audits/CHATGPT_WORK_BASELINE_AUDIT_2026-09-06.md`
 - `.github/agents/chatgpt-independent-auditor.agent.md`
 - `.github/agents/build-continuation.agent.md`
