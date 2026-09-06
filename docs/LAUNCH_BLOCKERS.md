@@ -1,7 +1,7 @@
 # Launch Blockers
 
 **Repository:** Content Orchestrator  
-**Updated:** 2026-08-28  
+**Updated:** 2026-09-06  
 **Audited baseline:** `main` after PR #49 governance merge  
 **Source of truth:** exact-head CI, retained browser evidence, repository/runtime probes — not prior chat claims
 
@@ -103,4 +103,6 @@ Previously closed P0/P1 engineering controls remain closed unless new evidence d
 - `docs/FINAL_RELEASE_AUDIT.md`
 - `docs/DISASTER_RECOVERY_REPORT.md`
 - `docs/BETA_RELEASE_CHECKLIST.md`
-- GitHub issue #50 — protect `main`
+- GitHub issue #50 — protect `main` (ticket closed; live ruleset must still be independently re-read)
+- `docs/agents/README.md` — ChatGPT Independent Auditor (active) and Build Continuation Agent (dormant until Founder takeover)
+- `docs/agents/audits/CHATGPT_WORK_BASELINE_AUDIT_2026-09-06.md`

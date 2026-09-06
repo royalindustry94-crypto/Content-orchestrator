@@ -78,3 +78,20 @@ docs/         Architecture, ops, audits, work packages
 - Autonomous publish modes
 - Enterprise SSO/SOC theater without paid demand
 - Self-host as a product SKU
+
+## Specialized agent roles (Founder-controlled)
+
+Two durable specialist roles live under `docs/agents/`. They do not weaken
+the non-negotiables above and they cannot self-certify milestones.
+
+| Role | When to use | State |
+|---|---|---|
+| ChatGPT Independent Auditor | Every ChatGPT/Codex change; any "audit ChatGPT" request | Active |
+| Build Continuation Agent | Only after the Founder sends `TAKEOVER`, `CONTINUE BUILD`, `CHATGPT UNAVAILABLE`, or `TAKE OVER FROM CHATGPT` | Dormant until takeover |
+
+Launch prompts: `docs/agents/LAUNCH_PROMPTS.md`  
+Process map: `docs/agents/BUILD_TO_LIVE_PROCESS.md`  
+Handoff rules: `docs/agents/HANDOFF_PROTOCOL.md`  
+Work package: `docs/work-packages/WP-GOV-002-specialized-agent-roles.md`
+
+This is separate from the unfinished Copilot six-profile bootstrap (issue #52).

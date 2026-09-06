@@ -2,7 +2,7 @@
 
 **Product:** Content Orchestrator  
 **Audience:** Founder / leadership  
-**Date:** 2026-08-28  
+**Date:** 2026-09-06  
 **Baseline:** `main` after PR #49 governance merge  
 **Audit model:** `docs/MILESTONE_AUDIT_STANDARD.md`
 
@@ -90,11 +90,12 @@ The existence of billing and publication-policy code does not authorize billing 
 
 ## Recommended next sequence
 
-1. Close issue #50 by enabling and independently verifying `main` protection / required checks.
-2. Establish managed Supabase/runtime visibility and verify deployment/auth/database/PITR facts.
-3. Reconcile and select the first revenue-producing private-beta workflow.
-4. Activate one provider path at a time behind spend controls and Human Review, with independent audit after each milestone.
-5. Do not enable autonomous/external publishing before policy/rights/compliance and exact-artifact Human Review controls receive a separate PASS.
+1. Independently re-read live `main` protection/ruleset (issue #50 is closed as a ticket; enforcement still requires current evidence).
+2. Establish managed Supabase/runtime visibility and verify deployment/auth/database/PITR facts. Issue #66 remains a HIGH managed-ACL blocker.
+3. Keep ChatGPT/Codex drafts (#79, #82) unmerged until the Independent Auditor certifies the exact SHA. Use the Build Continuation Agent only after an explicit Founder takeover. See `docs/agents/README.md`.
+4. Reconcile and select the first revenue-producing private-beta workflow.
+5. Activate one provider path at a time behind spend controls and Human Review, with independent audit after each milestone.
+6. Do not enable autonomous/external publishing before policy/rights/compliance and exact-artifact Human Review controls receive a separate PASS.
 
 ---
 
