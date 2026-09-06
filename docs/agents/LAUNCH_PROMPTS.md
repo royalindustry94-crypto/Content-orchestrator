@@ -1,12 +1,8 @@
 # Launch prompts
 
-Dedicated chats already exist:
-
-- Auditor: https://cursor.com/agents/bc-fbcc19be-ddb7-544d-8561-a0988ae4e7bb
-- Continuation: https://cursor.com/agents/bc-e13d6abd-bd20-57a9-afb6-4c9e391089b4
-
-Use those screens. Paste a prompt below only if you need to recreate a chat.
-Replace the candidate SHA/PR if you already know it.
+Start each role as a **new** Cloud Agent from https://cursor.com/agents
+(see `OPEN_OWN_CHATS.md`). Paste one prompt below as that chat's first
+message. Do not paste `bc-…` IDs into a browser; they are not chat URLs.
 
 ---
 

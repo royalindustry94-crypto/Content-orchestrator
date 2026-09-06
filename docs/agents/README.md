@@ -15,25 +15,18 @@ unavailable.
 | **ChatGPT Independent Auditor** | Always available. Use for every ChatGPT/Codex/Copilot-attributed change. | No, except audit reports and evidence docs | No. Never the sole certifier of work it implemented. |
 | **Build Continuation Agent** | **Dormant.** Activates only on an explicit Founder takeover phrase. | Yes, after takeover, on the highest-value authorized item | No. The auditor (or another independent pass) must certify. |
 
-## Live chat screens
+## Your own chat screens
 
-These are separate Cursor Cloud Agent chats. Open the one you want to talk to.
-Do not mix roles in this setup chat.
+Child-agent IDs from this setup chat are **not** openable chats. Start two
+real Cloud Agents from your account:
 
-| Role | Chat screen |
-|---|---|
-| ChatGPT Independent Auditor | https://cursor.com/agents/bc-fbcc19be-ddb7-544d-8561-a0988ae4e7bb |
-| Build Continuation Agent (dormant) | https://cursor.com/agents/bc-e13d6abd-bd20-57a9-afb6-4c9e391089b4 |
+**https://cursor.com/agents** → **New Agent** (twice)
+
+Step-by-step: [`OPEN_OWN_CHATS.md`](OPEN_OWN_CHATS.md)  
+First messages to paste: [`LAUNCH_PROMPTS.md`](LAUNCH_PROMPTS.md)
 
 Send audit targets only in the Auditor chat. Send `TAKEOVER` only in the
 Continuation chat.
-
-To recreate a screen later, copy the matching prompt from
-[`LAUNCH_PROMPTS.md`](LAUNCH_PROMPTS.md) into a new Cursor Cloud Agent, or
-select the matching custom agent:
-
-- GitHub Copilot / VS Code: `.github/agents/*.agent.md`
-- Cursor: `.cursor/agents/*.md`
 
 ## Required reading order for either agent
 
