@@ -234,7 +234,7 @@ jobs:
           assert "contents: write" not in workflow
 
           watchdog = Path(".github/workflows/build-watchdog.yml").read_text()
-          assert "failure|cancelled|timed_out|stale)" in watchdog
+          assert "failure|cancelled|timed_out|stale|startup_failure)" in watchdog
           assert "action_required)" in watchdog
           assert "stale|action_required)" not in watchdog
           assert "success|neutral|skipped)" not in watchdog
