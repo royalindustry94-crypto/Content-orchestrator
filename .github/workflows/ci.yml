@@ -207,6 +207,29 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Validate Claude request-preservation guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/claude.yml").read_text()
+          expected_group = (
+              "group: claude-"
+              + "$"
+              + "{{ github.repository }}-"
+              + "$"
+              + "{{ github.event.comment.id }}"
+          )
+          required = (
+              expected_group,
+              "contents: read",
+              "additional_permissions: |",
+              "every @claude request can run independently",
+          )
+          missing = [value for value in required if value not in workflow]
+          assert not missing, f"Claude workflow guard missing: {missing}"
+          assert "contents: write" not in workflow
+          PY
       - name: Install API package (for dependency graph)
         working-directory: apps/api
         run: pip install -e ".[dev]"
