@@ -7,7 +7,9 @@ on:
     types: [created]
 
 concurrency:
-  group: claude-${{ github.repository }}-${{ github.event.issue.number || github.event.pull_request.number }}
+  # Each mention gets its own run. Repository contents are read-only below, so
+  # parallel requests cannot race while committing to the same branch.
+  group: claude-${{ github.repository }}-${{ github.event.comment.id }}
   cancel-in-progress: false
 
 jobs:
@@ -16,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: write
+      contents: read
       pull-requests: write
       issues: write
       id-token: write
@@ -28,4 +30,11 @@ jobs:
       - uses: anthropics/claude-code-action@9c5ddab2e6d17b83ea679153b31f1d5f023cf636 # v1.0.217
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            contents: read
+          prompt: |
+            This workflow intentionally has read-only repository contents so
+            every @claude request can run independently without overlapping
+            code writes. Do not edit, commit, or push. For a requested code
+            change, respond with a scoped implementation plan or patch advice.
           claude_args: "--max-turns 5"
