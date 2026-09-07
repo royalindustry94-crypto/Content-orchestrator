@@ -239,7 +239,7 @@ jobs:
           assert "action_required)" in watchdog
           assert "stale|action_required)" not in watchdog
           assert "success|neutral|skipped)" not in watchdog
-          assert "dispatch \"\${head_branch:-$default_branch}\"" not in watchdog
+          assert "dispatch \"${head_branch:-$default_branch}\"" not in watchdog
           assert "CI exhausted its single stale-run retry" in watchdog
           assert 'actions/runs/$run_id/rerun"' in watchdog
 
