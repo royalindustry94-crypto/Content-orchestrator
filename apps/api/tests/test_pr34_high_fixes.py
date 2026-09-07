@@ -356,12 +356,16 @@ async def test_c1_content_desk_cancels_orphan_stage_job_and_blocks_resurrection(
         assert orphans == [], "Content Desk must cancel the start_run scripting job"
 
     async with AsyncSessionLocal() as session:
+        gate = await session.get(ReviewGate, gate_id)
+        assert gate is not None
+        assert gate.content_version_id is not None
         await content_desk.decide_review_gate(
             session,
             workspace_id=ws.id,
             gate_id=gate_id,
             reviewer_id=user_id,
             approved=True,
+            expected_content_version_id=gate.content_version_id,
             notes="ship it",
         )
         await session.commit()
