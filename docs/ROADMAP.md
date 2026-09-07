@@ -23,9 +23,19 @@ Planning docs alone do not count as progress. Each item below is a Work Package 
 ## Next (first 10 customers)
 
 - Founder-led onboarding for agencies (2+ clients)
-- Brand kit fields checked at Gate
-- Audit export (CSV/PDF) for client reporting
+- Brand kit fields checked at Gate — persist brand voice as data, inject
+  into every generation call, surface conformance at the Gate (see
+  `docs/COMPETITIVE_REVIEW_ANALYSIS.md` — competitors' AI output drifts
+  off-brand because voice is only ever a one-off prompt)
+- Audit export (CSV/PDF) for client reporting — include full decision
+  history (who/when/why), not just final status; make it base-tier, not
+  an Enterprise upsell (Planable/Sprout gate this and it's a top complaint)
 - Multi-workspace UX polish
+- Pre-generation cost estimate + near-cap warning ahead of the spend-cap
+  block, and workspace-visible alerts on any publish/generation failure —
+  reviewed competitors lose trust from silent failures and after-the-fact
+  billing surprises (Zapier, Planable, Loomly); see
+  `docs/COMPETITIVE_REVIEW_ANALYSIS.md`
 
 ## Later (post-PMF)
 
