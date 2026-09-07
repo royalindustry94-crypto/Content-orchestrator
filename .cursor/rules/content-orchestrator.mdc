@@ -1,11 +1,11 @@
 ---
-description: Content Orchestrator non-negotiables and agent working rules
+description: Content Orchestrator non-negotiables and cost-aware agent working rules
 alwaysApply: true
 ---
 
 # Content Orchestrator — agent rules
 
-Follow `AGENTS.md` at the repo root.
+Follow `AGENTS.md` at the repo root and `docs/AGENT_OPERATING_MODEL.md`.
 
 ## Never weaken
 
@@ -18,9 +18,22 @@ Follow `AGENTS.md` at the repo root.
 
 ## Working style
 
-- Highest business-value item from `docs/LAUNCH_BLOCKERS.md` first
-- No new frameworks; no speculative architecture
-- P0 frozen unless Critical defect with evidence
-- Alembic upgrade+downgrade for schema; linearize parallel heads before merge
-- Update launch/debt docs when closing a P0/P1 item
-- Prefer production-ready code with tests over incomplete scaffolds
+- Cursor is the default implementation worker.
+- Work one scoped issue/work package per branch where practical.
+- Read the active work package plus only the files needed for the task before broadening context.
+- Highest business-value item from `docs/LAUNCH_BLOCKERS.md` first.
+- No new frameworks; no speculative architecture.
+- P0 frozen unless Critical defect with evidence.
+- Alembic upgrade+downgrade for schema; linearize parallel heads before merge.
+- Update launch/debt docs when closing a P0/P1 item.
+- Prefer production-ready code with tests over incomplete scaffolds.
+
+## Cost controls
+
+- Do not perform full-repository audits during routine implementation.
+- Do not ask a second AI worker to redo the same implementation unless independent review is explicitly required.
+- Prefer targeted tests during iteration; rely on GitHub Actions for the full standard suite.
+- Escalate to Codex/high-reasoning review only for concrete blockers, high-risk security/data-integrity work, complex migrations/concurrency, or milestone/release audits.
+- Never run Cursor and Codex in parallel on the same implementation scope.
+- Before escalating, record the exact failure, relevant files, attempted fixes, and test output so the specialist does not rediscover the problem.
+- Handoff summaries must include scope, changed files, tests run, unresolved risks, and escalation status.
