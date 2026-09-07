@@ -66,10 +66,16 @@ jobs:
               ;;
             completed)
               case "$conclusion" in
-                success|neutral|skipped)
+                success)
                   echo "CI completed successfully; no restart is required."
                   ;;
-                failure|cancelled|timed_out|stale|action_required)
+                neutral|skipped)
+                  echo "::warning::CI concluded '$conclusion'; this is not a product-code failure and will not be retried automatically."
+                  ;;
+                action_required)
+                  echo "::warning::CI requires human approval; the watchdog will not bypass it: $run_url"
+                  ;;
+                failure|cancelled|timed_out|stale)
                   if [ "$attempt" -ge 2 ]; then
                     echo "::error::CI exhausted its single automatic retry: $run_url"
                     exit 1
