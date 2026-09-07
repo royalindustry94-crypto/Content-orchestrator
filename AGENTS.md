@@ -44,6 +44,30 @@ apps/worker/  Background worker
 docs/         Architecture, ops, audits, work packages
 ```
 
+## Agent operating model (cost-aware)
+
+Use the least-expensive capable worker and do not duplicate AI work.
+
+### Roles
+
+- **ChatGPT / controller** — owns prioritization, architecture decisions, task scoping, acceptance criteria, and final review. Do not repeatedly re-audit the repository during routine implementation.
+- **Cursor / primary coding worker** — default implementation worker. Work one scoped work package or issue per branch, load only the context needed for that task, implement, run targeted checks, and hand off evidence.
+- **Codex / escalation specialist** — use only when the primary worker is blocked or the task is high-risk: security boundaries, destructive or complex schema migrations, concurrency/data-integrity bugs, deep cross-cutting failures, or milestone/release audit. Do not ask Codex to independently redo work Cursor already completed unless independent review is the explicit objective.
+- **GitHub Actions / verifier** — CI is the source of truth for lint, tests, builds, migration replay, browser smoke, dependency audit, and secret scanning. Do not spend agent tokens rerunning an equivalent full-suite analysis unless CI is unavailable or a concrete CI failure is being debugged.
+
+### Context and escalation discipline
+
+- Start from `AGENTS.md`, the active issue/work package, and files relevant to the changed surface.
+- Do not request “audit/fix the entire repo” for routine tasks.
+- Prefer targeted tests while iterating; let GitHub Actions run the full standard suite on the PR.
+- Escalate model/reasoning cost only after a concrete failure, ambiguity, or risk justifies it.
+- Full-repository/adversarial audits are reserved for milestone, release, major architectural change, security incident, or explicit Founder request.
+- Never run Cursor and Codex in parallel on the same implementation scope.
+- Split work that spans unrelated domains unless atomic integration requires a single change.
+- Every handoff must state: scope changed, files changed, tests run, unresolved risks, and whether escalation is needed.
+
+See `docs/AGENT_OPERATING_MODEL.md` for the delivery workflow and escalation triggers.
+
 ## Engineering rules
 
 - **P0 is frozen** unless a Critical defect is proven. Prefer additive P1 work.
