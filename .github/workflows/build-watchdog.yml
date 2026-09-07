@@ -45,7 +45,6 @@ jobs:
           status="$(jq -r '.status' <<<"$latest")"
           conclusion="$(jq -r '.conclusion // ""' <<<"$latest")"
           attempt="$(jq -r '.run_attempt // 1' <<<"$latest")"
-          head_branch="$(jq -r '.head_branch // empty' <<<"$latest")"
           updated_at="$(jq -r '.updated_at' <<<"$latest")"
           run_url="$(jq -r '.html_url' <<<"$latest")"
           age_seconds="$(( $(date -u +%s) - $(date -u -d "$updated_at" +%s) ))"
@@ -59,10 +58,23 @@ jobs:
                 echo "CI is active and within the 90-minute window."
                 exit 0
               fi
-              echo "::warning::CI is stale; cancelling run $run_id and dispatching a replacement."
-              gh api --method POST "repos/$repo/actions/runs/$run_id/cancel" || true
-              sleep 15
-              dispatch "${head_branch:-$default_branch}"
+              if [ "$attempt" -ge 2 ]; then
+                echo "::error::CI exhausted its single stale-run retry: $run_url"
+                exit 1
+              fi
+              echo "::warning::CI is stale; cancelling run $run_id before one same-run retry."
+              gh api --method POST "repos/$repo/actions/runs/$run_id/cancel"
+              cancelled_status=""
+              for _ in $(seq 1 30); do
+                cancelled_status="$(gh api "repos/$repo/actions/runs/$run_id" --jq '.status')"
+                [ "$cancelled_status" = "completed" ] && break
+                sleep 2
+              done
+              if [ "$cancelled_status" != "completed" ]; then
+                echo "::error::Timed out waiting for stale CI run $run_id to cancel."
+                exit 1
+              fi
+              gh api --method POST "repos/$repo/actions/runs/$run_id/rerun"
               ;;
             completed)
               case "$conclusion" in
