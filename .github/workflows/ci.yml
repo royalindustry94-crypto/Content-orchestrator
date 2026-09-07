@@ -232,6 +232,12 @@ jobs:
           missing = [value for value in required if value not in workflow]
           assert not missing, f"Claude workflow guard missing: {missing}"
           assert "contents: write" not in workflow
+
+          watchdog = Path(".github/workflows/build-watchdog.yml").read_text()
+          assert "failure|cancelled|timed_out|stale)" in watchdog
+          assert "action_required)" in watchdog
+          assert "stale|action_required)" not in watchdog
+          assert "success|neutral|skipped)" not in watchdog
           PY
       - name: Install API package (for dependency graph)
         working-directory: apps/api
