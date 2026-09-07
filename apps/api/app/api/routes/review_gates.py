@@ -1,16 +1,16 @@
 """Private Beta review desk API — list and decide Human Review Gates.
 
-Uses the owner DB connection (`AsyncSessionLocal`), not the RLS-scoped
-runtime session (`Depends(get_current_session)`) every other tenant-scoped
-route uses, because `app.orchestration.controller` is shared with the
-connectionless background scheduler, which has no per-request user/JWT
-context to bind an RLS-scoped session to. Row Level Security therefore
-provides no backstop on these routes (2026-09-07 audit finding) —
-isolation depends entirely on the `require_workspace_*` guards below plus
-every downstream query being correctly workspace-scoped. See
-`tests/test_content_desk_workspace_scoping.py` and
-`tests/test_review_desk_api.py::test_cross_workspace_review_gate_is_hidden`
-for the compensating regression coverage of that filtering.
+Uses the RLS-scoped runtime session (`Depends(get_current_session)`), like
+every other tenant-scoped route, as of migration 0052 (2026-09-07 TD-072
+fix). Previously used the owner DB connection because
+`app.orchestration.controller` is shared with the connectionless
+background scheduler, which has no per-request JWT context — that
+scheduler path still uses the owner connection (unaffected by this route).
+See `docs/TECHNICAL_DEBT_REGISTER.md` (TD-072) for the write-surface audit
+that this migration closes, and `tests/test_content_desk_workspace_scoping.py`
+and `tests/test_review_desk_api.py::test_cross_workspace_review_gate_is_hidden`
+for the compensating isolation tests that predate and now double-check
+this RLS backstop.
 """
 
 from __future__ import annotations
@@ -18,11 +18,11 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import audit
 from app.core.authorization import require_workspace_member, require_workspace_reviewer
-from app.core.security import AuthenticatedUser, get_current_user
-from app.db.session import AsyncSessionLocal
+from app.core.security import AuthenticatedUser, get_current_session, get_current_user
 from app.models.enums import ReviewGateStatus
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.content_desk import ReviewDecisionIn, ReviewGateOut
@@ -37,6 +37,7 @@ _VALID_STATUSES = {s.value for s in ReviewGateStatus}
 async def list_review_gates(
     workspace_id: uuid.UUID,
     status_filter: str | None = Query(default="awaiting", alias="status"),
+    db: AsyncSession = Depends(get_current_session),
     _membership: WorkspaceMembership = Depends(require_workspace_member()),
 ) -> list[ReviewGateOut]:
     if status_filter is not None and status_filter != "all":
@@ -46,10 +47,9 @@ async def list_review_gates(
                 detail=f"status must be one of: {', '.join(sorted(_VALID_STATUSES))}, all",
             )
     filter_value = None if status_filter in (None, "all") else status_filter
-    async with AsyncSessionLocal() as session:
-        rows = await content_desk.list_review_gates(
-            session, workspace_id=workspace_id, status_filter=filter_value
-        )
+    rows = await content_desk.list_review_gates(
+        db, workspace_id=workspace_id, status_filter=filter_value
+    )
     return [ReviewGateOut.model_validate(row) for row in rows]
 
 
@@ -57,12 +57,10 @@ async def list_review_gates(
 async def get_review_gate(
     workspace_id: uuid.UUID,
     gate_id: uuid.UUID,
+    db: AsyncSession = Depends(get_current_session),
     _membership: WorkspaceMembership = Depends(require_workspace_member()),
 ) -> ReviewGateOut:
-    async with AsyncSessionLocal() as session:
-        row = await content_desk.get_review_gate(
-            session, workspace_id=workspace_id, gate_id=gate_id
-        )
+    row = await content_desk.get_review_gate(db, workspace_id=workspace_id, gate_id=gate_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="review gate not found")
     return ReviewGateOut.model_validate(row)
@@ -75,20 +73,19 @@ async def decide_review_gate(
     payload: ReviewDecisionIn,
     request: Request,
     user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
     _membership: WorkspaceMembership = Depends(require_workspace_reviewer),
 ) -> ReviewGateOut:
     """Approve or reject a gate. Editors cannot decide (matches review_decisions RLS)."""
     try:
-        async with AsyncSessionLocal() as session:
-            row = await content_desk.decide_review_gate(
-                session,
-                workspace_id=workspace_id,
-                gate_id=gate_id,
-                reviewer_id=uuid.UUID(user.id),
-                approved=payload.approved,
-                notes=payload.notes,
-            )
-            await session.commit()
+        row = await content_desk.decide_review_gate(
+            db,
+            workspace_id=workspace_id,
+            gate_id=gate_id,
+            reviewer_id=uuid.UUID(user.id),
+            approved=payload.approved,
+            notes=payload.notes,
+        )
     except content_desk.ReviewGateNotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="review gate not found"

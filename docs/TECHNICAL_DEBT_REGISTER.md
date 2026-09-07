@@ -2,7 +2,7 @@
 
 **Repository:** Content Orchestrator  
 **Updated:** 2026-09-07  
-**Current reference:** `claude/project-builder-handover-k95wpm` @ `7a814db` (unmerged; base `main` remains PR #49)
+**Current reference:** `claude/project-builder-handover-k95wpm` (unmerged; base `main` remains PR #49)
 
 Severity: CRITICAL · HIGH · MEDIUM · LOW · INFO
 
@@ -13,17 +13,6 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 ## Current open debt
 
 ### HIGH
-
-### TD-072 — `content_jobs.py` / `review_gates.py` have no RLS backstop — **OPEN**
-
-| Field | Value |
-|---|---|
-| Severity | HIGH |
-| Evidence | 2026-09-07 independent Claude audit (issue #91 Section 1/3 cross-check). Both routes use the owner DB connection (`AsyncSessionLocal`) instead of the RLS-scoped session every other tenant route uses, because the shared orchestration engine (`app/orchestration/controller.py`) is also driven by the connectionless background scheduler with no per-request JWT context. `pipeline_runs` has no INSERT/UPDATE RLS policy at all; `review_gates` has no UPDATE policy — a naive session swap would break content-job creation and review decisions, not just tighten security. |
-| Risk | No database-level backstop on the two routes that create content and decide Human Review outcomes; isolation depends entirely on the FastAPI guard plus every downstream query staying correctly workspace-scoped. No live exploit found — every sampled query was correctly filtered. |
-| Mitigation shipped | `claude/project-builder-handover-k95wpm` @ `7a814db` documents the architectural reason in both route files and adds `tests/test_content_desk_workspace_scoping.py` (direct service-layer isolation tests, no FastAPI guard in the loop) alongside the existing `tests/test_review_desk_api.py::test_cross_workspace_review_gate_is_hidden`. |
-| Recommendation | Design and independently audit a correct INSERT/UPDATE RLS write-policy matrix for `pipeline_runs`, `review_gates`, and the other orchestration tables these two routes touch, then migrate the routes to `Depends(get_current_session)`. This is a separate, scoped migration project — not a quick fix. |
-| Effort | L |
 
 ### TD-070 — `main` branch protection disabled — **OPEN**
 
@@ -97,8 +86,17 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 
 Per this register's own rule, the builder who found these is also the one who
 fixed them — **none of the following are self-certified closed.** Each needs
-an independent re-probe against `claude/project-builder-handover-k95wpm` @
-`7a814db` before being marked CLOSED.
+an independent re-probe against `claude/project-builder-handover-k95wpm`
+(head at time of writing) before being marked CLOSED.
+
+### TD-072 — `content_jobs.py` / `review_gates.py` had no RLS backstop — **FIX PUSHED**
+
+| Field | Value |
+|---|---|
+| Severity | HIGH |
+| Evidence | Both routes used the owner DB connection (`AsyncSessionLocal`) instead of the RLS-scoped session every other tenant route uses. A follow-up write-surface audit traced the full call graph of `create_content_job()`/`decide_review_gate()` and found 9 tables (`pipeline_runs`, `spend_reservations`, `spend_logs`, `job_schedule`, `review_gates`, `outbox_events`, `workflow_definitions`, `workflow_stages`, `workflow_transitions`) missing INSERT/UPDATE RLS policies or grants for `app_runtime`, plus `dead_letter_jobs`/`event_consumers` missing grants outright. Riskiest: `review_gates` had no UPDATE policy at all, and `spend_caps` restricted UPDATE to admin-only — both tables are read with `SELECT ... FOR UPDATE` in this call graph, which Postgres RLS requires to satisfy *both* the SELECT and UPDATE policy; either gap alone would have silently zero-rowed `decide_review_gate` (every call) or `create_content_job` (every editor-authored call) had the naive swap been done without this fix. |
+| Fix | Migration `0052_orchestration_runtime_write_policies.py` adds/widens the policies and grants per the write-surface audit (kept as `docs/audit/td072_write_surface_map.md`-equivalent evidence in the migration's own docstring). `content_jobs.py` and `review_gates.py` now use `Depends(get_current_session)`. No other route touches these tables (research/strategy/content_department/production/compliance each use their own separate run tables), so this cannot regress those. Full existing test suite (312 tests, including `test_editor_cannot_decide_review_gate` which creates a content job as an editor — exercising exactly the riskiest `spend_caps`/`review_gates` FOR UPDATE path — and `test_approve_advances_to_published` which exercises the full `decide_review_gate` fan-out) passes unmodified against the new session, plus the existing `tests/test_content_desk_workspace_scoping.py` service-layer isolation tests. |
+| Status | Fix pushed; pending independent re-audit before CLOSED. |
 
 ### TD-073 — `profiles` RLS SELECT policy leaked PII across tenants — **FIX PUSHED**
 
@@ -190,10 +188,9 @@ The following previously resolved controls remain closed unless new evidence sho
 
 ## Current burn-down priority
 
-1. Independently re-audit TD-073…TD-076 (2026-09-07 fixes on `claude/project-builder-handover-k95wpm`) before merge.
+1. Independently re-audit TD-072…TD-076 (2026-09-07 fixes on `claude/project-builder-handover-k95wpm`) before merge.
 2. **TD-070 / issue #50:** technically protect `main`.
 3. **TD-071:** establish managed Supabase/runtime evidence.
-4. **TD-072:** design and independently audit a correct RLS write-policy matrix for `pipeline_runs`/`review_gates` before switching those two routes off the owner connection.
-5. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
-6. Activate cost-bearing providers one at a time with spend, retry, idempotency and Human Review controls.
-7. Raise coverage/security/observability depth based on measured risk, not feature-count pressure.
+4. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
+5. Activate cost-bearing providers one at a time with spend, retry, idempotency and Human Review controls.
+6. Raise coverage/security/observability depth based on measured risk, not feature-count pressure.

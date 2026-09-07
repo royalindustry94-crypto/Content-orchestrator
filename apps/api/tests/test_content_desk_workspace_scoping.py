@@ -1,22 +1,16 @@
 """Defense-in-depth check for content_jobs.py / review_gates.py.
 
-These two routes are the only ones in the codebase that use the owner DB
-connection (`AsyncSessionLocal`) for their actual data operations rather
-than the RLS-scoped runtime session every other tenant-scoped route uses
-(`Depends(get_current_session)`) — because the shared orchestration engine
-in `app/orchestration/controller.py` is also driven by the connectionless
-background scheduler, which has no per-request user/JWT context to bind
-an RLS-scoped session to. Row Level Security therefore provides no
-backstop on these two routes specifically (2026-09-07 independent audit
-finding).
-
-This test proves the service layer's own `workspace_id` filtering — the
-only isolation these two routes actually have — holds by calling
-`app.services.content_desk` directly with a mismatched workspace_id, with
-no FastAPI guard in the loop at all. This mirrors how
-`test_cross_workspace_isolation.py` proves RLS itself works for
-RLS-backed routes; here it proves the compensating application-level
-control instead, since RLS is not present.
+As of migration 0052 (2026-09-07, TD-072), these two routes use the
+RLS-scoped runtime session like every other tenant-scoped route, so RLS
+is now a real backstop here too. This test predates that fix — it was
+written when these routes still used the owner connection and RLS
+provided no protection at all — and calls `app.services.content_desk`
+directly through the *owner* connection (`AsyncSessionLocal`), with no
+FastAPI guard and no RLS in the loop, deliberately bypassing both layers
+of defense. It is kept as-is: proving the service layer's own
+`workspace_id` filtering holds independently of RLS is still valuable
+defense-in-depth evidence, on top of (not instead of) the RLS policies
+added in migration 0052.
 """
 
 from __future__ import annotations

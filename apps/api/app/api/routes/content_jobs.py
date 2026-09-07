@@ -1,15 +1,15 @@
 """Private Beta content job API — submit drafts into the Review Gate.
 
-Uses the owner DB connection (`AsyncSessionLocal`), not the RLS-scoped
-runtime session (`Depends(get_current_session)`) every other tenant-scoped
-route uses, because `app.orchestration.controller` is shared with the
-connectionless background scheduler, which has no per-request user/JWT
-context to bind an RLS-scoped session to. Row Level Security therefore
-provides no backstop on this route (2026-09-07 audit finding) — isolation
-here depends entirely on `require_workspace_content_author` (below) plus
-every downstream query being correctly workspace-scoped. See
-`tests/test_content_desk_workspace_scoping.py` for the compensating
-regression coverage of that filtering.
+Uses the RLS-scoped runtime session (`Depends(get_current_session)`), like
+every other tenant-scoped route, as of migration 0052 (2026-09-07 TD-072
+fix). Previously used the owner DB connection because
+`app.orchestration.controller` is shared with the connectionless
+background scheduler, which has no per-request JWT context — that
+scheduler path still uses the owner connection (unaffected by this route).
+See `docs/TECHNICAL_DEBT_REGISTER.md` (TD-072) for the write-surface audit
+that this migration closes, and `tests/test_content_desk_workspace_scoping.py`
+for the compensating isolation tests that predate and now double-check
+this RLS backstop.
 """
 
 from __future__ import annotations
@@ -18,12 +18,12 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import audit
 from app.core.authorization import require_workspace_content_author
 from app.core.config import get_settings
-from app.core.security import AuthenticatedUser, get_current_user
-from app.db.session import AsyncSessionLocal
+from app.core.security import AuthenticatedUser, get_current_session, get_current_user
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.content_desk import ContentJobCreate, ContentJobOut
 from app.services import billing as billing_service
@@ -38,6 +38,7 @@ async def create_content_job(
     payload: ContentJobCreate,
     request: Request,
     user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
     _membership: WorkspaceMembership = Depends(require_workspace_content_author),
 ) -> ContentJobOut:
     """Create a content draft and place it in the mandatory Human Review Gate.
@@ -47,23 +48,21 @@ async def create_content_job(
     an active/trialing Pro entitlement is required.
     """
     try:
-        async with AsyncSessionLocal() as session:
-            if get_settings().billing_enabled:
-                await billing_service.require_entitlement_for_workspace(
-                    session, workspace_id=workspace_id
-                )
-            result = await content_desk.create_content_job(
-                session,
-                workspace_id=workspace_id,
-                actor_id=uuid.UUID(user.id),
-                topic=payload.topic.strip(),
-                script_body=payload.script_body or "",
-                script_hook=payload.script_hook,
-                script_cta=payload.script_cta,
-                target_length_seconds=payload.target_length_seconds,
-                idempotency_key=payload.idempotency_key,
+        if get_settings().billing_enabled:
+            await billing_service.require_entitlement_for_workspace(
+                db, workspace_id=workspace_id
             )
-            await session.commit()
+        result = await content_desk.create_content_job(
+            db,
+            workspace_id=workspace_id,
+            actor_id=uuid.UUID(user.id),
+            topic=payload.topic.strip(),
+            script_body=payload.script_body or "",
+            script_hook=payload.script_hook,
+            script_cta=payload.script_cta,
+            target_length_seconds=payload.target_length_seconds,
+            idempotency_key=payload.idempotency_key,
+        )
     except billing_service.BillingError as exc:
         raise HTTPException(
             status_code=status.HTTP_402_PAYMENT_REQUIRED,
