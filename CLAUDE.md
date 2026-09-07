@@ -1,9 +1,9 @@
 # Claude Code instructions
 
-Read and follow `AGENTS.md` and `.github/AGENT_OPERATING_PROTOCOL.md` before planning or changing anything in this repository.
+Read and follow `AGENTS.md` before planning or changing anything in this repository. This file adds Claude-specific safeguards; the repository's canonical agent operating model owns general roles and handoffs.
 
+- Work only on an explicitly assigned issue and scope.
 - Preserve the Human Review Gate, FORCE RLS workspace isolation, spend controls, provider abstraction, and audit logging.
-- Work only in the role and task assigned by the operating protocol.
 - Do not weaken security or CI gates.
 - Do not commit secrets or `.env` files.
 - Use one task, one owner, one branch, and one pull request; never push directly to `main`.
