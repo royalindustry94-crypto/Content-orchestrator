@@ -232,6 +232,7 @@ jobs:
           missing = [value for value in required if value not in workflow]
           assert not missing, f"Claude workflow guard missing: {missing}"
           assert "contents: write" not in workflow
+          assert "pull-requests: write" not in workflow
 
           watchdog = Path(".github/workflows/build-watchdog.yml").read_text()
           assert "failure|cancelled|timed_out|stale|startup_failure)" in watchdog
