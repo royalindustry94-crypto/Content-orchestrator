@@ -56,7 +56,11 @@ jobs:
           echo "status=$status conclusion=$conclusion attempt=$attempt age_seconds=$age_seconds"
 
           case "$status" in
-            queued|in_progress|requested|waiting|pending)
+            waiting)
+              echo "::warning::CI is waiting on a deployment-protection approval; the watchdog will not cancel or retry it: $run_url"
+              exit 0
+              ;;
+            queued|in_progress|requested|pending)
               if [ "$age_seconds" -lt 5400 ]; then
                 echo "CI is active and within the 90-minute window."
                 exit 0

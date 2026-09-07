@@ -243,6 +243,10 @@ jobs:
           assert "CI exhausted its single stale-run retry" in watchdog
           assert 'actions/runs/$run_id/rerun"' in watchdog
 
+          assert "queued|in_progress|requested|waiting|pending)" not in watchdog
+          assert "queued|in_progress|requested|pending)" in watchdog
+          assert "waiting on a deployment-protection approval" in watchdog
+
           assert "monitors only the latest repository CI run" in watchdog
           assert "cannot restart stopped AI coding sessions" in watchdog
 
