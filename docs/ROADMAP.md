@@ -36,6 +36,16 @@ Planning docs alone do not count as progress. Each item below is a Work Package 
   reviewed competitors lose trust from silent failures and after-the-fact
   billing surprises (Zapier, Planable, Loomly); see
   `docs/COMPETITIVE_REVIEW_ANALYSIS.md`
+- Review Gate: structured rejection reasons, reviewer reassignment, and
+  time-in-gate tracking — data shows unstructured approval chains take
+  2.6x longer (4.7 vs 1.8 days industry avg); our mandatory gate must not
+  become the bottleneck agencies already complain about elsewhere
+- Explicit no-training / data-retention statement for content submitted
+  to the Gate, surfaced in-product — an unclaimed trust differentiator
+  given client-confidentiality concerns with AI tools generally
+- White-label the audit export (agency logo/colors), not just CSV/PDF —
+  reviewed sources call client reporting the primary retainer-renewal
+  moment for agencies
 
 ## Later (post-PMF)
 
