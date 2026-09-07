@@ -90,7 +90,7 @@ jobs:
                 action_required)
                   echo "::warning::CI requires human approval; the watchdog will not bypass it: $run_url"
                   ;;
-                failure|cancelled|timed_out|stale)
+                failure|cancelled|timed_out|stale|startup_failure)
                   if [ "$attempt" -ge 2 ]; then
                     echo "::error::CI exhausted its single automatic retry: $run_url"
                     exit 1
