@@ -1,0 +1,91 @@
+name: Build Watchdog
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: build-watchdog-${{ github.repository }}
+  cancel-in-progress: true
+
+jobs:
+  ensure-ci:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect and recover CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          repo="$GITHUB_REPOSITORY"
+          workflow="ci.yml"
+          default_branch="$(gh api "repos/$repo" --jq '.default_branch')"
+          latest="$(gh api "repos/$repo/actions/workflows/$workflow/runs?per_page=1" --jq '.workflow_runs[0] // {}')"
+
+          dispatch() {
+            local ref="$1"
+            echo "Dispatching CI on $ref"
+            gh api --method POST "repos/$repo/actions/workflows/$workflow/dispatches" -f ref="$ref"
+          }
+
+          if [ "$latest" = "{}" ]; then
+            dispatch "$default_branch"
+            exit 0
+          fi
+
+          run_id="$(jq -r '.id' <<<"$latest")"
+          status="$(jq -r '.status' <<<"$latest")"
+          conclusion="$(jq -r '.conclusion // ""' <<<"$latest")"
+          attempt="$(jq -r '.run_attempt // 1' <<<"$latest")"
+          head_branch="$(jq -r '.head_branch // empty' <<<"$latest")"
+          updated_at="$(jq -r '.updated_at' <<<"$latest")"
+          run_url="$(jq -r '.html_url' <<<"$latest")"
+          age_seconds="$(( $(date -u +%s) - $(date -u -d "$updated_at" +%s) ))"
+
+          echo "Latest CI: $run_url"
+          echo "status=$status conclusion=$conclusion attempt=$attempt age_seconds=$age_seconds"
+
+          case "$status" in
+            queued|in_progress|requested|waiting|pending)
+              if [ "$age_seconds" -lt 5400 ]; then
+                echo "CI is active and within the 90-minute window."
+                exit 0
+              fi
+              echo "::warning::CI is stale; cancelling run $run_id and dispatching a replacement."
+              gh api --method POST "repos/$repo/actions/runs/$run_id/cancel" || true
+              sleep 15
+              dispatch "${head_branch:-$default_branch}"
+              ;;
+            completed)
+              case "$conclusion" in
+                success|neutral|skipped)
+                  echo "CI completed successfully; no restart is required."
+                  ;;
+                failure|cancelled|timed_out|stale|action_required)
+                  if [ "$attempt" -ge 2 ]; then
+                    echo "::error::CI exhausted its single automatic retry: $run_url"
+                    exit 1
+                  fi
+                  echo "::warning::Retrying unsuccessful CI run $run_id once."
+                  gh api --method POST "repos/$repo/actions/runs/$run_id/rerun-failed-jobs" ||
+                    gh api --method POST "repos/$repo/actions/runs/$run_id/rerun"
+                  ;;
+                *)
+                  echo "::error::Unhandled CI conclusion '$conclusion': $run_url"
+                  exit 1
+                  ;;
+              esac
+              ;;
+            *)
+              echo "::error::Unhandled CI status '$status': $run_url"
+              exit 1
+              ;;
+          esac
