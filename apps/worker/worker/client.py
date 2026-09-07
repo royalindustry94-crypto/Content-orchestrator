@@ -20,6 +20,11 @@ logger = logging.getLogger("worker.client")
 
 CAPABILITY_PROTOCOL_VERSION = 1
 
+# Bounded retries for a claim whose HTTP response is lost in transit
+# (timeout/connection reset) — not for HTTP error statuses, which
+# propagate via raise_for_status as before. See claim_next().
+_CLAIM_NETWORK_RETRY_ATTEMPTS = 3
+
 # Type for the pluggable stage-execution function a real worker provides.
 # Returns (success, result_dict_or_None, error_message).
 StageExecutor = Callable[[dict], Awaitable[tuple[bool, dict | None, str]]]
@@ -138,21 +143,42 @@ class ReferenceWorkerClient:
         """Pull-mode claim via HTTP (WS2/WS3). ``session`` is accepted for
         back-compat with older call sites and ignored — work transport is
         no longer direct-DB.
+
+        Generates one ``claim_token`` for this claim attempt and reuses it
+        across a bounded number of retries when the HTTP response itself
+        is lost in transit (timeout/connection reset) — 2026-09-07 fix,
+        see `docs/TECHNICAL_DEBT_REGISTER.md` TD-078. Without this, a lost
+        response left the server holding a granted assignment the worker
+        didn't know about, stranding that capacity slot until the lease
+        expired (~60s, self-healing, but wasteful): the server has always
+        supported idempotent replay via `claim_token`
+        (`app.orchestration.claiming.claim_assignment`); this reference
+        client just never sent one. HTTP error statuses (4xx/5xx) still
+        propagate immediately via `raise_for_status`, unretried.
         """
         del session  # unused; HTTP path only
         if self._draining:
             return None
-        response = await self._http.post(
-            "/workers/claim",
-            headers=self._auth_headers,
-            json={},
-        )
-        response.raise_for_status()
-        body = response.json()
-        if body.get("outcome") != "granted" or body.get("assignment") is None:
-            return None
-        self.current_load += 1
-        return body["assignment"]
+        claim_token = str(uuid.uuid4())
+        last_exc: httpx.TransportError | None = None
+        for _ in range(_CLAIM_NETWORK_RETRY_ATTEMPTS):
+            try:
+                response = await self._http.post(
+                    "/workers/claim",
+                    headers=self._auth_headers,
+                    json={"claim_token": claim_token},
+                )
+            except httpx.TransportError as exc:
+                last_exc = exc
+                continue
+            response.raise_for_status()
+            body = response.json()
+            if body.get("outcome") != "granted" or body.get("assignment") is None:
+                return None
+            self.current_load += 1
+            return body["assignment"]
+        assert last_exc is not None
+        raise last_exc
 
     async def ack(self, assignment_id: uuid.UUID | str) -> dict:
         response = await self._http.post(

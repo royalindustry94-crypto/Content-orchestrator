@@ -77,7 +77,7 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 | TD-050 | Ruff format is not a distinct CI gate | LOW |
 | TD-060 | FORCE RLS remains a positive architectural control | INFO — exact current table count should be derived from live/current migration evidence when needed |
 | TD-061 | Migration round-trip through current head `0052` | INFO — PASS (branch `claude/project-builder-handover-k95wpm`; not yet on `main`) |
-| TD-062 | API baseline | INFO — **314 passed / 80.83% coverage** on the same branch (was 299/81.09% on `main`) |
+| TD-062 | API baseline | INFO — **314 passed / 80.86% coverage** on the same branch (was 299/81.09% on `main`) |
 | TD-063 | Exact-head browser smoke | INFO — retained desktop + exact-390px CI evidence now exists on `main`; not re-run for this unmerged branch |
 
 ---
@@ -132,6 +132,15 @@ an independent re-probe against `claude/project-builder-handover-k95wpm`
 | Severity | HIGH |
 | Evidence | `default_effect_key()` derived the dedup key from `(assignment_id, attempt_number)`. `recovery.py`'s crash/lease-expiry path always bumps `attempt_number` before re-queuing the *same* assignment, so a re-claimed attempt got a *new* effect key and would re-execute a real, billable provider call — up to `assignment_default_max_attempts` (3) times. Separately, the reference worker (`apps/worker/worker/client.py`) synthesized its own `{assignment_id}:{attempt}` key and passed it as an explicit override to `submit`, which would have defeated even a correct server-side fix by never letting ack's and submit's keys agree. Currently zero live exposure — no real provider is wired in anywhere in this repo. |
 | Fix | `default_effect_key()` now derives the key from `assignment_id` alone (attempt-independent); `attempt_number` is still stored on the row for audit but no longer part of the dedup key. `ack_assignment` now surfaces `LeaseOut.provider_effect_created` (previously computed and silently discarded) so a caller learns *before* performing the side effect that a prior attempt already reserved it. The reference worker client no longer synthesizes or overrides the key, and now refuses to invoke the executor when `provider_effect_created` is `False` — it submits an explicit failure ("provider effect already reserved by a prior attempt...") rather than silently re-running or fabricating an unverifiable success. Regression tests: `tests/test_lease_recovery_ws3.py::test_effect_key_survives_crash_recovery_attempt_bump` (server-side key stability) and `tests/test_reference_worker_client.py::test_reference_worker_client_refuses_to_reexecute_after_crash_recovery` (full client+server path, proves the executor is never called). |
+| Status | Fix pushed; pending independent re-audit before CLOSED. |
+
+### TD-078 — Reference worker never exercised the server's idempotent claim replay — **FIX PUSHED**
+
+| Field | Value |
+|---|---|
+| Severity | LOW/MEDIUM |
+| Evidence | `claim_assignment` has a full idempotent-replay path keyed on `claim_token` (a retried claim with the same token returns the assignment already held, rather than granting a second one), but `ReferenceWorkerClient.claim_next` never sent one. A lost HTTP response (timeout/connection reset) left the server holding a granted assignment the worker didn't know about, stranding that capacity slot until the ~60s lease expiry — bounded and self-healing, but the one shipped worker implementation never actually exercised the mechanism designed for this. |
+| Fix | `claim_next()` now generates one `claim_token` per claim attempt and retries up to 3 times with the *same* token on a transport-level failure only (`httpx.TransportError` — timeouts/connection resets), leaving HTTP error statuses (4xx/5xx) to propagate immediately, unretried. Regression tests: `apps/worker/tests/test_reference_worker_client_claim_retry.py` (mocked-transport unit tests: retry reuses the token, gives up after the bound, doesn't retry HTTP error statuses) plus the existing full-suite claim/lease/recovery tests (54 tests) confirming no regression to the claim/ack/renew/submit protocol. |
 | Status | Fix pushed; pending independent re-audit before CLOSED. |
 
 ### TD-076 — `reserve_spend()` fails open with no `SpendCap` row — **FIX PUSHED**
@@ -197,7 +206,7 @@ The following previously resolved controls remain closed unless new evidence sho
 
 ## Current burn-down priority
 
-1. Independently re-audit TD-072…TD-077 (2026-09-07 fixes on `claude/project-builder-handover-k95wpm`) before merge.
+1. Independently re-audit TD-072…TD-078 (2026-09-07 fixes on `claude/project-builder-handover-k95wpm`) before merge.
 2. **TD-070 / issue #50:** technically protect `main`.
 3. **TD-071:** establish managed Supabase/runtime evidence.
 4. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
