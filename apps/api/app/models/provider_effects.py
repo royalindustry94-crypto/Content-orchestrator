@@ -1,10 +1,13 @@
 """provider_effect_keys: durable duplicate-execution guard (WS3).
 
-Before a worker performs a provider-facing side effect for an assignment
-attempt, it inserts ``{assignment_id}:{attempt_number}`` (or an explicit
-override). A unique constraint on ``(workspace_id, effect_key)`` makes a
-second insert for the same attempt a conflict — the crashed-then-recovered
-path gets a new attempt number and therefore a new key.
+Before a worker performs a provider-facing side effect for an assignment,
+it inserts a key derived from ``assignment_id`` alone (or an explicit
+override) — see `app.orchestration.provider_effects.default_effect_key`.
+A unique constraint on ``(workspace_id, effect_key)`` makes a second
+insert for the *same assignment* a conflict, including across a
+crashed-then-recovered attempt (which bumps `attempt_number` but keeps
+the same `assignment_id`) — that bump is stored on the row for
+audit/debugging but is deliberately not part of the key itself.
 """
 
 from __future__ import annotations

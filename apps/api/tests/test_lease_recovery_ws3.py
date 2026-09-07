@@ -347,6 +347,61 @@ async def test_lease_expiry_requeues_with_attempt_bump(ctx):
 
 
 @pytest.mark.asyncio
+async def test_effect_key_survives_crash_recovery_attempt_bump(ctx):
+    """Regression (2026-09-07 audit finding / TD-077): a crash-recovered
+    attempt used to get a *different* effect key (`{assignment_id}:{attempt}`),
+    so a worker that reliably crashes right after triggering a real
+    provider call would re-trigger it on every recovered attempt. The key
+    must be derived from `assignment_id` alone so the same assignment's
+    second attempt is detected as a duplicate.
+    """
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
+    wh = await _bring_online(ctx["client"], prov)
+    aid = await _seed_assignment(ctx["ws"])
+    claimed = await _claim(ctx["client"], wh)
+    assert claimed["id"] == str(aid)
+
+    ack1 = await ctx["client"].post(f"/workers/assignments/{aid}/ack", headers=wh)
+    assert ack1.status_code == 200
+
+    # Simulate the worker crashing after ack (i.e. after it may have
+    # already triggered a real provider call) — expire the lease and let
+    # recovery bump the attempt and re-queue the same assignment.
+    async with AsyncSessionLocal() as s:
+        a = await s.get(StageAssignment, aid)
+        a.lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        await s.commit()
+    async with AsyncSessionLocal() as s:
+        outcomes = await reap_expired_leases(s)
+        assert any(o.assignment.id == aid for o in outcomes)
+        await s.commit()
+    async with AsyncSessionLocal() as s:
+        a = await s.get(StageAssignment, aid)
+        assert a.status == StageAssignmentStatus.PENDING
+        assert a.attempt_number == 2
+
+    reclaimed = await _claim(ctx["client"], wh)
+    assert reclaimed["id"] == str(aid)
+    ack2 = await ctx["client"].post(f"/workers/assignments/{aid}/ack", headers=wh)
+    assert ack2.status_code == 200
+
+    async with AsyncSessionLocal() as s:
+        keys = (
+            await s.execute(
+                select(ProviderEffectKey).where(ProviderEffectKey.assignment_id == aid)
+            )
+        ).scalars().all()
+        # Only the first attempt's key was actually persisted — the second
+        # ack's insert hit the unique constraint and was rolled back via
+        # savepoint (created=False), proving the same logical unit of work
+        # cannot record two committed effect keys across a crash-recovery
+        # cycle.
+        assert len(keys) == 1
+        assert keys[0].attempt_number == 1
+        assert keys[0].effect_key == str(aid)
+
+
+@pytest.mark.asyncio
 async def test_lease_recovery_under_contention(ctx):
     """Two concurrent reapers partition via SKIP LOCKED — no double bump."""
     prov = await _provision(
@@ -931,7 +986,7 @@ async def test_ack_reserves_provider_effect_key(ctx):
             )
         ).scalars().all()
         assert len(keys) == 1
-        assert keys[0].effect_key == f"{aid}:1"
+        assert keys[0].effect_key == str(aid)
         # Duplicate reserve is a no-op (created=False), not an error.
         again = await ensure_provider_effect_key(
             s,

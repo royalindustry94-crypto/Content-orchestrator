@@ -1,8 +1,22 @@
 """Provider effect key recording (WS3 duplicate-execution prevention).
 
 Inserts a durable key before a provider-facing side effect. A unique
-constraint conflict means this attempt already executed — callers treat
-that as an idempotent no-op rather than double-firing the provider.
+constraint conflict means this assignment already produced (or is already
+producing) its effect — callers treat that as an idempotent no-op rather
+than double-firing the provider.
+
+The default key is derived from ``assignment_id`` alone, not
+``(assignment_id, attempt_number)`` (2026-09-07 fix — see
+`docs/TECHNICAL_DEBT_REGISTER.md` TD-077). A single assignment must
+produce at most one committed provider effect across every attempt it
+takes: `app.orchestration.recovery` bumps `attempt_number` and re-queues
+the *same* assignment on crash/lease-expiry recovery specifically because
+"the attempt is the unit that reserves budget ... an attempt that reached
+a worker may already have produced a billable, non-idempotent side
+effect" — so the dedup key must survive that bump, or a worker that
+reliably crashes right after triggering a real provider call would
+re-trigger it on every recovered attempt, up to `assignment_default_max_attempts`
+times, before the unique-key check ever caught it.
 """
 
 from __future__ import annotations
@@ -23,7 +37,13 @@ class EffectKeyResult:
 
 
 def default_effect_key(assignment_id: uuid.UUID, attempt_number: int) -> str:
-    return f"{assignment_id}:{attempt_number}"
+    """`attempt_number` is accepted (and still stored on the row, see
+    `ensure_provider_effect_key`) for audit/debugging purposes only — it is
+    deliberately NOT part of the key, so every attempt of the same
+    assignment maps to the same dedup key. See module docstring.
+    """
+    del attempt_number
+    return str(assignment_id)
 
 
 async def ensure_provider_effect_key(

@@ -208,26 +208,48 @@ class ReferenceWorkerClient:
         long provider calls should renew on an interval; the reference
         client renews once immediately before submit as a minimal
         heartbeat-extend.
+
+        Does NOT synthesize its own provider effect key (2026-09-07 fix —
+        see `docs/TECHNICAL_DEBT_REGISTER.md` TD-077): the server derives
+        the same stable, attempt-independent key at both ack and submit
+        when no explicit override is sent, so they naturally agree. A
+        real provider-calling executor that already has its own
+        provider-issued idempotency key should pass it through
+        ``context``/its own submit call instead of this reference client
+        inventing one.
+
+        If ``ack``'s response reports ``provider_effect_created=False``,
+        a *prior* attempt of this same assignment already reserved this
+        effect key — meaning that attempt may have already triggered a
+        real, billable provider call before crashing or losing its lease.
+        Whether that call succeeded is unknown and unverifiable from here,
+        so this reference implementation refuses to execute again (which
+        could double-charge or double-generate) and instead submits an
+        explicit failure for operator/retry-policy attention, rather than
+        silently re-running or fabricating a success it cannot confirm.
         """
         del session
         if assignment is None:
             return
         assignment_id = assignment["id"] if isinstance(assignment, dict) else assignment.id
-        attempt = (
-            assignment["attempt_number"]
-            if isinstance(assignment, dict)
-            else assignment.attempt_number
-        )
         stage = assignment["stage"] if isinstance(assignment, dict) else assignment.stage
-        await self.ack(assignment_id)
-        effect_key = f"{assignment_id}:{attempt}"
+        ack_response = await self.ack(assignment_id)
+        if ack_response.get("provider_effect_created") is False:
+            await self.submit(
+                assignment_id,
+                success=False,
+                result=None,
+                error_message=(
+                    "provider effect already reserved by a prior attempt of this "
+                    "assignment; refusing to repeat a possibly-billable side effect"
+                ),
+            )
+            return
         # Renew before side effects so a slow executor does not race the reaper.
         await self.renew(assignment_id)
         context = {
             "stage": stage,
             "assignment_id": str(assignment_id),
-            "attempt_number": attempt,
-            "provider_effect_key": effect_key,
         }
         if isinstance(assignment, dict):
             for key in (
@@ -237,6 +259,7 @@ class ReferenceWorkerClient:
                 "target_length_seconds",
                 "provider",
                 "pipeline_run_id",
+                "attempt_number",
             ):
                 if key in assignment and assignment[key] is not None:
                     context[key] = assignment[key]
@@ -246,5 +269,4 @@ class ReferenceWorkerClient:
             success=success,
             result=result,
             error_message=error,
-            provider_effect_key=effect_key,
         )
