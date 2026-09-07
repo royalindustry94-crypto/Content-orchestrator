@@ -1,8 +1,8 @@
 # Technical Debt Register
 
 **Repository:** Content Orchestrator  
-**Updated:** 2026-08-28  
-**Current reference:** `main` after PR #49 governance merge
+**Updated:** 2026-09-07  
+**Current reference:** `claude/project-builder-handover-k95wpm` @ `7a814db` (unmerged; base `main` remains PR #49)
 
 Severity: CRITICAL · HIGH · MEDIUM · LOW · INFO
 
@@ -13,6 +13,17 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 ## Current open debt
 
 ### HIGH
+
+### TD-072 — `content_jobs.py` / `review_gates.py` have no RLS backstop — **OPEN**
+
+| Field | Value |
+|---|---|
+| Severity | HIGH |
+| Evidence | 2026-09-07 independent Claude audit (issue #91 Section 1/3 cross-check). Both routes use the owner DB connection (`AsyncSessionLocal`) instead of the RLS-scoped session every other tenant route uses, because the shared orchestration engine (`app/orchestration/controller.py`) is also driven by the connectionless background scheduler with no per-request JWT context. `pipeline_runs` has no INSERT/UPDATE RLS policy at all; `review_gates` has no UPDATE policy — a naive session swap would break content-job creation and review decisions, not just tighten security. |
+| Risk | No database-level backstop on the two routes that create content and decide Human Review outcomes; isolation depends entirely on the FastAPI guard plus every downstream query staying correctly workspace-scoped. No live exploit found — every sampled query was correctly filtered. |
+| Mitigation shipped | `claude/project-builder-handover-k95wpm` @ `7a814db` documents the architectural reason in both route files and adds `tests/test_content_desk_workspace_scoping.py` (direct service-layer isolation tests, no FastAPI guard in the loop) alongside the existing `tests/test_review_desk_api.py::test_cross_workspace_review_gate_is_hidden`. |
+| Recommendation | Design and independently audit a correct INSERT/UPDATE RLS write-policy matrix for `pipeline_runs`, `review_gates`, and the other orchestration tables these two routes touch, then migrate the routes to `Depends(get_current_session)`. This is a separate, scoped migration project — not a quick fix. |
+| Effort | L |
 
 ### TD-070 — `main` branch protection disabled — **OPEN**
 
@@ -76,9 +87,54 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 |---|---|---|
 | TD-050 | Ruff format is not a distinct CI gate | LOW |
 | TD-060 | FORCE RLS remains a positive architectural control | INFO — exact current table count should be derived from live/current migration evidence when needed |
-| TD-061 | Migration round-trip through current head `0050` | INFO — PASS |
-| TD-062 | API baseline | INFO — **299 passed / 81.09% coverage** |
-| TD-063 | Exact-head browser smoke | INFO — retained desktop + exact-390px CI evidence now exists |
+| TD-061 | Migration round-trip through current head `0051` | INFO — PASS (branch `claude/project-builder-handover-k95wpm`; not yet on `main`) |
+| TD-062 | API baseline | INFO — **307 passed / 81.16% coverage** on the same branch (was 299/81.09% on `main`) |
+| TD-063 | Exact-head browser smoke | INFO — retained desktop + exact-390px CI evidence now exists on `main`; not re-run for this unmerged branch |
+
+---
+
+## Fix pushed, pending independent re-audit (2026-09-07 Claude cross-check, issue #91)
+
+Per this register's own rule, the builder who found these is also the one who
+fixed them — **none of the following are self-certified closed.** Each needs
+an independent re-probe against `claude/project-builder-handover-k95wpm` @
+`7a814db` before being marked CLOSED.
+
+### TD-073 — `profiles` RLS SELECT policy leaked PII across tenants — **FIX PUSHED**
+
+| Field | Value |
+|---|---|
+| Severity | HIGH |
+| Evidence | `profiles_select_authenticated` (migration 0001) only checked "is any authenticated user," not shared workspace — any user could read every other user's email/full_name platform-wide via the `app_runtime` role. `FORCE ROW LEVEL SECURITY` was enabled; the policy itself provided no isolation. No live exploit found (no route reads `profiles` beyond `GET /me`). |
+| Fix | Migration `0051_profiles_workspace_scoped_select.py` scopes SELECT to self-or-shared-workspace. Regression test in `tests/test_cross_workspace_isolation.py::test_rls_blocks_reading_a_stranger_profile_across_workspaces`. |
+| Status | Fix pushed; pending independent re-audit before CLOSED. |
+
+### TD-074 — Zero audit trail on workspace-membership/role changes — **FIX PUSHED**
+
+| Field | Value |
+|---|---|
+| Severity | HIGH |
+| Evidence | `memberships.py` invite/role-update/remove called neither `audit()` nor any event log, unlike the identical pattern in `spend.py`/`review_gates.py`/`workers.py`/`billing.py`. |
+| Fix | All three endpoints now call `audit()` with actor/target/role fields. Regression test `tests/test_workspaces.py::test_membership_mutations_are_audit_logged`. |
+| Status | Fix pushed; pending independent re-audit before CLOSED. |
+
+### TD-075 — Hardcoded `app_runtime` migration password, no production guard — **FIX PUSHED**
+
+| Field | Value |
+|---|---|
+| Severity | HIGH |
+| Evidence | Migration 0001 creates the `app_runtime` role with the literal password `app_runtime` unconditionally; no code-level check analogous to the `AUTH_MODE=local` production guard existed. |
+| Fix | `app/core/config.py::_validate_app_runtime_password` fails startup closed when `ENVIRONMENT=production` and `APP_DATABASE_URL` still carries the default password. Tests in `tests/test_pr34_high_fixes.py` (`test_c2_*`). |
+| Status | Fix pushed; pending independent re-audit before CLOSED. |
+
+### TD-076 — `reserve_spend()` fails open with no `SpendCap` row — **FIX PUSHED**
+
+| Field | Value |
+|---|---|
+| Severity | MEDIUM |
+| Evidence | If no `SpendCap` row exists for a workspace, the cap-check block was skipped entirely and the reservation proceeded unconditionally — contrary to "spend caps fail closed." Mitigated in practice since `POST /workspaces` always seeds a cap and there's no delete endpoint. |
+| Fix | `reserve_spend()` now treats a missing cap the same as an exceeded cap (pause + `spend_hold` + emit event). Regression test `tests/test_spend_controls_p0.py::test_reserve_spend_fails_closed_without_cap_row`. Required updating 5 unrelated test files (`test_open_finding_closure.py`, `test_orchestration_scheduler_dispatcher.py`, `test_orchestration_workflow.py`, `test_reference_worker_client.py`, `test_regression_defects.py`) that deliberately created workspaces with no cap to isolate orchestration-mechanic testing — they now seed a permissive cap instead. |
+| Status | Fix pushed; pending independent re-audit before CLOSED. |
 
 ---
 
@@ -134,8 +190,10 @@ The following previously resolved controls remain closed unless new evidence sho
 
 ## Current burn-down priority
 
-1. **TD-070 / issue #50:** technically protect `main`.
-2. **TD-071:** establish managed Supabase/runtime evidence.
-3. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
-4. Activate cost-bearing providers one at a time with spend, retry, idempotency and Human Review controls.
-5. Raise coverage/security/observability depth based on measured risk, not feature-count pressure.
+1. Independently re-audit TD-073…TD-076 (2026-09-07 fixes on `claude/project-builder-handover-k95wpm`) before merge.
+2. **TD-070 / issue #50:** technically protect `main`.
+3. **TD-071:** establish managed Supabase/runtime evidence.
+4. **TD-072:** design and independently audit a correct RLS write-policy matrix for `pipeline_runs`/`review_gates` before switching those two routes off the owner connection.
+5. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
+6. Activate cost-bearing providers one at a time with spend, retry, idempotency and Human Review controls.
+7. Raise coverage/security/observability depth based on measured risk, not feature-count pressure.
