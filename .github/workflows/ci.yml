@@ -225,6 +225,8 @@ jobs:
               "contents: read",
               "additional_permissions: |",
               "every @claude request can run independently",
+              "github.event.comment.author_association",
+              'fromJSON(\'["OWNER", "MEMBER", "COLLABORATOR"]\')',
           )
           missing = [value for value in required if value not in workflow]
           assert not missing, f"Claude workflow guard missing: {missing}"
