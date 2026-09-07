@@ -244,6 +244,13 @@ jobs:
 
           assert "monitors only the latest repository CI run" in watchdog
           assert "cannot restart stopped AI coding sessions" in watchdog
+
+          protocol = Path(".github/AGENT_OPERATING_PROTOCOL.md").read_text()
+          assert "latest repository CI run only" in protocol
+          assert "cannot restart a stopped coding-agent session" in protocol
+
+          claude_md = Path("CLAUDE.md").read_text()
+          assert ".github/AGENT_OPERATING_PROTOCOL.md" in claude_md
           PY
       - name: Install API package (for dependency graph)
         working-directory: apps/api
