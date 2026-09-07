@@ -1,5 +1,8 @@
 name: Build Watchdog
 
+# Scope: monitors only the latest repository CI run.
+# This can restart GitHub Actions CI; it cannot restart stopped AI coding sessions.
+
 on:
   schedule:
     - cron: "*/30 * * * *"
