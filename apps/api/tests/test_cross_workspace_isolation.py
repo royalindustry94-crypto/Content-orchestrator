@@ -12,6 +12,7 @@ import pytest
 from sqlalchemy import select, text
 
 from app.db.session import AsyncSessionLocal, rls_scoped_session
+from app.models.profile import Profile
 from app.models.workspace import Workspace
 from app.models.workspace_membership import WorkspaceMembership, WorkspaceRole
 
@@ -140,3 +141,41 @@ async def test_rls_blocks_cross_workspace_leads_and_worker_logs():
             text("SELECT count(*) FROM worker_logs WHERE workspace_id = :workspace_id"),
             {"workspace_id": str(workspace_a)},
         ) == 0
+
+
+@pytest.mark.asyncio
+async def test_rls_blocks_reading_a_stranger_profile_across_workspaces():
+    """Regression (2026-09-07 audit finding): `profiles_select_authenticated`
+    used to allow ANY authenticated user to read every other user's
+    email/full_name, regardless of workspace. Migration 0051 scopes SELECT
+    to the caller's own profile or a profile sharing at least one workspace.
+    """
+    user_a, workspace_a = await _create_user_and_workspace("Profile isolation A")
+    user_b, _workspace_b = await _create_user_and_workspace("Profile isolation B")
+
+    # Strangers (no shared workspace): B cannot read A's profile.
+    async with rls_scoped_session(user_b) as session:
+        result = await session.execute(select(Profile).where(Profile.id == uuid.UUID(user_a)))
+        assert result.scalar_one_or_none() is None, (
+            "profiles RLS failed to block a cross-workspace stranger from "
+            "reading another user's profile"
+        )
+        # Sanity: B can always read their own profile.
+        own = await session.execute(select(Profile).where(Profile.id == uuid.UUID(user_b)))
+        assert own.scalar_one_or_none() is not None
+
+    # Once B joins A's workspace, B can legitimately see A's profile
+    # (e.g. to render the workspace's member list).
+    async with AsyncSessionLocal() as session:
+        session.add(
+            WorkspaceMembership(
+                workspace_id=workspace_a, user_id=uuid.UUID(user_b), role=WorkspaceRole.EDITOR
+            )
+        )
+        await session.commit()
+
+    async with rls_scoped_session(user_b) as session:
+        result = await session.execute(select(Profile).where(Profile.id == uuid.UUID(user_a)))
+        assert result.scalar_one_or_none() is not None, (
+            "profiles RLS incorrectly blocked a legitimate workspace-mate read"
+        )

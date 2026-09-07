@@ -41,6 +41,16 @@ async def _make_workspace_item(session):
         text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
         {"id": ws, "u": user},
     )
+    # reserve_spend now fails closed with no SpendCap row (2026-09-07 fix);
+    # seed a permissive cap so these orchestration-mechanic tests remain
+    # about claiming/dispatch/recovery, not spend enforcement.
+    await session.execute(
+        text(
+            "INSERT INTO spend_caps (workspace_id, daily_cap_usd, monthly_cap_usd) "
+            "VALUES (:ws, 999999, 999999)"
+        ),
+        {"ws": ws},
+    )
     await session.execute(
         text("INSERT INTO content_items (id, workspace_id, topic) VALUES (:id, :ws, 't1')"),
         {"id": item, "ws": ws},

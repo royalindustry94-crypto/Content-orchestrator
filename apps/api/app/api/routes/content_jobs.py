@@ -1,4 +1,16 @@
-"""Private Beta content job API — submit drafts into the Review Gate."""
+"""Private Beta content job API — submit drafts into the Review Gate.
+
+Uses the owner DB connection (`AsyncSessionLocal`), not the RLS-scoped
+runtime session (`Depends(get_current_session)`) every other tenant-scoped
+route uses, because `app.orchestration.controller` is shared with the
+connectionless background scheduler, which has no per-request user/JWT
+context to bind an RLS-scoped session to. Row Level Security therefore
+provides no backstop on this route (2026-09-07 audit finding) — isolation
+here depends entirely on `require_workspace_content_author` (below) plus
+every downstream query being correctly workspace-scoped. See
+`tests/test_content_desk_workspace_scoping.py` for the compensating
+regression coverage of that filtering.
+"""
 
 from __future__ import annotations
 

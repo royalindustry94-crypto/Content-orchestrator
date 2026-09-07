@@ -1,4 +1,17 @@
-"""Private Beta review desk API — list and decide Human Review Gates."""
+"""Private Beta review desk API — list and decide Human Review Gates.
+
+Uses the owner DB connection (`AsyncSessionLocal`), not the RLS-scoped
+runtime session (`Depends(get_current_session)`) every other tenant-scoped
+route uses, because `app.orchestration.controller` is shared with the
+connectionless background scheduler, which has no per-request user/JWT
+context to bind an RLS-scoped session to. Row Level Security therefore
+provides no backstop on these routes (2026-09-07 audit finding) —
+isolation depends entirely on the `require_workspace_*` guards below plus
+every downstream query being correctly workspace-scoped. See
+`tests/test_content_desk_workspace_scoping.py` and
+`tests/test_review_desk_api.py::test_cross_workspace_review_gate_is_hidden`
+for the compensating regression coverage of that filtering.
+"""
 
 from __future__ import annotations
 
