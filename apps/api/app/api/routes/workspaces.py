@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import audit
 from app.core.authorization import require_workspace_admin, require_workspace_member
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
 from app.models.workspace import Workspace
@@ -19,6 +20,7 @@ router = APIRouter(prefix="/workspaces", tags=["workspaces"])
 @router.post("", response_model=WorkspaceOut, status_code=status.HTTP_201_CREATED)
 async def create_workspace(
     payload: WorkspaceCreate,
+    request: Request,
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_current_session),
 ) -> Workspace:
@@ -42,6 +44,13 @@ async def create_workspace(
         db, workspace_id=workspace.id, actor_id=uuid.UUID(user.id)
     )
     await db.flush()
+    audit(
+        request,
+        "workspace_created",
+        workspace_id=str(workspace.id),
+        actor_id=user.id,
+        workspace_name=workspace.name,
+    )
     return workspace
 
 
@@ -78,6 +87,7 @@ async def get_workspace(
 async def update_workspace(
     workspace_id: uuid.UUID,
     payload: WorkspaceUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_current_session),
     _membership: WorkspaceMembership = Depends(require_workspace_admin),
 ) -> Workspace:
@@ -89,9 +99,19 @@ async def update_workspace(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
             detail="at least one of name or priority_tier is required",
         )
+    changed: dict[str, object] = {}
     if payload.name is not None:
+        changed["new_name"] = payload.name
         workspace.name = payload.name
     if payload.priority_tier is not None:
+        changed["priority_tier"] = payload.priority_tier
         workspace.priority_tier = payload.priority_tier
     await db.flush()
+    audit(
+        request,
+        "workspace_updated",
+        workspace_id=str(workspace_id),
+        actor_id=str(_membership.user_id),
+        **changed,
+    )
     return workspace
