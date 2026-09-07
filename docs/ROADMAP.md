@@ -1,9 +1,19 @@
 # Product Roadmap — Launch Path
 
+**Updated:** 2026-09-07 (staleness fix — see note below; content otherwise unchanged from 2026-08-03)  
 **North star:** Private Beta → first 10 paying customers → PMF → positive cash flow.  
 **Prioritization:** Revenue → Customer value → Platform reliability → Security → Performance → DX.
 
 Planning docs alone do not count as progress. Each item below is a Work Package or an outcome.
+
+> **This page is a historical Now/Next/Later shape, not the current launch-readiness verdict.**
+> It was last substantively written 2026-08-03, before the PR #48/#49 governance baseline and
+> the current audited state. For the actual current verdict, always defer to (dated 2026-08-28,
+> or later where superseded): `docs/LAUNCH_BLOCKERS.md`, `docs/EXECUTIVE_STATUS_REPORT.md`, and
+> `docs/TECHNICAL_DEBT_REGISTER.md`. In particular, the "Launch gate: **READY FOR PRIVATE BETA**"
+> line below is the obsolete `cursor/p2-beta-launch-b52d` / `docs/FINAL_RELEASE_AUDIT.md` verdict
+> from 2026-08-05 — the current baseline is CONDITIONAL (governance) / NOT YET RUNTIME-VERIFIED
+> (operational beta), per `docs/LAUNCH_BLOCKERS.md`.
 
 ---
 
