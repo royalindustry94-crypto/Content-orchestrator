@@ -13,7 +13,7 @@ This protocol applies to every human or AI agent working in this repository. `AG
 | Reviewer / QA | A fresh Codex or other designated agent that did not build the change | Scope review, regression checks, exact-head CI evidence | Modify the reviewed head while claiming independence |
 | Security auditor | Independent agent | PASS / CONDITIONAL / FAIL audit against the exact head SHA and non-negotiables | Approve its own implementation or ignore missing evidence |
 | Release steward | Codex after Founder approval | Confirm exact SHA, required checks, audit, and merge readiness | Merge with a failed, pending, stale, or mismatched gate |
-| Build watchdog | GitHub Actions | Detect and restart failed, cancelled, or stale CI within bounded retry limits | Change product code, alter protections, expose secrets, or merge |
+| Build watchdog | GitHub Actions | Monitor the latest repository CI run only and retry genuine failures within bounded limits | Change product code, alter protections, expose secrets, or merge |
 
 Only one Builder owns a task at a time. A task must have an issue, a named owner, a branch, and a pull request before it can reach review.
 
@@ -31,10 +31,10 @@ A handoff must state the issue, owner, branch, exact head SHA, completed work, t
 
 ## Continuity and restart rules
 
-The Build Watchdog runs every 30 minutes and can also be started manually.
+The Build Watchdog runs every 30 minutes and can also be started manually. It monitors the latest repository CI run only; it is not a multi-branch build queue and cannot restart a stopped coding-agent session.
 
 - Failed, cancelled, timed-out, or stale CI is retried once.
-- A queued or running CI build with no update for 90 minutes is treated as stalled, cancelled, and restarted on the same branch.
+- A queued or running latest CI build with no update for 90 minutes is treated as stalled, cancelled, and rerun once using the same run record.
 - If no CI run exists, the watchdog dispatches CI on the default branch.
 - After the retry limit, the watchdog fails visibly so a human or Orchestrator can investigate.
 - Successful CI is not rerun merely to consume minutes.
