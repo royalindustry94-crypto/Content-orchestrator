@@ -1,0 +1,48 @@
+name: Claude Code Pull Requests
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  pull_request_review:
+    types: [submitted]
+  pull_request_target:
+    types: [opened, reopened, synchronize]
+
+jobs:
+  claude:
+    if: |
+      (github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request != null &&
+        contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' &&
+        contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' &&
+        contains(github.event.review.body || '', '@claude')) ||
+      (github.event_name == 'pull_request_target' && (
+        contains(github.event.pull_request.title, '@claude') ||
+        contains(github.event.pull_request.body || '', '@claude')
+      ))
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+      issues: write
+      pull-requests: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Maintainers: install https://github.com/apps/claude and add either
+          # ANTHROPIC_API_KEY or swap the input above for:
+          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read

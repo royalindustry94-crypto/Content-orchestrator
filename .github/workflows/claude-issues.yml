@@ -1,0 +1,40 @@
+name: Claude Code Issues
+
+on:
+  issues:
+    types: [opened, assigned, labeled]
+  issue_comment:
+    types: [created]
+
+jobs:
+  claude:
+    if: |
+      (github.event_name == 'issues' && (
+        contains(github.event.issue.title, '@claude') ||
+        contains(github.event.issue.body || '', '@claude') ||
+        (github.event.action == 'assigned' && github.event.assignee.login == 'claude') ||
+        (github.event.action == 'labeled' && github.event.label.name == 'claude')
+      )) ||
+      (github.event_name == 'issue_comment' &&
+        github.event.issue.pull_request == null &&
+        contains(github.event.comment.body, '@claude'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 1
+
+      - name: Run Claude Code
+        uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Maintainers: install https://github.com/apps/claude and add either
+          # ANTHROPIC_API_KEY or swap the input above for:
+          # claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          assignee_trigger: claude
+          label_trigger: claude

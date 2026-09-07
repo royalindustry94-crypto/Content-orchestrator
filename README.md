@@ -88,6 +88,18 @@ cd apps/web && npm test && npm run build
 See [`AGENTS.md`](./AGENTS.md) (non-negotiables, working rules) and
 `.cursor/rules/content-orchestrator.mdc`.
 
+## Claude Code GitHub Action
+
+The repository includes issue and pull request workflows under
+`.github/workflows/claude-issues.yml` and
+`.github/workflows/claude-pull-requests.yml`.
+
+Before enabling them, install the official Claude GitHub App and add one of
+these repository secrets in **Settings → Secrets and variables → Actions**:
+
+- `ANTHROPIC_API_KEY`
+- `CLAUDE_CODE_OAUTH_TOKEN`
+
 ## Status
 
 Orchestration engine (M3–M4) + Private Beta Review Desk surfaces are
