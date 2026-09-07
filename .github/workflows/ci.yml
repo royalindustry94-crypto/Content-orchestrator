@@ -254,8 +254,30 @@ jobs:
           assert "latest repository CI run only" in protocol
           assert "cannot restart a stopped coding-agent session" in protocol
 
-          claude_md = Path("CLAUDE.md").read_text()
-          assert ".github/AGENT_OPERATING_PROTOCOL.md" in claude_md
+          agent_guides = {
+              "CLAUDE.md": Path("CLAUDE.md").read_text(),
+              ".github/copilot-instructions.md": Path(
+                  ".github/copilot-instructions.md"
+              ).read_text(),
+              ".cursor/rules/agent-coordination.mdc": Path(
+                  ".cursor/rules/agent-coordination.mdc"
+              ).read_text(),
+          }
+          required_routes = (
+              "AGENTS.md",
+              ".github/AGENT_OPERATING_PROTOCOL.md",
+              "issues/90",
+          )
+          for path, guide in agent_guides.items():
+              missing = [route for route in required_routes if route not in guide]
+              assert not missing, f"{path} coordination routes missing: {missing}"
+
+          assert "pair assistant" in agent_guides[
+              ".github/copilot-instructions.md"
+          ].lower()
+          assert "one Builder" in agent_guides[
+              ".cursor/rules/agent-coordination.mdc"
+          ]
           PY
       - name: Install API package (for dependency graph)
         working-directory: apps/api
