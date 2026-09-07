@@ -242,9 +242,8 @@ jobs:
           assert "CI exhausted its single stale-run retry" in watchdog
           assert 'actions/runs/$run_id/rerun"' in watchdog
 
-          protocol = Path(".github/AGENT_OPERATING_PROTOCOL.md").read_text()
-          assert "latest repository CI run only" in protocol
-          assert "cannot restart a stopped coding-agent session" in protocol
+          assert "monitors only the latest repository CI run" in watchdog
+          assert "cannot restart stopped AI coding sessions" in watchdog
           PY
       - name: Install API package (for dependency graph)
         working-directory: apps/api
