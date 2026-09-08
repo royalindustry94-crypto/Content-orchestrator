@@ -395,3 +395,83 @@ async def test_single_workspace_reports_never_blend_another_admined_workspace(
     names = {row["name"] for row in portfolio.json()["customers"]}
     assert names == {"Blend Guard Client A", "Blend Guard Client B"}
     assert Decimal(str(portfolio.json()["revenue_mtd_usd"])) == Decimal("5010.00")
+
+
+@pytest.mark.asyncio
+async def test_assistant_generic_idle_question_reports_the_actually_idle_worker(
+    client, new_user
+):
+    """A generic phrasing ("are any workers idle?") has no worker name for
+    the intent's regex to capture, leaving `needle` empty. The buggy version
+    used `needle in row.name.lower()`, and an empty string is a substring of
+    everything, so it silently matched whichever worker sorted first
+    alphabetically and answered about that worker regardless of whether it
+    was actually idle. Name the busy worker so it sorts first, to prove the
+    fix reports the real idle worker rather than the alphabetically-first one.
+    """
+    _user_id, _token, headers = new_user
+    workspace_id = (
+        await client.post("/workspaces", headers=headers, json={"name": "Idle Q&A"})
+    ).json()["id"]
+
+    content = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=headers,
+        json={"topic": "Idle assistant topic", "script_body": "draft"},
+    )
+    assert content.status_code == 201, content.text
+    run_id = content.json()["pipeline_run_id"]
+
+    busy = await client.post(
+        f"/workspaces/{workspace_id}/workers",
+        headers=headers,
+        json={"name": "aaa-busy-worker", "supported_stages": ["scripting"]},
+    )
+    assert busy.status_code == 201, busy.text
+    idle = await client.post(
+        f"/workspaces/{workspace_id}/workers",
+        headers=headers,
+        json={"name": "zzz-idle-worker", "supported_stages": ["scripting"]},
+    )
+    assert idle.status_code == 201, idle.text
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text(
+                """
+                INSERT INTO stage_assignments (
+                    id, workspace_id, pipeline_run_id, stage, attempt_number,
+                    worker_id, status, idempotency_key, lease_expires_at,
+                    dispatched_at, priority, provider
+                ) VALUES (
+                    :id, :ws, :run, 'scripting'::content_stage, 1, :worker,
+                    'dispatched'::stage_assignment_status, :idem, :lease,
+                    :dispatched, 0, 'draft_desk'
+                )
+                """
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "ws": workspace_id,
+                "run": run_id,
+                "worker": busy.json()["worker_id"],
+                "idem": f"idle-q-{uuid.uuid4()}",
+                "lease": datetime.now(UTC) + timedelta(minutes=5),
+                "dispatched": datetime.now(UTC),
+            },
+        )
+        await session.commit()
+
+    answer = await client.post(
+        f"/workspaces/{workspace_id}/operations/assistant",
+        headers=headers,
+        json={"question": "Are any workers idle right now?"},
+    )
+    assert answer.status_code == 200, answer.text
+    body = answer.json()
+    assert body["intent"] == "worker_idle"
+    assert "zzz-idle-worker" in body["answer"]
+    assert "aaa-busy-worker" not in body["answer"]
+    idle_ids = {fact["worker_id"] for fact in body["facts"]}
+    assert idle.json()["worker_id"] in idle_ids
+    assert busy.json()["worker_id"] not in idle_ids

@@ -808,6 +808,7 @@ async def emergency_stop(
             await session.execute(
                 select(WorkerCredential).where(
                     WorkerCredential.worker_id == worker.id,
+                    WorkerCredential.workspace_id == workspace_id,
                     WorkerCredential.status == WorkerCredentialStatus.ACTIVE,
                 )
             )
@@ -909,7 +910,9 @@ async def retry_failed_jobs(
         if existing:
             continue
         run = await session.get(PipelineRun, assignment.pipeline_run_id)
-        if run is None or run.status in {
+        if run is None or run.workspace_id != workspace_id:
+            continue
+        if run.status in {
             PipelineRunStatus.SUCCEEDED,
             PipelineRunStatus.CANCELLED,
         }:

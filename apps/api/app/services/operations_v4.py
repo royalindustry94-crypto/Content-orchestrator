@@ -677,39 +677,66 @@ async def assistant_answer(
             r"worker\s+([a-zA-Z0-9_-]+)", lowered, flags=re.IGNORECASE
         )
         needle = token.group(1) if token else ""
-        worker = next(
-            (
-                row
-                for row in timelines.workers
-                if needle in row.name.lower()
-                or str(row.worker_id).lower().startswith(needle)
-            ),
-            None,
-        )
         intent = "worker_idle"
-        if worker is None:
-            answer = f"No worker matching “{needle or q}” is visible in this workspace."
+        if needle:
+            # A specific worker was named — answer about that one worker.
+            worker = next(
+                (
+                    row
+                    for row in timelines.workers
+                    if needle in row.name.lower()
+                    or str(row.worker_id).lower().startswith(needle)
+                ),
+                None,
+            )
+            if worker is None:
+                answer = f"No worker matching “{needle}” is visible in this workspace."
+            else:
+                reason = (
+                    "it has no active assignment"
+                    if worker.current_task is None
+                    else f"it is currently assigned to {worker.current_task}"
+                )
+                answer = (
+                    f"{worker.name} reports {worker.status}; {reason}. "
+                    f"Last heartbeat: {worker.last_heartbeat_at or 'never'}."
+                )
+                facts = [
+                    {
+                        "worker_id": str(worker.worker_id),
+                        "status": worker.status,
+                        "current_task": worker.current_task,
+                        "last_heartbeat_at": (
+                            worker.last_heartbeat_at.isoformat()
+                            if worker.last_heartbeat_at
+                            else None
+                        ),
+                    }
+                ]
         else:
-            reason = (
-                "it has no active assignment"
-                if worker.current_task is None
-                else f"it is currently assigned to {worker.current_task}"
-            )
-            answer = (
-                f"{worker.name} reports {worker.status}; {reason}. "
-                f"Last heartbeat: {worker.last_heartbeat_at or 'never'}."
-            )
+            # No specific worker named ("are any workers idle?") — an empty
+            # needle used to substring-match every worker's name, silently
+            # answering about whichever worker sorted first rather than
+            # actually identifying idle ones. Report the real idle set.
+            idle = [row for row in timelines.workers if row.current_task is None]
+            if not idle:
+                answer = (
+                    "No idle workers right now — every registered worker "
+                    "has an active assignment."
+                )
+            else:
+                names = ", ".join(row.name for row in idle)
+                answer = f"{len(idle)} worker(s) are idle: {names}."
             facts = [
                 {
-                    "worker_id": str(worker.worker_id),
-                    "status": worker.status,
-                    "current_task": worker.current_task,
+                    "worker_id": str(row.worker_id),
+                    "status": row.status,
+                    "current_task": row.current_task,
                     "last_heartbeat_at": (
-                        worker.last_heartbeat_at.isoformat()
-                        if worker.last_heartbeat_at
-                        else None
+                        row.last_heartbeat_at.isoformat() if row.last_heartbeat_at else None
                     ),
                 }
+                for row in idle
             ]
     elif "fail" in lowered:
         day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)

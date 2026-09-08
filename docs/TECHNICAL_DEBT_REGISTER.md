@@ -79,7 +79,7 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 | TD-050 | Ruff format is not a distinct CI gate | LOW |
 | TD-060 | FORCE RLS remains a positive architectural control | INFO — exact current table count should be derived from live/current migration evidence when needed |
 | TD-061 | Migration round-trip through current head `0054` | INFO — PASS (branch `claude/project-builder-handover-k95wpm`; not yet on `main`) |
-| TD-062 | API baseline | INFO — **330 passed / 81% coverage** on the same branch (was 299/81.09% on `main`) |
+| TD-062 | API baseline | INFO — **333 passed / 81% coverage** on the same branch (was 299/81.09% on `main`) |
 | TD-063 | Exact-head browser smoke | INFO — retained desktop + exact-390px CI evidence now exists on `main`; not re-run for this unmerged branch |
 
 ---
@@ -218,6 +218,16 @@ an independent re-probe against `claude/project-builder-handover-k95wpm`
 | Fix | Both Stripe calls in `create_checkout_session` are now wrapped in `try/except stripe.error.StripeError`, raising a clean `BillingError("stripe_unavailable", ...)` that the route maps to 503; `Customer.create` also now passes a deterministic per-workspace `idempotency_key` so a retry after a network-ambiguous failure reuses the same Customer instead of risking a duplicate at the Stripe API layer itself. `apps/api/app/api/routes/webhooks.py`'s rejection path now also calls `audit(request, "stripe_webhook_rejected", code=exc.code)` alongside the existing `logger.warning`. Regression tests: `tests/test_billing_p1.py::test_checkout_customer_create_failure_raises_clean_billing_error`, `::test_checkout_session_create_failure_does_not_persist_customer_id` (also covers the previously-untested existing-customer-reuse branch via the new `::test_checkout_reuses_existing_stripe_customer_id`), and `::test_webhook_rejection_is_audit_logged` — all four verified to actually fail against the pre-fix code via `git stash` before trusting them. |
 | Status | Fix pushed; pending independent re-audit before CLOSED. |
 
+### TD-088 — Two Quick Action functions had a defense-in-depth workspace-scoping gap; the assistant's generic "idle worker" question answered about the wrong worker — **FIX PUSHED**
+
+| Field | Value |
+|---|---|
+| Severity | LOW (the two scoping gaps) / MEDIUM (the assistant logic bug — wrong data presented as fact, not a security issue) |
+| Evidence | 2026-09-08 targeted audit of the two lowest-coverage Operations Dashboard service modules (`operations_mission.py` 30%, `operations_v4.py` 50%), the same heuristic that found the CRITICAL TD-081 blended-dashboard bug. No new cross-tenant data leak of that shape was found — both already-fixed `customers()` call sites and all seven `global_search` branches were re-verified correctly scoped. Three smaller genuine issues were found: (1) `retry_failed_jobs`'s DLQ-replay loop (`operations_mission.py`) resolves a `PipelineRun` via a related id and explicitly re-checks `run.workspace_id == workspace_id` before touching it; its second loop (assignments that failed without ever reaching the DLQ) resolves a `PipelineRun` the same way via `assignment.pipeline_run_id` but was missing the identical guard — nothing in the schema ties a `StageAssignment`'s `workspace_id` to its `pipeline_run`'s `workspace_id`, so if that invariant were ever violated upstream, one workspace's admin could flip another workspace's pipeline run to `RUNNING` and enqueue work against it. (2) `emergency_stop`'s credential-revocation query filtered `WorkerCredential` by `worker_id` only, not also `workspace_id`, on a table that is FORCE RLS with zero policies for non-admin app-level access (post-TD-082, admin-scoped RLS policies now exist too, but the app-layer query itself had no independent check) — safe today only because every credential-creation path always stamps `credential.workspace_id = registration.workspace_id`. (3) `assistant_answer`'s "idle worker" branch (`operations_v4.py`): a generic question with no worker name ("are any workers idle?") left its name-matching `needle` empty, and `needle in row.name.lower()` is `True` for every worker since an empty string is a substring of anything — the assistant silently answered about whichever worker sorted first alphabetically, regardless of whether it was actually idle. This is a real logic bug, not a tenant-isolation issue. |
+| Fix | (1) Added `if run is None or run.workspace_id != workspace_id: continue` to the second loop in `retry_failed_jobs`, matching the guard already present in the first loop. (2) Added `WorkerCredential.workspace_id == workspace_id` to the revocation query's filter in `emergency_stop`. (3) `assistant_answer`'s idle-worker branch now only does named-worker lookup when a name was actually captured; with no name, it reports the real set of workers whose `current_task is None`, or that none are idle. |
+| Tests | Two new adversarial regression tests in `tests/test_operations_dashboard_v3.py` (`test_retry_failed_jobs_never_mutates_a_foreign_workspaces_pipeline_run`, `test_emergency_stop_never_revokes_a_foreign_workspaces_credential`) directly simulate the upstream invariant being violated (a mismatched-workspace `stage_assignments` row; a `worker_credentials` row stamped with a different workspace than its worker) and assert the foreign workspace's data is untouched. One new test in `tests/test_operations_dashboard_v4.py` (`test_assistant_generic_idle_question_reports_the_actually_idle_worker`) seeds one busy and one genuinely idle worker, names the busy one so it sorts first alphabetically, and asserts a generic "are any workers idle?" question reports the actually-idle worker, not the busy one. All three verified to actually fail against the pre-fix code via `git stash` before being trusted. Full suite: 333 passed, 81% coverage. |
+| Status | Fix pushed; pending independent re-audit before CLOSED. |
+
 ---
 
 ## Reviewed and accepted (not a defect)
@@ -294,7 +304,7 @@ The following previously resolved controls remain closed unless new evidence sho
 
 ## Current burn-down priority
 
-1. Independently re-audit TD-072…TD-082, TD-085…TD-087 (2026-09-07/08 fixes on `claude/project-builder-handover-k95wpm`) before merge.
+1. Independently re-audit TD-072…TD-082, TD-085…TD-088 (2026-09-07/08 fixes on `claude/project-builder-handover-k95wpm`) before merge.
 2. **TD-070 / issue #50:** technically protect `main`.
 3. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
 4. Activate cost-bearing providers one at a time with spend, retry, idempotency and Human Review controls — see TD-041's build-order gap list.
