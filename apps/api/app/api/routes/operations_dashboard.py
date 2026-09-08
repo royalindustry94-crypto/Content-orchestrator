@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.authorization import require_workspace_admin
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
-from app.db.session import AsyncSessionLocal
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.operations_dashboard import (
     AlertsOut,
@@ -59,45 +58,45 @@ router = APIRouter(
 async def executive_dashboard(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> ExecutiveDashboardOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_dashboard.executive(session, workspace_id)
+    return await operations_dashboard.executive(db, workspace_id)
 
 
 @router.get("/workers", response_model=WorkerMonitorOut)
 async def worker_monitor(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> WorkerMonitorOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_dashboard.workers(session, workspace_id)
+    return await operations_dashboard.workers(db, workspace_id)
 
 
 @router.get("/pipelines", response_model=PipelineMonitorOut)
 async def pipeline_monitor(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> PipelineMonitorOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_dashboard.pipelines(session, workspace_id)
+    return await operations_dashboard.pipelines(db, workspace_id)
 
 
 @router.get("/alerts", response_model=AlertsOut)
 async def alerts(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> AlertsOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_dashboard.alerts(session, workspace_id)
+    return await operations_dashboard.alerts(db, workspace_id)
 
 
 @router.get("/notifications", response_model=NotificationsOut)
 async def notifications(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> NotificationsOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_dashboard.notifications(session, workspace_id)
+    return await operations_dashboard.notifications(db, workspace_id)
 
 
 @router.get("/leads", response_model=LeadsOut)
@@ -159,21 +158,19 @@ async def customers(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
 ) -> CustomersOut:
     del workspace_id  # authz scoped; customers are admin-owned workspaces
-    async with AsyncSessionLocal() as session:
-        return await operations_dashboard.customers(
-            session, admin_user_id=uuid.UUID(user.id)
-        )
+    return await operations_dashboard.customers(db, admin_user_id=uuid.UUID(user.id))
 
 
 @router.get("/spend", response_model=SpendOut)
 async def spend_dashboard(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> SpendOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_dashboard.spend(session, workspace_id)
+    return await operations_dashboard.spend(db, workspace_id)
 
 
 @router.get("/github", response_model=GitHubOut)
@@ -192,9 +189,9 @@ async def github_dashboard(
 async def activity_feed(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> ActivityFeedOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_mission.activity_feed(session, workspace_id)
+    return await operations_mission.activity_feed(db, workspace_id)
 
 
 @router.get("/health", response_model=SystemHealthOut)
@@ -202,6 +199,7 @@ async def system_health(
     workspace_id: uuid.UUID,
     request: Request,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> SystemHealthOut:
     from app.main import automation_state as module_state
 
@@ -218,37 +216,34 @@ async def system_health(
             "last_error": state.scheduler_last_error,
         },
     }
-    async with AsyncSessionLocal() as session:
-        return await operations_mission.system_health(
-            session, workspace_id, automation=automation
-        )
+    return await operations_mission.system_health(db, workspace_id, automation=automation)
 
 
 @router.get("/cost-control", response_model=CostControlOut)
 async def cost_control(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> CostControlOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_mission.cost_control(session, workspace_id)
+    return await operations_mission.cost_control(db, workspace_id)
 
 
 @router.get("/worker-timeline", response_model=WorkerTimelineOut)
 async def worker_timeline(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> WorkerTimelineOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_mission.worker_timeline(session, workspace_id)
+    return await operations_mission.worker_timeline(db, workspace_id)
 
 
 @router.get("/content-command", response_model=ContentCommandCenterOut)
 async def content_command(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> ContentCommandCenterOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_mission.content_command_center(session, workspace_id)
+    return await operations_mission.content_command_center(db, workspace_id)
 
 
 @router.get("/insights", response_model=ExecutiveInsightsOut)
@@ -256,11 +251,11 @@ async def executive_insights(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
 ) -> ExecutiveInsightsOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_mission.executive_insights(
-            session, workspace_id, admin_user_id=uuid.UUID(user.id)
-        )
+    return await operations_mission.executive_insights(
+        db, workspace_id, admin_user_id=uuid.UUID(user.id)
+    )
 
 
 @router.post("/actions/pause-workers", response_model=QuickActionResult)
@@ -268,11 +263,11 @@ async def action_pause_workers(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
 ) -> QuickActionResult:
-    async with AsyncSessionLocal() as session:
-        return await operations_mission.pause_workers(
-            session, workspace_id, actor_id=uuid.UUID(user.id)
-        )
+    return await operations_mission.pause_workers(
+        db, workspace_id, actor_id=uuid.UUID(user.id)
+    )
 
 
 @router.post("/actions/resume-workers", response_model=QuickActionResult)
@@ -280,11 +275,11 @@ async def action_resume_workers(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
 ) -> QuickActionResult:
-    async with AsyncSessionLocal() as session:
-        return await operations_mission.resume_workers(
-            session, workspace_id, actor_id=uuid.UUID(user.id)
-        )
+    return await operations_mission.resume_workers(
+        db, workspace_id, actor_id=uuid.UUID(user.id)
+    )
 
 
 @router.post("/actions/emergency-stop", response_model=QuickActionResult)
@@ -292,11 +287,11 @@ async def action_emergency_stop(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
 ) -> QuickActionResult:
-    async with AsyncSessionLocal() as session:
-        return await operations_mission.emergency_stop(
-            session, workspace_id, actor_id=uuid.UUID(user.id)
-        )
+    return await operations_mission.emergency_stop(
+        db, workspace_id, actor_id=uuid.UUID(user.id)
+    )
 
 
 @router.post("/actions/retry-failed-jobs", response_model=QuickActionResult)
@@ -304,11 +299,11 @@ async def action_retry_failed_jobs(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
 ) -> QuickActionResult:
-    async with AsyncSessionLocal() as session:
-        return await operations_mission.retry_failed_jobs(
-            session, workspace_id, actor_id=uuid.UUID(user.id)
-        )
+    return await operations_mission.retry_failed_jobs(
+        db, workspace_id, actor_id=uuid.UUID(user.id)
+    )
 
 
 @router.post("/actions/clear-dead-letter", response_model=QuickActionResult)
@@ -316,11 +311,11 @@ async def action_clear_dead_letter(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
 ) -> QuickActionResult:
-    async with AsyncSessionLocal() as session:
-        return await operations_mission.clear_dead_letter_queue(
-            session, workspace_id, actor_id=uuid.UUID(user.id)
-        )
+    return await operations_mission.clear_dead_letter_queue(
+        db, workspace_id, actor_id=uuid.UUID(user.id)
+    )
 
 
 @router.post("/actions/sync-github", response_model=QuickActionResult)
@@ -355,9 +350,9 @@ async def global_search(
 async def universal_timeline(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
+    db: AsyncSession = Depends(get_current_session),
 ) -> UniversalTimelineOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_v4.universal_timeline(session, workspace_id)
+    return await operations_v4.universal_timeline(db, workspace_id)
 
 
 @router.get("/logs", response_model=LiveLogsOut)
@@ -408,14 +403,14 @@ async def executive_mode(
     request: Request,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
 ) -> ExecutiveModeOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_v4.executive_mode(
-            session,
-            workspace_id,
-            admin_user_id=uuid.UUID(user.id),
-            automation=_automation_payload(request),
-        )
+    return await operations_v4.executive_mode(
+        db,
+        workspace_id,
+        admin_user_id=uuid.UUID(user.id),
+        automation=_automation_payload(request),
+    )
 
 
 @router.post("/assistant", response_model=AssistantAnswerOut)
@@ -424,11 +419,11 @@ async def assistant(
     payload: AssistantQuestionIn,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
 ) -> AssistantAnswerOut:
-    async with AsyncSessionLocal() as session:
-        return await operations_v4.assistant_answer(
-            session,
-            workspace_id,
-            admin_user_id=uuid.UUID(user.id),
-            question=payload.question,
-        )
+    return await operations_v4.assistant_answer(
+        db,
+        workspace_id,
+        admin_user_id=uuid.UUID(user.id),
+        question=payload.question,
+    )

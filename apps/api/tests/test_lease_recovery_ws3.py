@@ -1058,3 +1058,106 @@ async def test_recovery_audit_rejects_delete(ctx):
             )
             await s.commit()
         assert "immutable" in str(exc.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_emergency_stop_over_rls_session_actually_persists_all_writes(ctx):
+    """TD-082 (migration 0054): apps/api/app/api/routes/operations_dashboard.py
+    now runs POST /operations/actions/emergency-stop on the RLS-scoped
+    session instead of the owner connection. Before 0054, worker_registry
+    and worker_credentials had no write policy at all for app_runtime and
+    stage_assignments had no UPDATE policy — under FORCE RLS that means
+    the writes would have silently affected zero rows (or, for
+    worker_credentials, errored outright) while the endpoint still
+    returned 200 (recover_assignment's own SELECT ... FOR UPDATE would
+    match nothing, so no exception surfaces). A status-code-only test
+    cannot catch that class of bug; this asserts every write actually
+    landed, plus that the workspace_id IS NOT NULL guard still protects
+    a global/service worker from any workspace admin's emergency-stop.
+    """
+    from app.models.enums import WorkerCredentialStatus
+    from app.models.workers import WorkerCredential
+
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
+    wh = await _bring_online(ctx["client"], prov)
+    worker_id = uuid.UUID(prov["worker_id"])
+    await _seed_assignment(ctx["ws"])
+    assignment = await _claim(ctx["client"], wh)
+    aid = uuid.UUID(assignment["id"])
+
+    async with AsyncSessionLocal() as s:
+        a = await s.get(StageAssignment, aid)
+        assert a.status == StageAssignmentStatus.DISPATCHED
+        credential_ids = {
+            c.id
+            for c in (
+                await s.execute(
+                    select(WorkerCredential).where(
+                        WorkerCredential.worker_id == worker_id,
+                        WorkerCredential.status == WorkerCredentialStatus.ACTIVE,
+                    )
+                )
+            ).scalars().all()
+        }
+        assert credential_ids, "provisioning must have created an active credential"
+
+        # A global/service worker (no owning workspace) in the mix, to prove
+        # 0054's `workspace_id IS NOT NULL` guard holds under a real
+        # emergency-stop call, not just a synthetic RLS probe.
+        global_worker_id = uuid.uuid4()
+        now = datetime.now(UTC)
+        await s.execute(
+            text(
+                "INSERT INTO worker_registry (id, name, status, supported_stages, "
+                "max_concurrency, current_load, registered_at, instance_key) "
+                "VALUES (:id, 'global-svc-worker', 'online'::worker_status, "
+                "ARRAY['scripting'], 1, 0, :now, :ik)"
+            ),
+            {"id": str(global_worker_id), "now": now, "ik": f"global-{global_worker_id}"},
+        )
+        await s.commit()
+
+    r = await ctx["client"].post(
+        f"/workspaces/{ctx['ws']}/operations/actions/emergency-stop",
+        headers=ctx["headers"],
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["affected"] == len(credential_ids)
+
+    async with AsyncSessionLocal() as s:
+        # worker_registry: status/drain actually persisted for the
+        # workspace-pinned worker (0054's admin UPDATE policy).
+        worker = await s.get(WorkerRegistration, worker_id)
+        assert worker.status == WorkerStatus.OFFLINE
+        assert worker.drain is True
+        assert worker.current_load == 0
+
+        # worker_credentials: revocation actually persisted (0054's
+        # GRANT + admin SELECT/UPDATE policies — previously zero access).
+        revoked = (
+            await s.execute(
+                select(WorkerCredential).where(WorkerCredential.id.in_(credential_ids))
+            )
+        ).scalars().all()
+        assert revoked and all(c.status == WorkerCredentialStatus.REVOKED for c in revoked)
+
+        # stage_assignments: the in-flight assignment was actually reaped
+        # (0054's UPDATE policy — the SELECT ... FOR UPDATE lock this
+        # depends on would otherwise silently match zero rows) and a
+        # stage_recovery_audit row was actually inserted (0054's INSERT
+        # policy, with the EXISTS check still satisfied since this
+        # assignment genuinely belongs to this workspace).
+        a = await s.get(StageAssignment, aid)
+        assert a.status != StageAssignmentStatus.DISPATCHED
+        audit_row = (
+            await s.execute(
+                select(StageRecoveryAudit).where(StageRecoveryAudit.assignment_id == aid)
+            )
+        ).scalar_one()
+        assert audit_row.reason == RecoveryReason.WORKER_REVOKED
+
+        # Global worker: completely untouched by this workspace's admin.
+        global_worker = await s.get(WorkerRegistration, global_worker_id)
+        assert global_worker.status == WorkerStatus.ONLINE
+        assert global_worker.drain is False
+        assert global_worker.current_load == 0
