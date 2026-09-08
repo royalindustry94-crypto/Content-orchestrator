@@ -68,16 +68,6 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 | Recommendation | Activate one provider at a time behind provider abstraction, spend reserve/commit controls, retries/backoff/timeouts, idempotency and supervised failure tests |
 | Effort | L |
 
-### TD-071 — Managed Supabase/runtime evidence unavailable — **OPEN**
-
-| Field | Value |
-|---|---|
-| Severity | MEDIUM |
-| Evidence | Supabase connector is installed but has not exposed a project to the current audit session |
-| Risk | Production auth/database/PITR/deployment facts cannot be independently verified |
-| Recommendation | Establish connector visibility and perform a read-only runtime audit before any deployment/live-auth certification |
-| Effort | S-M |
-
 ### TD-085 — No reconciliation against Stripe's source of truth for a permanently-lost webhook — **OPEN**
 
 | Field | Value |
@@ -243,6 +233,15 @@ an independent re-probe against `claude/project-builder-handover-k95wpm`
 
 ## Recently closed / superseded debt
 
+### TD-071 — Managed Supabase/runtime evidence unavailable — **CLOSED**
+
+| Field | Value |
+|---|---|
+| Severity | MEDIUM |
+| Evidence (2026-09-08) | Founder connected the Supabase MCP connector this session, exposing project `content-orchestrator-test` (ref `vagfnbcnvtojljggxvxr`, region ap-southeast-2, Postgres 17.6.1, `ACTIVE_HEALTHY`, created 2026-08-28). Performed a read-only audit: (1) Supabase's automated security advisor flagged 4 tables (`alembic_version`, `event_consumers`, `consumer_checkpoints`, `local_auth_credentials` — the last holds password hashes) as "RLS disabled," which reads as alarming in isolation; verified directly against `information_schema.role_table_grants` that **zero privileges are granted to `anon`/`authenticated`/`PUBLIC` on any table in the public schema** — someone had already run hardening migrations (`contain_managed_public_api_default_grants`, `managed_supabase_public_acl_hardening_0051`, visible in `supabase_migrations.schema_migrations`) stripping Supabase's default Data-API access entirely, so the advisor finding is not a live exposure (Supabase's own automated REST/GraphQL layer cannot read a row on this project regardless of RLS state). (2) `worker_credentials`/`billing_webhook_events` show "RLS enabled, no policy" — confirmed intentional (deny-all for `app_runtime`; both are only ever written by the owner connection, matching `apps/api/app/api/routes/webhooks.py`'s own "owner-session writes" docstring and TD-039's original hardening). (3) Found genuine drift: `public.alembic_version` was stamped `0051`, two migrations behind the branch's `0053` head — meaning TD-072's RLS write-policy fix and TD-083's `job_schedule` DELETE policy were **not yet live** on the managed database. |
+| Fix | Applied migrations `0052` and `0053` directly to the managed project (via `apply_migration`, SQL mirrored exactly from `apps/api/alembic/versions/0052_orchestration_runtime_write_policies.py` and `0053_job_schedule_delete_policy.py`, cross-checked against the project's actual pre-migration policy/grant state via `pg_policies`/`information_schema.role_table_grants` before applying). `alembic_version` now reads `0053`. Re-ran the security advisor post-migration: same 2 pre-existing intentional findings only, nothing new, nothing regressed. |
+| Status | **CLOSED** — production auth/database facts are now independently verified rather than taken on faith, and the managed instance matches the branch's current migration head. PITR/backup-policy verification specifically was not part of this pass (no PITR-inspection tool was exercised) — reopen narrowly for that if needed before a real go-live certification. |
+
 ### TD-032 — No web E2E — **CLOSED / SUPERSEDED**
 
 The old record said the web had Vitest-only coverage. That is no longer accurate.
@@ -295,7 +294,7 @@ The following previously resolved controls remain closed unless new evidence sho
 
 1. Independently re-audit TD-072…TD-087 (2026-09-07/08 fixes on `claude/project-builder-handover-k95wpm`) before merge.
 2. **TD-070 / issue #50:** technically protect `main`.
-3. **TD-071:** establish managed Supabase/runtime evidence.
+3. **TD-082:** Operations Dashboard RLS backstop (write-surface audit in progress).
 4. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
 5. Activate cost-bearing providers one at a time with spend, retry, idempotency and Human Review controls.
 6. Raise coverage/security/observability depth based on measured risk, not feature-count pressure.
