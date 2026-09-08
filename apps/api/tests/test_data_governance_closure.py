@@ -119,6 +119,29 @@ async def test_export_never_includes_credential_tables(client):
 
 
 @pytest.mark.asyncio
+async def test_export_names_structurally_unattributable_tables(client):
+    """Regression (2026-09-08 audit finding): worker_heartbeats was listed
+    in EXPORTABLE_TABLES but has no workspace_id column, so the export
+    loop's own workspace_id-column check silently skipped it — the same
+    code path as "table doesn't exist," contradicting the module's stated
+    guarantee that every omission is named. It must now be explicitly
+    named as unattributable, not silently absent.
+    """
+    tenant = await _tenant(client)
+    res = await client.get(
+        f"/workspaces/{tenant['workspace_id']}/data/export", headers=tenant["headers"]
+    )
+    assert res.status_code == 200
+    body = res.json()
+    for unattributable in data_governance.STRUCTURALLY_UNEXPORTABLE_TABLES:
+        assert unattributable not in body["tables"]
+        assert unattributable in body["unattributable_tables"]
+    assert body["unattributable_reason"]
+    # And it must not also be silently claimed as exportable.
+    assert "worker_heartbeats" not in data_governance.EXPORTABLE_TABLES
+
+
+@pytest.mark.asyncio
 async def test_export_requires_admin_and_authentication(client):
     tenant = await _tenant(client)
     anon = await client.get(f"/workspaces/{tenant['workspace_id']}/data/export")
@@ -179,6 +202,55 @@ async def test_deletion_removes_content_but_retains_financial_evidence(client):
             )
         ).scalar_one()
         assert retained_spend >= 1, "spend evidence must survive a deletion request"
+
+
+@pytest.mark.asyncio
+async def test_deletion_actually_removes_hard_deletable_job_schedule_rows(client):
+    """Regression (2026-09-08 audit finding / TD-083): job_schedule is
+    classified in HARD_DELETABLE_TABLES as "removed outright," but no
+    migration ever created an RLS DELETE policy for it. Under FORCE RLS,
+    a command with no matching policy silently matches zero rows rather
+    than erroring — so a deletion request reported HTTP 200 and
+    erased_counts["job_schedule"] > 0-looking success while the row
+    stayed in the database. Reproduced live before the fix (migration
+    0053); this proves it stays fixed.
+    """
+    tenant = await _tenant(client)
+    item_id = await _seed_content_and_spend(tenant["workspace_id"], tenant["user_id"])
+    job_id = uuid.uuid4()
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text(
+                """
+                INSERT INTO job_schedule (
+                    id, workspace_id, job_type, ref_table, ref_id, run_after
+                ) VALUES (
+                    :id, :ws, 'stage'::job_type, 'content_items', :ref, now()
+                )
+                """
+            ),
+            {"id": str(job_id), "ws": str(tenant["workspace_id"]), "ref": str(item_id)},
+        )
+        await session.commit()
+
+    res = await client.post(
+        f"/workspaces/{tenant['workspace_id']}/data/deletion-requests",
+        headers=tenant["headers"],
+        json={"confirm_workspace_id": str(tenant["workspace_id"])},
+    )
+    assert res.status_code == 200, res.text
+    assert res.json()["erased_counts"].get("job_schedule") == 1
+
+    async with AsyncSessionLocal() as session:
+        remaining = (
+            await session.execute(
+                text("SELECT count(*) FROM job_schedule WHERE id = :id"),
+                {"id": str(job_id)},
+            )
+        ).scalar_one()
+        assert remaining == 0, (
+            "job_schedule row must actually be gone, not just reported as erased"
+        )
 
 
 @pytest.mark.asyncio

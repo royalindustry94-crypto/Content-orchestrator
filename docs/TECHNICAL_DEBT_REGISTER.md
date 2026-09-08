@@ -86,8 +86,8 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 |---|---|---|
 | TD-050 | Ruff format is not a distinct CI gate | LOW |
 | TD-060 | FORCE RLS remains a positive architectural control | INFO — exact current table count should be derived from live/current migration evidence when needed |
-| TD-061 | Migration round-trip through current head `0052` | INFO — PASS (branch `claude/project-builder-handover-k95wpm`; not yet on `main`) |
-| TD-062 | API baseline | INFO — **322 passed / 81.03% coverage** on the same branch (was 299/81.09% on `main`) |
+| TD-061 | Migration round-trip through current head `0053` | INFO — PASS (branch `claude/project-builder-handover-k95wpm`; not yet on `main`) |
+| TD-062 | API baseline | INFO — **324 passed / 81.04% coverage** on the same branch (was 299/81.09% on `main`) |
 | TD-063 | Exact-head browser smoke | INFO — retained desktop + exact-390px CI evidence now exists on `main`; not re-run for this unmerged branch |
 
 ---
@@ -98,6 +98,24 @@ Per this register's own rule, the builder who found these is also the one who
 fixed them — **none of the following are self-certified closed.** Each needs
 an independent re-probe against `claude/project-builder-handover-k95wpm`
 (head at time of writing) before being marked CLOSED.
+
+### TD-083 — Workspace deletion silently left `job_schedule` rows in place — **FIX PUSHED**
+
+| Field | Value |
+|---|---|
+| Severity | HIGH |
+| Evidence | `job_schedule` is classified in `HARD_DELETABLE_TABLES` as "removed outright," but no migration ever created an RLS DELETE policy for it (only `policy_select_members`, 0016, and later INSERT/UPDATE for the scheduler's own writes, 0052). Under FORCE RLS, a command with no matching policy silently matches zero rows rather than erroring. Reproduced live end-to-end before the fix: seeded a `job_schedule` row, called the real deletion endpoint as a real admin, got HTTP 200 with `erased_counts: {"job_schedule": 0}`, and the row was still in the database. A control probe with `leads` on the same code path deleted correctly, isolating this to `job_schedule` specifically. |
+| Fix | Migration `0053_job_schedule_delete_policy.py` adds the missing admin-only DELETE policy, matching the pattern already used for the other two `HARD_DELETABLE_TABLES` entries (`leads`, `publication_eligibility`). Regression test `tests/test_data_governance_closure.py::test_deletion_actually_removes_hard_deletable_job_schedule_rows` seeds a row and asserts it's actually gone after deletion, not just reported as erased. |
+| Status | Fix pushed; pending independent re-audit before CLOSED. |
+
+### TD-084 — `worker_heartbeats` silently dropped from data exports — **FIX PUSHED**
+
+| Field | Value |
+|---|---|
+| Severity | MEDIUM |
+| Evidence | `worker_heartbeats` was listed in `EXPORTABLE_TABLES`, but has no `workspace_id` column — the export loop's own `else: continue` skipped it via the same code path as "this table doesn't exist," making the omission indistinguishable from either case and contradicting the module's own stated guarantee that "the bundle names every omission." Not a cross-tenant leak (the query never ran), a completeness defect for a compliance feature. |
+| Fix | Moved `worker_heartbeats` to a new, explicit `STRUCTURALLY_UNEXPORTABLE_TABLES` list (documented reason: no `workspace_id` column, and `worker_registry.workspace_id` is itself nullable so a join wouldn't reliably scope it either); the export response now includes `unattributable_tables`/`unattributable_reason` alongside the existing credential `excluded_tables`/`exclusion_reason`, so the omission is named rather than silent. Regression test `tests/test_data_governance_closure.py::test_export_names_structurally_unattributable_tables`. |
+| Status | Fix pushed; pending independent re-audit before CLOSED. |
 
 ### TD-081 — Founder dashboards blended billing/revenue/customer data across workspaces — **FIX PUSHED**
 
@@ -247,7 +265,7 @@ The following previously resolved controls remain closed unless new evidence sho
 
 ## Current burn-down priority
 
-1. Independently re-audit TD-072…TD-082 (2026-09-07 fixes on `claude/project-builder-handover-k95wpm`) before merge.
+1. Independently re-audit TD-072…TD-084 (2026-09-07 fixes on `claude/project-builder-handover-k95wpm`) before merge.
 2. **TD-070 / issue #50:** technically protect `main`.
 3. **TD-071:** establish managed Supabase/runtime evidence.
 4. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
