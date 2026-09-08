@@ -48,7 +48,11 @@ from pathlib import Path
 from alembic import op
 
 sys.path.append(str(Path(__file__).resolve().parents[1]))
-from migration_helpers import policy_insert_roles, policy_update_roles  # noqa: E402
+from migration_helpers import (  # noqa: E402
+    policy_insert_roles,
+    policy_select_members,
+    policy_update_roles,
+)
 
 revision: str = "0052"
 down_revision: str | None = "0051"
@@ -88,7 +92,9 @@ def upgrade() -> None:
     policy_insert_roles("review_gates", _ALL)
     policy_update_roles("review_gates", _ADMIN_REVIEWER)
 
-    # --- outbox_events: INSERT excluded reviewer; UPDATE entirely missing --
+    # --- outbox_events: reviewer decisions need prior sequence visibility ---
+    op.execute("DROP POLICY IF EXISTS outbox_events_select_member ON outbox_events;")
+    policy_select_members("outbox_events", _ALL)
     op.execute("DROP POLICY IF EXISTS outbox_events_insert_roles ON outbox_events;")
     policy_insert_roles("outbox_events", _ALL)
     policy_update_roles("outbox_events", _ALL)
@@ -144,6 +150,8 @@ def downgrade() -> None:
     op.execute("DROP POLICY IF EXISTS outbox_events_update_roles ON outbox_events;")
     op.execute("DROP POLICY IF EXISTS outbox_events_insert_roles ON outbox_events;")
     policy_insert_roles("outbox_events", _EDIT)
+    op.execute("DROP POLICY IF EXISTS outbox_events_select_member ON outbox_events;")
+    policy_select_members("outbox_events", _EDIT)
 
     # --- review_gates ----------------------------------------------------------
     op.execute("DROP POLICY IF EXISTS review_gates_update_roles ON review_gates;")
