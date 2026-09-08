@@ -163,6 +163,19 @@ an independent re-probe against `claude/project-builder-handover-k95wpm`
 
 ---
 
+## Reviewed and accepted (not a defect)
+
+### TD-080 — Solo Admin can author and approve their own content — **ACCEPTED, DOCUMENTED**
+
+| Field | Value |
+|---|---|
+| Severity | MEDIUM (as originally flagged) |
+| Evidence | `WorkspaceRole.ADMIN` is in both the content-author role set and the Human Review Gate decision-maker role set — nothing stops a solo Admin from approving a draft they authored themselves. The 2026-09-07 audit flagged this as weakening "independent Human Review" for single-admin workspaces, and noted it wasn't documented as an intentional tradeoff anywhere. |
+| Decision (2026-09-08) | **Kept as current behavior, now explicitly documented as intentional** — see `apps/api/app/core/authorization.py`. This product's Private Beta target market (`docs/ROADMAP.md`: solo operators / small agencies) is exactly the case where requiring a second human reviewer would break the primary use case rather than add safety. The Human Review Gate's non-negotiable guarantee (AGENTS.md: "content never auto-publishes past review") is preserved — it does not require the reviewer to be a person distinct from the author, only that a review step exists and cannot be bypassed. A workspace wanting maker-checker separation today can enforce it operationally (don't grant one person both roles' worth of trust). |
+| Revisit when | The product moves toward larger teams/agencies where this guarantee needs to be structural (e.g. `reviewer_id != content.created_by`, or a workspace-level "require independent review" setting) rather than operational. Not blocking for the current Private Beta baseline. |
+
+---
+
 ## Recently closed / superseded debt
 
 ### TD-032 — No web E2E — **CLOSED / SUPERSEDED**
