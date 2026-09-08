@@ -8,6 +8,7 @@ before the duplicate-event guard has claimed the event id.
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -271,3 +272,47 @@ async def test_payment_failure_revokes_entitlement_without_losing_plan_marker(bi
         assert row.status == "past_due"
         assert row.plan == "pro", "plan marker is retained for operator visibility"
         assert billing_service.is_entitled(row, billing_enabled=True) is False
+
+
+@pytest.mark.asyncio
+async def test_ensure_workspace_billing_for_update_locks_concurrent_readers(billing_on):
+    """MEDIUM-2: Stripe does not guarantee single-threaded webhook delivery.
+    ``ensure_workspace_billing(..., for_update=True)`` — used by
+    ``_apply_subscription`` — must take a real row lock, so a second,
+    genuinely concurrent transaction touching the same workspace's billing
+    row blocks until the first commits instead of racing it on an unlocked
+    read-modify-write.
+    """
+    async with AsyncSessionLocal() as setup:
+        ws = await _workspace(setup)
+        # Seed the row so both sides hit the SELECT ... FOR UPDATE path
+        # rather than the INSERT path.
+        await billing_service.ensure_workspace_billing(setup, workspace_id=ws)
+        await setup.commit()
+
+    holder = AsyncSessionLocal()
+    waiter = AsyncSessionLocal()
+    try:
+        locked = await billing_service.ensure_workspace_billing(
+            holder, workspace_id=ws, for_update=True
+        )
+        locked.status = "active"
+        locked.plan = "pro"
+        await holder.flush()  # applies the write; lock is only released on commit/rollback
+
+        waiter_task = asyncio.create_task(
+            billing_service.ensure_workspace_billing(waiter, workspace_id=ws, for_update=True)
+        )
+        await asyncio.sleep(0.2)
+        assert not waiter_task.done(), (
+            "a concurrent for_update=True read must block on the held row "
+            "lock, not proceed past it"
+        )
+
+        await holder.commit()
+        waiter_row = await asyncio.wait_for(waiter_task, timeout=5)
+        assert waiter_row.status == "active"
+        await waiter.commit()
+    finally:
+        await holder.close()
+        await waiter.close()

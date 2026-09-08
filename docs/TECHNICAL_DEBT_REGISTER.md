@@ -1,7 +1,7 @@
 # Technical Debt Register
 
 **Repository:** Content Orchestrator  
-**Updated:** 2026-09-07  
+**Updated:** 2026-09-08  
 **Current reference:** `claude/project-builder-handover-k95wpm` (unmerged; base `main` remains PR #49)
 
 Severity: CRITICAL · HIGH · MEDIUM · LOW · INFO
@@ -78,6 +78,16 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 | Recommendation | Establish connector visibility and perform a read-only runtime audit before any deployment/live-auth certification |
 | Effort | S-M |
 
+### TD-085 — No reconciliation against Stripe's source of truth for a permanently-lost webhook — **OPEN**
+
+| Field | Value |
+|---|---|
+| Severity | MEDIUM |
+| Evidence | 2026-09-08 billing audit. `is_entitled()`/`_apply_subscription()` are driven exclusively by inbound webhook delivery; nothing in the repo ever calls the Stripe API to re-fetch current subscription state. If a `customer.subscription.deleted`/`updated(canceled)` webhook is never successfully delivered (endpoint outage spanning Stripe's retry window, a `STRIPE_WEBHOOK_SECRET` rotation misconfiguration, etc.), `WorkspaceBilling.plan/status` never changes and `is_entitled()` keeps returning `True` indefinitely. Not live-exploitable today — `BILLING_ENABLED=false` makes `is_entitled()` unconditionally `True` for everyone regardless of this path — but must be closed before BILLING-001 go-live (`docs/LAUNCH_BLOCKERS.md`). |
+| Risk | A workspace can stay entitled indefinitely after Stripe has actually cancelled/downgraded it, with no self-healing path short of another unrelated webhook happening to arrive for the same subscription. |
+| Recommendation | A periodic reconciliation job calling `stripe.Subscription.list`/`retrieve` per workspace with a stale `stripe_subscription_id`, or at minimum an ops alert on `billing_webhook_events` gaps vs. Stripe's own dashboard delivery log. Deliberately not built as part of this pass — this is new scheduled infrastructure, not a bug fix, and belongs on the BILLING-001 go-live checklist rather than shipped unprompted against a currently-disabled feature. |
+| Effort | M |
+
 ---
 
 ### LOW / INFO
@@ -87,7 +97,7 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 | TD-050 | Ruff format is not a distinct CI gate | LOW |
 | TD-060 | FORCE RLS remains a positive architectural control | INFO — exact current table count should be derived from live/current migration evidence when needed |
 | TD-061 | Migration round-trip through current head `0053` | INFO — PASS (branch `claude/project-builder-handover-k95wpm`; not yet on `main`) |
-| TD-062 | API baseline | INFO — **324 passed / 81.04% coverage** on the same branch (was 299/81.09% on `main`) |
+| TD-062 | API baseline | INFO — **329 passed / 81% coverage** on the same branch (was 299/81.09% on `main`) |
 | TD-063 | Exact-head browser smoke | INFO — retained desktop + exact-390px CI evidence now exists on `main`; not re-run for this unmerged branch |
 
 ---
@@ -198,6 +208,24 @@ an independent re-probe against `claude/project-builder-handover-k95wpm`
 | Fix | `reserve_spend()` now treats a missing cap the same as an exceeded cap (pause + `spend_hold` + emit event). Regression test `tests/test_spend_controls_p0.py::test_reserve_spend_fails_closed_without_cap_row`. Required updating 5 unrelated test files (`test_open_finding_closure.py`, `test_orchestration_scheduler_dispatcher.py`, `test_orchestration_workflow.py`, `test_reference_worker_client.py`, `test_regression_defects.py`) that deliberately created workspaces with no cap to isolate orchestration-mechanic testing — they now seed a permissive cap instead. |
 | Status | Fix pushed; pending independent re-audit before CLOSED. |
 
+### TD-086 — Concurrent (not merely out-of-order) webhook delivery could leave a stale "active" billing state after a later cancellation — **FIX PUSHED**
+
+| Field | Value |
+|---|---|
+| Severity | MEDIUM |
+| Evidence | 2026-09-08 billing audit. `_apply_subscription()` unconditionally overwrote `billing.status`/`billing.plan` from whatever `subscription` dict it was handed, with no row lock taken before the read-modify-write, and `ensure_workspace_billing()` used a plain `session.get()`. Stripe explicitly does not guarantee ordered *or* single-threaded delivery: two distinct events for the same subscription (e.g. an older `active` update and a newer `canceled` deletion) can arrive as two genuinely concurrent HTTP requests, each in its own transaction. The existing `test_out_of_order_events_converge_on_latest_delivered_state` test proves the *sequential* replay case is safe but cannot exercise true concurrent/racing transactions. |
+| Fix | `ensure_workspace_billing()` gained a `for_update: bool = False` parameter that locks the row (`session.get(..., with_for_update=...)`) for the rest of the transaction; `_apply_subscription()` — the only caller that mutates entitlement-bearing fields from webhook data — now passes `for_update=True`, so a second concurrent webhook transaction touching the same workspace's billing row blocks until the first commits instead of racing an unlocked read. Regression test `tests/test_billing_webhook_ordering.py::test_ensure_workspace_billing_for_update_locks_concurrent_readers` opens two real concurrent `AsyncSessionLocal()` sessions against live Postgres, holds the lock in one uncommitted transaction, and asserts the second transaction's `for_update=True` call genuinely blocks (does not complete within 0.2s) until the first commits — verified to actually fail (`TypeError: unexpected keyword argument 'for_update'`) against the pre-fix code via `git stash` before trusting it. |
+| Status | Fix pushed; pending independent re-audit before CLOSED. Reconciliation against Stripe's own source of truth for a *permanently*-lost webhook remains separately tracked as TD-085 (not fixed here — new scheduled infrastructure, out of scope for a bug-fix pass). |
+
+### TD-087 — Unhandled Stripe API failure between `Customer.create` and `Session.create` could orphan/duplicate Stripe Customer objects; rejected webhooks were not audit-logged — **FIX PUSHED**
+
+| Field | Value |
+|---|---|
+| Severity | LOW / INFO |
+| Evidence | 2026-09-08 billing audit. (a) Neither Stripe call in `create_checkout_session` was wrapped in `try/except`; if `stripe.checkout.Session.create` raised after `stripe.Customer.create` already succeeded, the DB rolled back cleanly but the live Stripe Customer object was left orphaned, and a retry created a *second* orphaned Customer since the DB no longer remembered the first — also, the raw `stripe.error.StripeError` was not caught by the route's `except billing_service.BillingError`, so it surfaced as an unhandled 500 rather than a clean 4xx/503. (b) A rejected webhook (bad signature/payload) was logged via `logger.warning` only, with no `audit()` call, unlike a successfully processed webhook — meaning a potential attack/misconfiguration signal wouldn't show up wherever the audit trail specifically is monitored. Neither was live-exploitable (billing gated off / not security-critical), but both were recommended pre-go-live hardening. |
+| Fix | Both Stripe calls in `create_checkout_session` are now wrapped in `try/except stripe.error.StripeError`, raising a clean `BillingError("stripe_unavailable", ...)` that the route maps to 503; `Customer.create` also now passes a deterministic per-workspace `idempotency_key` so a retry after a network-ambiguous failure reuses the same Customer instead of risking a duplicate at the Stripe API layer itself. `apps/api/app/api/routes/webhooks.py`'s rejection path now also calls `audit(request, "stripe_webhook_rejected", code=exc.code)` alongside the existing `logger.warning`. Regression tests: `tests/test_billing_p1.py::test_checkout_customer_create_failure_raises_clean_billing_error`, `::test_checkout_session_create_failure_does_not_persist_customer_id` (also covers the previously-untested existing-customer-reuse branch via the new `::test_checkout_reuses_existing_stripe_customer_id`), and `::test_webhook_rejection_is_audit_logged` — all four verified to actually fail against the pre-fix code via `git stash` before trusting them. |
+| Status | Fix pushed; pending independent re-audit before CLOSED. |
+
 ---
 
 ## Reviewed and accepted (not a defect)
@@ -265,7 +293,7 @@ The following previously resolved controls remain closed unless new evidence sho
 
 ## Current burn-down priority
 
-1. Independently re-audit TD-072…TD-084 (2026-09-07 fixes on `claude/project-builder-handover-k95wpm`) before merge.
+1. Independently re-audit TD-072…TD-087 (2026-09-07/08 fixes on `claude/project-builder-handover-k95wpm`) before merge.
 2. **TD-070 / issue #50:** technically protect `main`.
 3. **TD-071:** establish managed Supabase/runtime evidence.
 4. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.

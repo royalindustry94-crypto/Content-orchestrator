@@ -49,6 +49,11 @@ async def stripe_webhook(
             "stripe_webhook_rejected",
             extra={"code": exc.code, "detail": exc.message},
         )
+        audit(
+            request,
+            "stripe_webhook_rejected",
+            code=exc.code,
+        )
         raise HTTPException(status_code=code, detail=exc.message) from exc
 
     audit(

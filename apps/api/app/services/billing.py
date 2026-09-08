@@ -80,9 +80,15 @@ def _configure_stripe(settings: Settings) -> None:
 
 
 async def ensure_workspace_billing(
-    session: AsyncSession, *, workspace_id: uuid.UUID
+    session: AsyncSession, *, workspace_id: uuid.UUID, for_update: bool = False
 ) -> WorkspaceBilling:
-    row = await session.get(WorkspaceBilling, workspace_id)
+    """``for_update=True`` locks the row for the rest of this transaction —
+    required before any read-modify-write of subscription state, since
+    Stripe does not guarantee ordered or single-threaded webhook delivery
+    (2026-09-08 fix; see ``_apply_subscription``, the one caller that
+    actually mutates entitlement-bearing fields from webhook data).
+    """
+    row = await session.get(WorkspaceBilling, workspace_id, with_for_update=for_update)
     if row is not None:
         return row
     row = WorkspaceBilling(
@@ -150,23 +156,39 @@ async def create_checkout_session(
         raise BillingError("already_entitled", "workspace already has an active Pro plan")
 
     if not billing.stripe_customer_id:
-        customer = stripe.Customer.create(
-            email=customer_email,
-            metadata={"workspace_id": str(workspace_id)},
-        )
+        try:
+            customer = stripe.Customer.create(
+                email=customer_email,
+                metadata={"workspace_id": str(workspace_id)},
+                # Deterministic per-workspace key: a retry after a network-level
+                # ambiguous failure (e.g. the request succeeded but the response
+                # was lost) reuses the same Stripe Customer instead of orphaning
+                # a duplicate. Safe to reuse across genuinely distinct attempts
+                # too, since a workspace only ever wants one Customer object.
+                idempotency_key=f"workspace-customer-{workspace_id}",
+            )
+        except stripe.error.StripeError as exc:
+            raise BillingError(
+                "stripe_unavailable", f"Stripe customer creation failed: {exc}"
+            ) from exc
         billing.stripe_customer_id = customer["id"]
         await session.flush()
 
-    checkout = stripe.checkout.Session.create(
-        mode="subscription",
-        customer=billing.stripe_customer_id,
-        line_items=[{"price": settings.stripe_price_id_pro, "quantity": 1}],
-        success_url=settings.stripe_checkout_success_url,
-        cancel_url=settings.stripe_checkout_cancel_url,
-        client_reference_id=str(workspace_id),
-        metadata={"workspace_id": str(workspace_id)},
-        subscription_data={"metadata": {"workspace_id": str(workspace_id)}},
-    )
+    try:
+        checkout = stripe.checkout.Session.create(
+            mode="subscription",
+            customer=billing.stripe_customer_id,
+            line_items=[{"price": settings.stripe_price_id_pro, "quantity": 1}],
+            success_url=settings.stripe_checkout_success_url,
+            cancel_url=settings.stripe_checkout_cancel_url,
+            client_reference_id=str(workspace_id),
+            metadata={"workspace_id": str(workspace_id)},
+            subscription_data={"metadata": {"workspace_id": str(workspace_id)}},
+        )
+    except stripe.error.StripeError as exc:
+        raise BillingError(
+            "stripe_unavailable", f"Stripe checkout session creation failed: {exc}"
+        ) from exc
     url = checkout.get("url")
     if not url:
         raise BillingError("checkout_failed", "Stripe Checkout session missing url")
@@ -198,7 +220,9 @@ async def _apply_subscription(
     workspace_id: uuid.UUID,
     subscription: dict,
 ) -> None:
-    billing = await ensure_workspace_billing(session, workspace_id=workspace_id)
+    billing = await ensure_workspace_billing(
+        session, workspace_id=workspace_id, for_update=True
+    )
     billing.stripe_subscription_id = subscription.get("id") or billing.stripe_subscription_id
     customer = subscription.get("customer")
     if isinstance(customer, str):
