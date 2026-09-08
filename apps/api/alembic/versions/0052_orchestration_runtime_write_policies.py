@@ -19,7 +19,7 @@ whose role list doesn't match what these two routes' own FastAPI guards
 already allow (`require_workspace_content_author` = admin/editor;
 `require_workspace_reviewer` = admin/reviewer).
 
-This migration only widens/adds RLS policies and two plain GRANTs; it does
+This migration only widens/adds RLS policies and three plain GRANTs; it does
 not touch the owner connection's access (which was never RLS-restricted)
 and does not change what any FastAPI guard allows. The `app_runtime` role
 remains `NOBYPASSRLS` throughout. None of these tables are written by any
