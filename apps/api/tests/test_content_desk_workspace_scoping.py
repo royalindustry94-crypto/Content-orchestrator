@@ -14,7 +14,7 @@ import uuid
 import pytest
 from sqlalchemy import text
 
-from app.db.session import AsyncSessionLocal
+from app.db.session import AsyncSessionLocal, rls_scoped_session
 from app.models.workspace import Workspace
 from app.models.workspace_membership import WorkspaceMembership, WorkspaceRole
 from app.services import content_desk
@@ -111,3 +111,49 @@ async def test_content_desk_decide_review_gate_rejects_mismatched_workspace():
         )
         assert row is not None
         assert row["status"] == "awaiting"
+
+
+@pytest.mark.asyncio
+async def test_reviewer_runtime_session_can_sequence_review_decision_event():
+    """A reviewer must see prior aggregate outbox rows to allocate sequence N+1.
+
+    The creator emits pipeline events before review. If reviewer SELECT on
+    `outbox_events` is missing, RLS hides those rows from `_next_sequence()`,
+    which reuses sequence 1 and violates the aggregate-sequence unique index.
+    """
+    async with AsyncSessionLocal() as session:
+        workspace_id, result = await _create_user_workspace_and_gate(
+            session, "Reviewer outbox sequence"
+        )
+        reviewer_id = uuid.uuid4()
+        await session.execute(
+            text("INSERT INTO auth.users (id, email) VALUES (:id, :email)"),
+            {"id": str(reviewer_id), "email": f"{reviewer_id}@example.com"},
+        )
+        await session.execute(
+            text(
+                "INSERT INTO profiles (id, email) VALUES (:id, :email) "
+                "ON CONFLICT (id) DO NOTHING"
+            ),
+            {"id": str(reviewer_id), "email": f"{reviewer_id}@example.com"},
+        )
+        session.add(
+            WorkspaceMembership(
+                workspace_id=workspace_id,
+                user_id=reviewer_id,
+                role=WorkspaceRole.REVIEWER,
+            )
+        )
+        await session.commit()
+
+    async with rls_scoped_session(str(reviewer_id)) as session:
+        detail = await content_desk.decide_review_gate(
+            session,
+            workspace_id=workspace_id,
+            gate_id=result.review_gate_id,
+            reviewer_id=reviewer_id,
+            approved=True,
+        )
+        await session.commit()
+
+    assert detail["status"] != "awaiting"
