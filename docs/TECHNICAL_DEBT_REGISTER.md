@@ -77,7 +77,7 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 | TD-050 | Ruff format is not a distinct CI gate | LOW |
 | TD-060 | FORCE RLS remains a positive architectural control | INFO — exact current table count should be derived from live/current migration evidence when needed |
 | TD-061 | Migration round-trip through current head `0052` | INFO — PASS (branch `claude/project-builder-handover-k95wpm`; not yet on `main`) |
-| TD-062 | API baseline | INFO — **314 passed / 80.86% coverage** on the same branch (was 299/81.09% on `main`) |
+| TD-062 | API baseline | INFO — **321 passed / 81.03% coverage** on the same branch (was 299/81.09% on `main`) |
 | TD-063 | Exact-head browser smoke | INFO — retained desktop + exact-390px CI evidence now exists on `main`; not re-run for this unmerged branch |
 
 ---
@@ -143,6 +143,15 @@ an independent re-probe against `claude/project-builder-handover-k95wpm`
 | Fix | `claim_next()` now generates one `claim_token` per claim attempt and retries up to 3 times with the *same* token on a transport-level failure only (`httpx.TransportError` — timeouts/connection resets), leaving HTTP error statuses (4xx/5xx) to propagate immediately, unretried. Regression tests: `apps/worker/tests/test_reference_worker_client_claim_retry.py` (mocked-transport unit tests: retry reuses the token, gives up after the bound, doesn't retry HTTP error statuses) plus the existing full-suite claim/lease/recovery tests (54 tests) confirming no regression to the claim/ack/renew/submit protocol. |
 | Status | Fix pushed; pending independent re-audit before CLOSED. |
 
+### TD-079 — API/worker Draft Desk generators had silently drifted — **FIX PUSHED**
+
+| Field | Value |
+|---|---|
+| Severity | LOW |
+| Evidence | `app/services/draft_desk.py` and `worker/executors/draft_desk.py` are independently-maintained, duplicate generators (the worker can't import the API package) whose own docstrings say "keep outputs aligned" as a manually-maintained invariant with no test enforcing it. Adding a parity test proved the invariant had already broken: on a topic with irregular internal whitespace (e.g. `"  extra   whitespace   topic  "`), the API returned the result dict's `topic` field only `.strip()`'d (`"extra   whitespace   topic"`), while the worker returned it fully whitespace-collapsed (`"extra whitespace topic"`) — the generated hook/body/cta text agreed (both use the collapsed form internally), but the `topic` field a caller might display or store did not. |
+| Fix | `app/services/draft_desk.py::execute_stage` now returns the same whitespace-collapsed `topic` the worker already did. New test `tests/test_draft_desk_worker_parity.py` runs both generators against the same inputs (scripting/idea/review/other stages, whitespace, empty/missing topic) and asserts identical output, so a future edit to one without the other now fails CI instead of silently drifting. |
+| Status | Fix pushed; pending independent re-audit before CLOSED. |
+
 ### TD-076 — `reserve_spend()` fails open with no `SpendCap` row — **FIX PUSHED**
 
 | Field | Value |
@@ -206,7 +215,7 @@ The following previously resolved controls remain closed unless new evidence sho
 
 ## Current burn-down priority
 
-1. Independently re-audit TD-072…TD-078 (2026-09-07 fixes on `claude/project-builder-handover-k95wpm`) before merge.
+1. Independently re-audit TD-072…TD-079 (2026-09-07 fixes on `claude/project-builder-handover-k95wpm`) before merge.
 2. **TD-070 / issue #50:** technically protect `main`.
 3. **TD-071:** establish managed Supabase/runtime evidence.
 4. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
