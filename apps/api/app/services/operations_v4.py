@@ -58,15 +58,26 @@ async def global_search(
     pattern = f"%{q}%"
     results: list[SearchResult] = []
 
-    admin_workspaces = select(WorkspaceMembership.workspace_id).where(
-        WorkspaceMembership.user_id == admin_user_id,
-        WorkspaceMembership.role == WorkspaceRole.ADMIN,
-    )
+    # Scoped to the current workspace only, matching every other entity
+    # type searched below (leads, pipelines, workers, content, jobs,
+    # reviews, videos, logs) and this endpoint's own URL contract
+    # (/workspaces/{workspace_id}/operations/search). Previously matched
+    # against every workspace the caller administers, so a search inside
+    # workspace A's Mission Control could surface workspace B's name/id as
+    # a "customer" hit (2026-09-08 audit finding, part of the same bug as
+    # the executive-mode/insights revenue and most-active-customer fixes
+    # above).
     customers = (
         await session.execute(
             select(Workspace)
+            .join(
+                WorkspaceMembership,
+                WorkspaceMembership.workspace_id == Workspace.id,
+            )
             .where(
-                Workspace.id.in_(admin_workspaces),
+                Workspace.id == workspace_id,
+                WorkspaceMembership.user_id == admin_user_id,
+                WorkspaceMembership.role == WorkspaceRole.ADMIN,
                 or_(
                     Workspace.name.ilike(pattern),
                     cast(Workspace.id, Text).ilike(pattern),
@@ -524,7 +535,7 @@ async def executive_mode(
         session, workspace_id, automation=automation
     )
     customers = await operations_dashboard.customers(
-        session, admin_user_id=admin_user_id
+        session, admin_user_id=admin_user_id, workspace_id=workspace_id
     )
     spend = await operations_dashboard.spend(session, workspace_id)
     workers = await operations_dashboard.workers(session, workspace_id)

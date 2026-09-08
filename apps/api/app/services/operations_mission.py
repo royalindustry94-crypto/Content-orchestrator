@@ -1151,7 +1151,7 @@ async def executive_insights(
     most_active_worker = worker_activity[0] if worker_activity else None
 
     customers = await operations_dashboard.customers(
-        session, admin_user_id=admin_user_id
+        session, admin_user_id=admin_user_id, workspace_id=workspace_id
     )
     most_active_customer = None
     if customers.customers:

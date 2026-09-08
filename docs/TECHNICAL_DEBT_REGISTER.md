@@ -14,6 +14,16 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 
 ### HIGH
 
+### TD-082 — Operations Dashboard routes bypass RLS (21 of 24 handlers) — **OPEN**
+
+| Field | Value |
+|---|---|
+| Severity | HIGH |
+| Evidence | 2026-09-08 audit. `apps/api/app/api/routes/operations_dashboard.py` opens the owner/superuser `AsyncSessionLocal()` connection instead of the RLS-scoped `Depends(get_current_session)` in 21 of its 24 route handlers (all five `actions/*` mutation endpoints included), matching the same architectural pattern TD-072 fixed for `content_jobs.py`/`review_gates.py`. The team is aware and has partly tested for it (`test_security_controls_closure.py`'s "owner/service-role routes must still be tenant-scoped" section) — but that test only proves a caller with zero membership is rejected; it does not, and structurally cannot, catch a *legitimate co-admin's* report being contaminated by another workspace they also administer (that was TD-081, found and fixed separately). |
+| Risk | RLS — this repo's stated non-negotiable tenant-isolation control — provides zero backstop for this entire surface, including the five mutating `actions/*` endpoints (pause/resume workers, emergency-stop, retry-failed-jobs, clear-dead-letter). Correctness rests entirely on every query's own `WHERE workspace_id = ...` clause being right, forever, with no second line of defense. |
+| Recommendation | Same treatment as TD-072: do NOT swap the session naively. Run a dedicated write/read-surface audit of every table these 21 handlers touch (INSERT/UPDATE for the 5 mutating endpoints; SELECT policies for the rest) before switching to `Depends(get_current_session)`, matching the migration-first approach TD-072 used. |
+| Effort | L |
+
 ### TD-070 — `main` branch protection disabled — **OPEN**
 
 | Field | Value |
@@ -77,7 +87,7 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 | TD-050 | Ruff format is not a distinct CI gate | LOW |
 | TD-060 | FORCE RLS remains a positive architectural control | INFO — exact current table count should be derived from live/current migration evidence when needed |
 | TD-061 | Migration round-trip through current head `0052` | INFO — PASS (branch `claude/project-builder-handover-k95wpm`; not yet on `main`) |
-| TD-062 | API baseline | INFO — **321 passed / 81.03% coverage** on the same branch (was 299/81.09% on `main`) |
+| TD-062 | API baseline | INFO — **322 passed / 81.03% coverage** on the same branch (was 299/81.09% on `main`) |
 | TD-063 | Exact-head browser smoke | INFO — retained desktop + exact-390px CI evidence now exists on `main`; not re-run for this unmerged branch |
 
 ---
@@ -88,6 +98,15 @@ Per this register's own rule, the builder who found these is also the one who
 fixed them — **none of the following are self-certified closed.** Each needs
 an independent re-probe against `claude/project-builder-handover-k95wpm`
 (head at time of writing) before being marked CLOSED.
+
+### TD-081 — Founder dashboards blended billing/revenue/customer data across workspaces — **FIX PUSHED**
+
+| Field | Value |
+|---|---|
+| Severity | CRITICAL |
+| Evidence | `operations_dashboard.customers()` takes no `workspace_id` — it aggregates billing/revenue/member data across *every workspace the calling admin administers*. Three reports that each present themselves as scoped to one `workspace_id` in their URL path reused it unscoped: `GET /operations/insights` (`most_active_customer` could name a different workspace), `GET /operations/executive-mode` (`revenue_mtd_usd` was the sum across every workspace the caller admins, sitting in the same response next to `spend_today_usd`, which *was* correctly scoped — so a Founder comparing the two numbers on one screen was comparing one tenant's spend to N tenants' revenue), and `GET /operations/search` (a "customer" search hit could return another workspace's name/id). This was **live and currently exploitable by design**, not a theoretical risk — any admin of 2+ workspaces (the exact shape of an agency running multiple clients, this product's own stated target market) triggers it immediately, no misconfiguration or edge case required. `GET /operations/customers` itself is an intentional cross-workspace "portfolio" view (explicit code comment: `del workspace_id  # authz scoped; customers are admin-owned workspaces`) and was correctly left unscoped. |
+| Fix | `operations_dashboard.customers()` gained an optional `workspace_id` filter; the three consuming reports now pass their own `workspace_id` so each returns only that one workspace's data, while `/operations/customers` itself is unchanged (still the intentional portfolio view). Regression test `tests/test_operations_dashboard_v4.py::test_single_workspace_reports_never_blend_another_admined_workspace` seeds two workspaces under one admin with very different revenue/member counts, verifies all three single-workspace reports stay scoped, and separately verifies `/customers` still correctly sees both — verified to actually fail without the fix (reverted the fix, confirmed the test fails with the exact blended number, restored it) before trusting it as a real regression test. |
+| Status | Fix pushed; pending independent re-audit before CLOSED. |
 
 ### TD-072 — `content_jobs.py` / `review_gates.py` had no RLS backstop — **FIX PUSHED**
 
@@ -228,7 +247,7 @@ The following previously resolved controls remain closed unless new evidence sho
 
 ## Current burn-down priority
 
-1. Independently re-audit TD-072…TD-079 (2026-09-07 fixes on `claude/project-builder-handover-k95wpm`) before merge.
+1. Independently re-audit TD-072…TD-082 (2026-09-07 fixes on `claude/project-builder-handover-k95wpm`) before merge.
 2. **TD-070 / issue #50:** technically protect `main`.
 3. **TD-071:** establish managed Supabase/runtime evidence.
 4. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
