@@ -14,16 +14,6 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 
 ### HIGH
 
-### TD-082 — Operations Dashboard routes bypass RLS (21 of 24 handlers) — **OPEN**
-
-| Field | Value |
-|---|---|
-| Severity | HIGH |
-| Evidence | 2026-09-08 audit. `apps/api/app/api/routes/operations_dashboard.py` opens the owner/superuser `AsyncSessionLocal()` connection instead of the RLS-scoped `Depends(get_current_session)` in 21 of its 24 route handlers (all five `actions/*` mutation endpoints included), matching the same architectural pattern TD-072 fixed for `content_jobs.py`/`review_gates.py`. The team is aware and has partly tested for it (`test_security_controls_closure.py`'s "owner/service-role routes must still be tenant-scoped" section) — but that test only proves a caller with zero membership is rejected; it does not, and structurally cannot, catch a *legitimate co-admin's* report being contaminated by another workspace they also administer (that was TD-081, found and fixed separately). |
-| Risk | RLS — this repo's stated non-negotiable tenant-isolation control — provides zero backstop for this entire surface, including the five mutating `actions/*` endpoints (pause/resume workers, emergency-stop, retry-failed-jobs, clear-dead-letter). Correctness rests entirely on every query's own `WHERE workspace_id = ...` clause being right, forever, with no second line of defense. |
-| Recommendation | Same treatment as TD-072: do NOT swap the session naively. Run a dedicated write/read-surface audit of every table these 21 handlers touch (INSERT/UPDATE for the 5 mutating endpoints; SELECT policies for the rest) before switching to `Depends(get_current_session)`, matching the migration-first approach TD-072 used. |
-| Effort | L |
-
 ### TD-070 — `main` branch protection disabled — **OPEN**
 
 | Field | Value |
@@ -88,8 +78,8 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 |---|---|---|
 | TD-050 | Ruff format is not a distinct CI gate | LOW |
 | TD-060 | FORCE RLS remains a positive architectural control | INFO — exact current table count should be derived from live/current migration evidence when needed |
-| TD-061 | Migration round-trip through current head `0053` | INFO — PASS (branch `claude/project-builder-handover-k95wpm`; not yet on `main`) |
-| TD-062 | API baseline | INFO — **329 passed / 81% coverage** on the same branch (was 299/81.09% on `main`) |
+| TD-061 | Migration round-trip through current head `0054` | INFO — PASS (branch `claude/project-builder-handover-k95wpm`; not yet on `main`) |
+| TD-062 | API baseline | INFO — **330 passed / 81% coverage** on the same branch (was 299/81.09% on `main`) |
 | TD-063 | Exact-head browser smoke | INFO — retained desktop + exact-390px CI evidence now exists on `main`; not re-run for this unmerged branch |
 
 ---
@@ -100,6 +90,16 @@ Per this register's own rule, the builder who found these is also the one who
 fixed them — **none of the following are self-certified closed.** Each needs
 an independent re-probe against `claude/project-builder-handover-k95wpm`
 (head at time of writing) before being marked CLOSED.
+
+### TD-082 — Operations Dashboard routes bypass RLS (21 of 28 handlers) — **FIX PUSHED**
+
+| Field | Value |
+|---|---|
+| Severity | HIGH |
+| Evidence | `apps/api/app/api/routes/operations_dashboard.py` opened the owner/superuser `AsyncSessionLocal()` connection instead of the RLS-scoped `Depends(get_current_session)` in 21 of its handlers (all five `actions/*` mutation endpoints included — pause/resume workers, emergency-stop, retry-failed-jobs, clear-dead-letter), matching the same architectural pattern TD-072 fixed for `content_jobs.py`/`review_gates.py`. (A full re-read found 28 handlers total, not the originally-estimated 24 — 5 already compliant, 2 have no DB session at all — but the 21 non-compliant count was correct.) A dedicated write-surface audit (same methodology as TD-072) found this was not a simple session swap: `billing_webhook_events` and `worker_credentials` had **zero `app_runtime` grant at all** (hard permission-denied under RLS, not just zero rows) — reached by 9 of the 21 handlers and by `action_emergency_stop` respectively; `worker_registry` had a write grant but no UPDATE policy, and `stage_assignments` had no UPDATE policy either, while `action_emergency_stop`'s underlying `reap_worker_assignments()` locks `stage_assignments` with `SELECT ... FOR UPDATE` — the exact TD-072-class trap where a missing policy means the lock silently matches zero rows instead of erroring; `stage_recovery_audit`'s grant explicitly excluded INSERT; `dead_letter_jobs` had SELECT+INSERT (from 0052) but no UPDATE, needed by the two DLQ-management actions. |
+| Fix | Migration `0054_operations_dashboard_admin_rls.py` adds the minimal admin-scoped grants/policies for each gap (all 21 handlers gate on `require_workspace_admin` only, narrower than 0052's editor/reviewer-inclusive lists). `worker_registry`/`worker_credentials` needed an explicit architecture decision, documented in the migration itself: the three Quick Actions are already shipped and reachable via HTTP today over the owner connection — widening RLS to allow admin-scoped, workspace-pinned writes grants no new capability, it only makes that already-permitted write pass through the database's own tenant boundary instead of relying solely on the route's query. Global (`workspace_id IS NULL`) workers stay untouchable by any workspace admin, preserving migration 0025's original protection — enforced by a `workspace_id IS NOT NULL` guard on the new policy. `stage_recovery_audit`'s INSERT policy goes beyond the standard `policy_insert_roles()` helper: it requires `assignment_id` to reference a real `stage_assignments` row in the same workspace (an `EXISTS` subquery), not just "an admin of some workspace," since this is an audit/compliance trail — a plain admin-scoped policy would have let an admin insert fabricated recovery-audit rows for nonexistent assignments (caught by an existing adversarial test, `test_recovery_audit_rls_adversarial`, which the stricter policy keeps passing unmodified). All 21 handlers in `operations_dashboard.py` now use `Depends(get_current_session)`. |
+| Tests | Two existing tests in `test_worker_registry_ws1.py` asserted the now-deliberately-changed "no user role can ever write `worker_registry`" invariant; updated (not weakened) to assert the new one — admin + workspace-pinned = allowed, non-admin and global workers = still denied, verified via direct RLS-session SQL. New test `tests/test_lease_recovery_ws3.py::test_emergency_stop_over_rls_session_actually_persists_all_writes` is a full HTTP-level regression proving every write in the emergency-stop path actually persists under RLS — not just returns 200, since a silently no-op'd UPDATE would have passed the pre-existing status-code-only integration test (`test_operations_dashboard_v3.py::test_mission_control_modules_and_actions`, which never asserted the target worker's final state) — verified to actually fail with `permission denied for table worker_credentials` when migration 0054 is downgraded, before trusting it. Full suite: 330 passed, 81% coverage, migration round-trip (upgrade→downgrade→upgrade) clean through head `0054`. |
+| Status | Fix pushed; pending independent re-audit before CLOSED. |
 
 ### TD-083 — Workspace deletion silently left `job_schedule` rows in place — **FIX PUSHED**
 
@@ -294,9 +294,8 @@ The following previously resolved controls remain closed unless new evidence sho
 
 ## Current burn-down priority
 
-1. Independently re-audit TD-072…TD-087 (2026-09-07/08 fixes on `claude/project-builder-handover-k95wpm`) before merge.
+1. Independently re-audit TD-072…TD-082, TD-085…TD-087 (2026-09-07/08 fixes on `claude/project-builder-handover-k95wpm`) before merge.
 2. **TD-070 / issue #50:** technically protect `main`.
-3. **TD-082:** Operations Dashboard RLS backstop (write-surface audit in progress).
-4. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
-5. Activate cost-bearing providers one at a time with spend, retry, idempotency and Human Review controls.
-6. Raise coverage/security/observability depth based on measured risk, not feature-count pressure.
+3. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
+4. Activate cost-bearing providers one at a time with spend, retry, idempotency and Human Review controls — see TD-041's build-order gap list.
+5. Raise coverage/security/observability depth based on measured risk, not feature-count pressure.
