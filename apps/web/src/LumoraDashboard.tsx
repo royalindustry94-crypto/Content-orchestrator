@@ -1596,6 +1596,9 @@ export default function LumoraDashboard({
   const dataRef = useRef<ViewData>(null);
   const loadedKeyRef = useRef<string | null>(null);
   const loadInFlightRef = useRef(false);
+  const notificationsInFlightRef = useRef(false);
+  const gatesInFlightRef = useRef(false);
+  const healthInFlightRef = useRef(false);
   const mobileNavRef = useDialogFocus<HTMLElement>(mobileOpen, () => setMobileOpen(false));
 
   const currentWorkspace = workspaces.find((workspace) => workspace.id === workspaceId);
@@ -1616,36 +1619,51 @@ export default function LumoraDashboard({
 
   useEffect(() => {
     let active = true;
-    const refreshShellStatus = async () => {
-      const [notificationsResult, gatesResult] = await Promise.allSettled([
-        getNotifications(token, workspaceId),
-        listReviewGates(token, workspaceId),
-      ]);
-      if (!active) return;
-      if (notificationsResult.status === "fulfilled") {
-        setNotifications(notificationsResult.value);
-        setNotificationsError(null);
-      } else {
-        setNotifications(null);
-        setNotificationsError(
-          notificationsResult.reason instanceof Error
-            ? notificationsResult.reason.message
-            : "Unable to refresh notifications.",
-        );
-      }
-      if (gatesResult.status === "fulfilled") {
-        setReviewCount(gatesResult.value.length);
-      }
-      // Deliberately not cleared on failure: Human Review is a safety-critical
-      // gate, so a stale-but-real count is safer than a false "0 waiting" that
-      // could read as "nothing pending" when the refresh simply failed.
-      setNotificationsLoading(false);
+
+    const refreshNotifications = () => {
+      if (notificationsInFlightRef.current) return;
+      notificationsInFlightRef.current = true;
+      getNotifications(token, workspaceId)
+        .then((value) => {
+          if (!active) return;
+          setNotifications(value);
+          setNotificationsError(null);
+        })
+        .catch((cause) => {
+          if (!active) return;
+          setNotifications(null);
+          setNotificationsError(cause instanceof Error ? cause.message : "Unable to refresh notifications.");
+        })
+        .finally(() => {
+          notificationsInFlightRef.current = false;
+          if (active) setNotificationsLoading(false);
+        });
     };
+
+    const refreshGates = () => {
+      if (gatesInFlightRef.current) return;
+      gatesInFlightRef.current = true;
+      listReviewGates(token, workspaceId)
+        .then((rows) => {
+          if (!active) return;
+          setReviewCount(rows.length);
+          // Deliberately not cleared on failure: Human Review is a safety-critical
+          // gate, so a stale-but-real count is safer than a false "0 waiting" that
+          // could read as "nothing pending" when the refresh simply failed.
+        })
+        .catch(() => {})
+        .finally(() => {
+          gatesInFlightRef.current = false;
+        });
+    };
+
     setNotificationsLoading(true);
-    void refreshShellStatus();
+    refreshNotifications();
+    refreshGates();
     const interval = window.setInterval(() => {
       if (document.visibilityState === "visible") {
-        void refreshShellStatus();
+        refreshNotifications();
+        refreshGates();
       }
     }, AUTO_REFRESH_MS);
     return () => {
@@ -1663,6 +1681,8 @@ export default function LumoraDashboard({
     }
     let active = true;
     const refreshShellHealth = async () => {
+      if (healthInFlightRef.current) return;
+      healthInFlightRef.current = true;
       try {
         const value = await getSystemHealth(token, workspaceId);
         if (active) {
@@ -1676,6 +1696,8 @@ export default function LumoraDashboard({
           setHealthWorkspaceId(workspaceId);
           setHealthError(cause instanceof Error ? cause.message : "Unable to refresh system health.");
         }
+      } finally {
+        healthInFlightRef.current = false;
       }
     };
     void refreshShellHealth();
