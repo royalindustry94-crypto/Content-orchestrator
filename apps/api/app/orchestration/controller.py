@@ -756,7 +756,19 @@ async def reserve_spend(
         session, workspace_id=run.workspace_id, provider=provider
     )
 
-    if cap is not None:
+    exceeded: str | None = None
+    payload: dict[str, object] = {"provider": provider, "stage": stage}
+
+    if cap is None:
+        # Fail closed: no SpendCap row means spend is unauthorized, not
+        # unbounded. Every workspace created via POST /workspaces seeds a
+        # default cap in the same transaction, so this should not be
+        # reachable in practice — but a workspace provisioned any other
+        # way (backfill, ops tooling, future admin path) must still be
+        # blocked rather than silently spending with no limit.
+        exceeded = "missing_cap"
+        payload["attempted_usd"] = str(estimated_cost_usd)
+    else:
         # Workspace-wide caps (provider IS NULL) must aggregate ALL providers.
         # Provider-specific caps only count that provider's spend. Filtering
         # by the reservation provider against a workspace-wide cap would
@@ -776,40 +788,42 @@ async def reserve_spend(
         )
         daily_cap = Decimal(str(cap.daily_cap_usd))
         monthly_cap = Decimal(str(cap.monthly_cap_usd))
-        exceeded = None
         if daily + estimated_cost_usd > daily_cap:
             exceeded = "daily"
         elif monthly + estimated_cost_usd > monthly_cap:
             exceeded = "monthly"
         if exceeded is not None:
-            run.status = PipelineRunStatus.PAUSED
-            run.pause_reason = PauseReason.SPEND_HOLD.value
-            if run.correlation_id is None:
-                run.correlation_id = uuid.uuid4()
-            trace_id, span_id = child_span(run.trace_id)
-            run.trace_id = trace_id
-            await emit(
-                session,
-                event_type=SPEND_BUDGET_EXCEEDED,
-                workspace_id=run.workspace_id,
-                aggregate_type="pipeline_run",
-                aggregate_id=run.id,
-                correlation_id=run.correlation_id,
-                trace_id=trace_id,
-                span_id=span_id,
-                payload={
-                    "provider": provider,
-                    "stage": stage,
+            payload.update(
+                {
                     "attempted_usd": str(estimated_cost_usd),
-                    "cap_kind": exceeded,
                     "daily_used_usd": str(daily),
                     "monthly_used_usd": str(monthly),
                     "daily_cap_usd": str(daily_cap),
                     "monthly_cap_usd": str(monthly_cap),
-                },
-                produced_by="controller",
+                }
             )
-            return None
+
+    if exceeded is not None:
+        run.status = PipelineRunStatus.PAUSED
+        run.pause_reason = PauseReason.SPEND_HOLD.value
+        if run.correlation_id is None:
+            run.correlation_id = uuid.uuid4()
+        trace_id, span_id = child_span(run.trace_id)
+        run.trace_id = trace_id
+        payload["cap_kind"] = exceeded
+        await emit(
+            session,
+            event_type=SPEND_BUDGET_EXCEEDED,
+            workspace_id=run.workspace_id,
+            aggregate_type="pipeline_run",
+            aggregate_id=run.id,
+            correlation_id=run.correlation_id,
+            trace_id=trace_id,
+            span_id=span_id,
+            payload=payload,
+            produced_by="controller",
+        )
+        return None
 
     reservation = SpendReservation(
         id=uuid.uuid4(),

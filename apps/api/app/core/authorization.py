@@ -82,6 +82,20 @@ require_workspace_content_author = require_workspace_role(
     WorkspaceRole.ADMIN, WorkspaceRole.EDITOR
 )
 # Human Review Gate decision-makers (matches review_decisions RLS insert roles).
+#
+# ADMIN is deliberately in both this set and require_workspace_content_author,
+# so a solo Admin can author a draft and approve it themselves. This is an
+# intentional product decision for the current Private Beta target market
+# (docs/ROADMAP.md: solo operators / small agencies, "Founder-led onboarding
+# for agencies") — the Human Review Gate's non-negotiable guarantee is that
+# unreviewed content cannot auto-publish, not that the reviewer is a second
+# human distinct from the author. A workspace that wants maker-checker
+# separation today can enforce it operationally by not granting one person
+# both roles' worth of trust — i.e. keep the Admin as owner-only and add
+# separate Editor/Reviewer members. Revisit this default (e.g. block
+# reviewer_id == content.created_by, or a workspace-level setting) if/when
+# the product moves toward larger teams where that guarantee needs to be
+# structural rather than operational. See docs/TECHNICAL_DEBT_REGISTER.md.
 require_workspace_reviewer = require_workspace_role(
     WorkspaceRole.ADMIN, WorkspaceRole.REVIEWER
 )

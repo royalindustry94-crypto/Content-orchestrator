@@ -72,7 +72,12 @@ def execute_stage(context: dict) -> tuple[bool, dict | None, str]:
                 "script_body": draft.script_body,
                 "script_cta": draft.script_cta,
                 "estimated_cost_usd": draft.estimated_cost_usd,
-                "topic": topic,
+                # Whitespace-collapsed, matching the text already generated
+                # into hook/body/cta above (and worker/executors/draft_desk.py's
+                # equivalent field) — not the merely-.strip()'d outer `topic`,
+                # which would silently disagree on inputs with irregular
+                # internal whitespace (2026-09-07 parity-test finding).
+                "topic": " ".join(topic.split()),
             },
             "",
         )

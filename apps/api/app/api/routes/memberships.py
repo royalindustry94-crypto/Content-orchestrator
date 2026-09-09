@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import audit
 from app.core.authorization import (
     get_membership,
     require_workspace_admin,
@@ -44,6 +45,7 @@ async def list_memberships(
 async def invite_member(
     workspace_id: uuid.UUID,
     payload: MembershipCreate,
+    request: Request,
     db: AsyncSession = Depends(get_current_session),
     _membership: WorkspaceMembership = Depends(require_workspace_admin),
 ) -> WorkspaceMembership:
@@ -64,6 +66,14 @@ async def invite_member(
     )
     db.add(membership)
     await db.flush()
+    audit(
+        request,
+        "membership_invited",
+        workspace_id=str(workspace_id),
+        actor_id=str(_membership.user_id),
+        target_user_id=str(payload.user_id),
+        role=payload.role.value,
+    )
     return membership
 
 
@@ -72,6 +82,7 @@ async def update_member_role(
     workspace_id: uuid.UUID,
     user_id: uuid.UUID,
     payload: MembershipRoleUpdate,
+    request: Request,
     db: AsyncSession = Depends(get_current_session),
     _membership: WorkspaceMembership = Depends(require_workspace_admin),
 ) -> WorkspaceMembership:
@@ -86,8 +97,18 @@ async def update_member_role(
                 detail="workspace must retain at least one admin",
             )
 
+    previous_role = target.role.value
     target.role = payload.role
     await db.flush()
+    audit(
+        request,
+        "membership_role_updated",
+        workspace_id=str(workspace_id),
+        actor_id=str(_membership.user_id),
+        target_user_id=str(user_id),
+        previous_role=previous_role,
+        new_role=payload.role.value,
+    )
     return target
 
 
@@ -95,6 +116,7 @@ async def update_member_role(
 async def remove_member(
     workspace_id: uuid.UUID,
     user_id: uuid.UUID,
+    request: Request,
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_current_session),
 ):
@@ -121,5 +143,15 @@ async def remove_member(
             detail="workspace must retain at least one admin",
         )
 
+    removed_role = target.role.value
     await db.delete(target)
     await db.commit()
+    audit(
+        request,
+        "membership_removed",
+        workspace_id=str(workspace_id),
+        actor_id=user.id,
+        target_user_id=str(user_id),
+        removed_role=removed_role,
+        self_leave=is_self_leave,
+    )

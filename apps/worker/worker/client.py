@@ -20,6 +20,11 @@ logger = logging.getLogger("worker.client")
 
 CAPABILITY_PROTOCOL_VERSION = 1
 
+# Bounded retries for a claim whose HTTP response is lost in transit
+# (timeout/connection reset) — not for HTTP error statuses, which
+# propagate via raise_for_status as before. See claim_next().
+_CLAIM_NETWORK_RETRY_ATTEMPTS = 3
+
 # Type for the pluggable stage-execution function a real worker provides.
 # Returns (success, result_dict_or_None, error_message).
 StageExecutor = Callable[[dict], Awaitable[tuple[bool, dict | None, str]]]
@@ -138,21 +143,42 @@ class ReferenceWorkerClient:
         """Pull-mode claim via HTTP (WS2/WS3). ``session`` is accepted for
         back-compat with older call sites and ignored — work transport is
         no longer direct-DB.
+
+        Generates one ``claim_token`` for this claim attempt and reuses it
+        across a bounded number of retries when the HTTP response itself
+        is lost in transit (timeout/connection reset) — 2026-09-07 fix,
+        see `docs/TECHNICAL_DEBT_REGISTER.md` TD-078. Without this, a lost
+        response left the server holding a granted assignment the worker
+        didn't know about, stranding that capacity slot until the lease
+        expired (~60s, self-healing, but wasteful): the server has always
+        supported idempotent replay via `claim_token`
+        (`app.orchestration.claiming.claim_assignment`); this reference
+        client just never sent one. HTTP error statuses (4xx/5xx) still
+        propagate immediately via `raise_for_status`, unretried.
         """
         del session  # unused; HTTP path only
         if self._draining:
             return None
-        response = await self._http.post(
-            "/workers/claim",
-            headers=self._auth_headers,
-            json={},
-        )
-        response.raise_for_status()
-        body = response.json()
-        if body.get("outcome") != "granted" or body.get("assignment") is None:
-            return None
-        self.current_load += 1
-        return body["assignment"]
+        claim_token = str(uuid.uuid4())
+        last_exc: httpx.TransportError | None = None
+        for _ in range(_CLAIM_NETWORK_RETRY_ATTEMPTS):
+            try:
+                response = await self._http.post(
+                    "/workers/claim",
+                    headers=self._auth_headers,
+                    json={"claim_token": claim_token},
+                )
+            except httpx.TransportError as exc:
+                last_exc = exc
+                continue
+            response.raise_for_status()
+            body = response.json()
+            if body.get("outcome") != "granted" or body.get("assignment") is None:
+                return None
+            self.current_load += 1
+            return body["assignment"]
+        assert last_exc is not None
+        raise last_exc
 
     async def ack(self, assignment_id: uuid.UUID | str) -> dict:
         response = await self._http.post(
@@ -208,26 +234,48 @@ class ReferenceWorkerClient:
         long provider calls should renew on an interval; the reference
         client renews once immediately before submit as a minimal
         heartbeat-extend.
+
+        Does NOT synthesize its own provider effect key (2026-09-07 fix —
+        see `docs/TECHNICAL_DEBT_REGISTER.md` TD-077): the server derives
+        the same stable, attempt-independent key at both ack and submit
+        when no explicit override is sent, so they naturally agree. A
+        real provider-calling executor that already has its own
+        provider-issued idempotency key should pass it through
+        ``context``/its own submit call instead of this reference client
+        inventing one.
+
+        If ``ack``'s response reports ``provider_effect_created=False``,
+        a *prior* attempt of this same assignment already reserved this
+        effect key — meaning that attempt may have already triggered a
+        real, billable provider call before crashing or losing its lease.
+        Whether that call succeeded is unknown and unverifiable from here,
+        so this reference implementation refuses to execute again (which
+        could double-charge or double-generate) and instead submits an
+        explicit failure for operator/retry-policy attention, rather than
+        silently re-running or fabricating a success it cannot confirm.
         """
         del session
         if assignment is None:
             return
         assignment_id = assignment["id"] if isinstance(assignment, dict) else assignment.id
-        attempt = (
-            assignment["attempt_number"]
-            if isinstance(assignment, dict)
-            else assignment.attempt_number
-        )
         stage = assignment["stage"] if isinstance(assignment, dict) else assignment.stage
-        await self.ack(assignment_id)
-        effect_key = f"{assignment_id}:{attempt}"
+        ack_response = await self.ack(assignment_id)
+        if ack_response.get("provider_effect_created") is False:
+            await self.submit(
+                assignment_id,
+                success=False,
+                result=None,
+                error_message=(
+                    "provider effect already reserved by a prior attempt of this "
+                    "assignment; refusing to repeat a possibly-billable side effect"
+                ),
+            )
+            return
         # Renew before side effects so a slow executor does not race the reaper.
         await self.renew(assignment_id)
         context = {
             "stage": stage,
             "assignment_id": str(assignment_id),
-            "attempt_number": attempt,
-            "provider_effect_key": effect_key,
         }
         if isinstance(assignment, dict):
             for key in (
@@ -237,6 +285,7 @@ class ReferenceWorkerClient:
                 "target_length_seconds",
                 "provider",
                 "pipeline_run_id",
+                "attempt_number",
             ):
                 if key in assignment and assignment[key] is not None:
                     context[key] = assignment[key]
@@ -246,5 +295,4 @@ class ReferenceWorkerClient:
             success=success,
             result=result,
             error_message=error,
-            provider_effect_key=effect_key,
         )

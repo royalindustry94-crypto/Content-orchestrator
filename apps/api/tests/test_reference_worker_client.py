@@ -28,6 +28,7 @@ from app.models.enums import StageAssignmentStatus
 from app.models.pipeline import PipelineRun
 from app.models.workflow import WorkflowDefinition, WorkflowStage
 from app.orchestration import controller, dispatcher
+from app.orchestration.provider_effects import ensure_provider_effect_key
 from tests.conftest import make_token
 
 
@@ -40,6 +41,16 @@ async def _make_workspace_item(session):
     await session.execute(
         text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, 'w', :u)"),
         {"id": ws, "u": user},
+    )
+    # reserve_spend now fails closed with no SpendCap row (2026-09-07 fix);
+    # seed a permissive cap so these orchestration-mechanic tests remain
+    # about claiming/dispatch/recovery, not spend enforcement.
+    await session.execute(
+        text(
+            "INSERT INTO spend_caps (workspace_id, daily_cap_usd, monthly_cap_usd) "
+            "VALUES (:ws, 999999, 999999)"
+        ),
+        {"ws": ws},
     )
     await session.execute(
         text(
@@ -136,3 +147,115 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
 
         a = await session.get(StageAssignment, assignment_id)
         assert a.status == StageAssignmentStatus.COMPLETED
+
+
+@pytest.mark.asyncio
+async def test_reference_worker_client_refuses_to_reexecute_after_crash_recovery():
+    """Regression (2026-09-07 audit finding / TD-077, client-side half):
+    if a *prior* attempt of this assignment already reserved the provider
+    effect key (simulated here by inserting it directly, as recovery.py's
+    crash/lease-expiry path would produce), the reference client must not
+    call the executor again — it cannot know whether that prior attempt
+    already triggered a real, billable provider call. It should submit an
+    explicit failure instead of silently re-running or fabricating success.
+    """
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text(
+                "UPDATE worker_registry SET status = 'offline'::worker_status "
+                "WHERE status IN ('online'::worker_status, 'busy'::worker_status)"
+            )
+        )
+        ws, item, admin_user = await _make_workspace_item(session)
+        definition = WorkflowDefinition(
+            id=uuid.uuid4(), workspace_id=ws, name="one-stage-crash", version=1,
+        )
+        session.add(definition)
+        await session.flush()
+        session.add(WorkflowStage(id=uuid.uuid4(), workspace_id=ws, definition_id=definition.id,
+                                   stage_key="scripting", ordinal=1, is_terminal=True))
+        await session.flush()
+
+        run = PipelineRun(id=uuid.uuid4(), workspace_id=ws, content_item_id=item)
+        session.add(run)
+        await session.flush()
+        await controller.start_run(session, run=run, definition=definition)
+
+        dispatched = await dispatcher.dispatch_stage(
+            session, workspace_id=ws, pipeline_run_id=run.id, stage="scripting",
+            attempt_number=1, correlation_id=run.correlation_id, trace_id=run.trace_id,
+        )
+        await session.commit()
+        assert dispatched.assignment is not None
+        assignment_id = dispatched.assignment.id
+
+        # Simulate a prior attempt of this same assignment having already
+        # reserved the provider effect key (e.g. it acked, triggered a real
+        # provider call, then crashed before submit — recovery.py bumps
+        # attempt_number and re-queues the same assignment for a new claim).
+        await ensure_provider_effect_key(
+            session, workspace_id=ws, assignment_id=assignment_id, attempt_number=1,
+        )
+        await session.commit()
+
+    http = httpx.AsyncClient(transport=ASGITransport(app=app), base_url="http://test")
+    admin_headers = {"Authorization": f"Bearer {make_token(user_id=admin_user)}"}
+    provision = await http.post(
+        f"/workspaces/{ws}/workers",
+        headers=admin_headers,
+        json={"name": "ref-crash-1", "supported_stages": ["scripting"], "max_concurrency": 1},
+    )
+    assert provision.status_code == 201, provision.text
+    provisioned = provision.json()
+
+    client = ReferenceWorkerClient(
+        name="ref-crash-1", supported_stages=["scripting"], http=http,
+        credential=provisioned["worker_secret"], worker_id=provisioned["worker_id"],
+    )
+    await client.register()
+    await client.heartbeat()
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text(
+                "UPDATE stage_assignments SET status = 'failed' "
+                "WHERE status = 'pending' AND id != :id"
+            ),
+            {"id": str(assignment_id)},
+        )
+        await session.commit()
+
+    claimed = await client.claim_next()
+    assert claimed is not None
+    assert claimed["id"] == str(assignment_id)
+
+    executed = False
+
+    async def _executor_that_must_not_run(_context):
+        nonlocal executed
+        executed = True
+        return True, {"should": "never happen"}, ""
+
+    client.executor = _executor_that_must_not_run
+    await client.run_one(assignment=claimed)
+    await http.aclose()
+
+    assert executed is False, "client executed the provider call despite a prior reservation"
+
+    async with AsyncSessionLocal() as session:
+        from app.models.assignments import StageAssignment
+        from app.models.pipeline import PipelineStageRun
+
+        a = await session.get(StageAssignment, assignment_id)
+        assert a.status == StageAssignmentStatus.FAILED
+
+        stage_run = (
+            await session.execute(
+                select(PipelineStageRun)
+                .where(PipelineStageRun.pipeline_run_id == a.pipeline_run_id)
+                .order_by(PipelineStageRun.completed_at.desc())
+            )
+        ).scalars().first()
+        assert stage_run is not None
+        assert stage_run.status == "failed"
+        assert "prior attempt" in (stage_run.error_message or "")

@@ -36,8 +36,12 @@ from app.services.spend import ensure_default_spend_cap
 def _base_settings_kwargs(**overrides) -> dict:
     kwargs = {
         "database_url": "postgresql://postgres:postgres@127.0.0.1:5432/content_orchestrator_test",
+        # Deliberately NOT the migration-default `app_runtime` password —
+        # see test_c2_* below for that specific, isolated check. Using the
+        # default here would make every production-environment test in
+        # this module also trip the app_runtime-password guard.
         "app_database_url": (
-            "postgresql://app_runtime:app_runtime@127.0.0.1:5432/content_orchestrator_test"
+            "postgresql://app_runtime:rotated-test-password@127.0.0.1:5432/content_orchestrator_test"
         ),
         "supabase_jwt_secret": "test-supabase-jwt-secret-0123456789abcdef",
         "environment": "development",
@@ -72,6 +76,43 @@ def test_h1_production_allows_local_with_explicit_override():
         )
     )
     assert settings.auth_mode == "local"
+
+
+def test_c2_production_rejects_default_app_runtime_password():
+    """Regression (2026-09-07 audit finding): migration 0001 creates the
+    app_runtime Postgres role with the literal default password
+    'app_runtime' when it doesn't already exist. Starting the API in
+    production against a database where that default was never rotated
+    must fail closed, mirroring the AUTH_MODE=local guard above.
+    """
+    with pytest.raises(ValidationError, match="app_runtime"):
+        Settings(
+            **_base_settings_kwargs(
+                environment="production",
+                app_database_url=(
+                    "postgresql://app_runtime:app_runtime@127.0.0.1:5432/"
+                    "content_orchestrator_test"
+                ),
+            )
+        )
+
+
+def test_c2_production_allows_rotated_app_runtime_password():
+    settings = Settings(**_base_settings_kwargs(environment="production"))
+    assert settings.environment == "production"
+
+
+def test_c2_default_password_is_fine_outside_production():
+    settings = Settings(
+        **_base_settings_kwargs(
+            environment="development",
+            app_database_url=(
+                "postgresql://app_runtime:app_runtime@127.0.0.1:5432/"
+                "content_orchestrator_test"
+            ),
+        )
+    )
+    assert settings.environment == "development"
 
 
 async def _seed_workspace_item(session):

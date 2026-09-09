@@ -70,7 +70,7 @@ async def create_checkout(
             if exc.code == "already_entitled"
             else status.HTTP_400_BAD_REQUEST
         )
-        if exc.code == "billing_misconfigured":
+        if exc.code in {"billing_misconfigured", "stripe_unavailable"}:
             code = status.HTTP_503_SERVICE_UNAVAILABLE
         raise HTTPException(status_code=code, detail=exc.message) from exc
 

@@ -142,6 +142,26 @@ class Settings(BaseSettings):
         return self.environment.strip().lower() in {"development", "dev"}
 
     @model_validator(mode="after")
+    def _validate_app_runtime_password(self) -> Settings:
+        """Migration 0001 creates the `app_runtime` Postgres role with the
+        literal default password `app_runtime` when it doesn't already
+        exist (see that migration's docstring — managed Supabase is
+        expected to reject the automated CREATE ROLE, but a self-hosted
+        Postgres owner connection would not). Fail closed in production
+        rather than trusting that operational assumption silently.
+        """
+        env = self.environment.strip().lower()
+        hosts = self.app_database_url.hosts()
+        default_password_in_use = any(h.get("password") == "app_runtime" for h in hosts)
+        if env in {"production", "prod"} and default_password_in_use:
+            raise ValueError(
+                "APP_DATABASE_URL still uses the migration-default app_runtime "
+                "password in a production environment; rotate the app_runtime "
+                "role's password and update APP_DATABASE_URL before starting"
+            )
+        return self
+
+    @model_validator(mode="after")
     def _validate_auth_mode(self) -> Settings:
         mode = self.auth_mode.strip().lower()
         if mode not in {"local", "supabase"}:

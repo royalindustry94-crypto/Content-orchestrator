@@ -20,12 +20,17 @@ speculative platform work.
 ## Milestone governance
 
 - Every milestone ends with an evidence-backed **PASS**, **CONDITIONAL**, or **FAIL** audit using `docs/MILESTONE_AUDIT_STANDARD.md`.
-- The coding worker/agent must not be the sole certifier of its own milestone. Use an independent auditor where available; otherwise perform a separate adversarial audit pass from fresh evidence.
-- **FAIL blocks merge.** Only the Founder may explicitly override a failed gate after reviewing the documented risks.
-- **CONDITIONAL** is allowed only for non-safety-critical, owner-assigned, time-bounded conditions approved by the Founder.
+- The coding worker/agent must not be the sole certifier of its own milestone. Use an independent AI reviewer (Codex/Copilot) or a separate adversarial audit pass from fresh evidence as the check — never trust or dismiss a finding without reproducing it first.
+- **FAIL blocks merge** until the underlying issue is actually fixed (or the finding is reconciled/retracted with reproducible evidence that it's a false positive). The Founder does not need to be in this loop; the agent has standing authority to resolve findings and merge once the evidence supports it — see "Operating authority" below.
+- **CONDITIONAL** is allowed only for non-safety-critical, time-bounded, explicitly documented conditions (recorded in `docs/TECHNICAL_DEBT_REGISTER.md`).
 - Unknown or missing evidence for workspace isolation, Human Review Gate integrity, spend controls, secrets, destructive migration safety, or critical data integrity is a **FAIL**, not a conditional pass.
-- Preview branches or PRs marked `do not merge` require explicit Founder approval before merge.
 - Re-check the exact PR head SHA, CI state, migration head, unresolved findings, and required external/runtime evidence immediately before merge.
+
+## Operating authority
+
+- The coding agent operates with standing authority to commit, push, open PRs, resolve/reconcile review findings, and merge to `main` without per-change Founder approval (as of 2026-09-09, at the Founder's explicit request).
+- This authority does **not** extend to weakening anything in "Non-negotiables" above — those remain product safety guarantees, not process gates, and are not the agent's to loosen on its own judgment.
+- Real, hard-to-reverse, or high-blast-radius actions (destructive data operations, spending real money via a live/production API key, changing who has repo/org access, rewriting shared history) still warrant pausing to flag the action clearly before proceeding, even without a formal approval step — the Founder should never be surprised by one of these after the fact.
 
 ## Stack
 

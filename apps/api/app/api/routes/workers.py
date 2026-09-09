@@ -472,8 +472,12 @@ async def ack_assignment(
             await acknowledge(session, assignment, worker_id=worker.worker_id)
         except LeaseError as exc:
             raise _lease_http_error(exc) from exc
-        # Reserve effect key before the worker performs provider work.
-        await ensure_provider_effect_key(
+        # Reserve effect key before the worker performs provider work. If
+        # this returns created=False, a prior attempt of this same
+        # assignment already reserved it — the caller must check whether
+        # that attempt actually completed the provider-facing side effect
+        # before performing it again (see LeaseOut.provider_effect_created).
+        effect = await ensure_provider_effect_key(
             session,
             workspace_id=assignment.workspace_id,
             assignment_id=assignment.id,
@@ -486,12 +490,14 @@ async def ack_assignment(
             lease_expires_at=assignment.lease_expires_at,
             lease_extension_count=assignment.lease_extension_count,
             attempt_number=assignment.attempt_number,
+            provider_effect_created=effect.created,
         )
     audit(
         request,
         "worker_assignment_ack",
         worker_id=str(worker.worker_id),
         assignment_id=str(assignment_id),
+        provider_effect_created=effect.created,
     )
     return out
 

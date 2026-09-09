@@ -351,3 +351,149 @@ async def test_mission_control_requires_admin(client, new_user):
             headers=outsider_headers,
         )
         assert response.status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_retry_failed_jobs_never_mutates_a_foreign_workspaces_pipeline_run(
+    client, new_user
+):
+    """Defense-in-depth regression. `retry_failed_jobs` has two loops: the
+    DLQ-replay loop resolves a PipelineRun from a related id and explicitly
+    re-checks `run.workspace_id == workspace_id` before touching it; the
+    second loop (assignments that failed without ever reaching the DLQ)
+    resolves a PipelineRun the same way via `assignment.pipeline_run_id`
+    but was missing that identical guard. Nothing in the schema ties a
+    StageAssignment's workspace_id to its pipeline_run's workspace_id — that
+    invariant is only caller discipline elsewhere in the code — so if it
+    were ever violated, workspace A's admin could flip workspace B's
+    pipeline run to RUNNING and enqueue a JobSchedule against it. Simulate
+    that desync directly (bypassing the callers that currently prevent it)
+    and confirm the guard now holds.
+    """
+    _uid, _tok, headers = new_user
+    ws_a = (
+        await client.post("/workspaces", headers=headers, json={"name": "Retry A"})
+    ).json()["id"]
+    ws_b = (
+        await client.post("/workspaces", headers=headers, json={"name": "Retry B"})
+    ).json()["id"]
+
+    content_b = await client.post(
+        f"/workspaces/{ws_b}/content-jobs",
+        headers=headers,
+        json={"topic": "Foreign run", "script_body": "draft"},
+    )
+    assert content_b.status_code == 201, content_b.text
+    run_b_id = content_b.json()["pipeline_run_id"]
+
+    async with AsyncSessionLocal() as session:
+        # Force workspace B's run to FAILED so the workspace guard is what
+        # stops the mutation, not the "already succeeded/cancelled" skip.
+        await session.execute(
+            text("UPDATE pipeline_runs SET status = 'failed' WHERE id = :id"),
+            {"id": run_b_id},
+        )
+        await session.execute(
+            text(
+                """
+                INSERT INTO stage_assignments (
+                    id, workspace_id, pipeline_run_id, stage, attempt_number, status
+                ) VALUES (
+                    :id, :ws_a, :run_b, 'scripting'::content_stage, 1,
+                    'failed'::stage_assignment_status
+                )
+                """
+            ),
+            {"id": str(uuid.uuid4()), "ws_a": ws_a, "run_b": run_b_id},
+        )
+        await session.commit()
+
+    retry = await client.post(
+        f"/workspaces/{ws_a}/operations/actions/retry-failed-jobs",
+        headers=headers,
+    )
+    assert retry.status_code == 200, retry.text
+
+    async with AsyncSessionLocal() as session:
+        run_b_status = await session.scalar(
+            text("SELECT status FROM pipeline_runs WHERE id = :id"), {"id": run_b_id}
+        )
+        assert run_b_status == "failed", (
+            "workspace A's retry action must never flip workspace B's "
+            "pipeline run to running"
+        )
+        leaked_schedule = await session.scalar(
+            text(
+                "SELECT count(*) FROM job_schedule WHERE ref_id = :id "
+                "AND job_type = 'retry'"
+            ),
+            {"id": run_b_id},
+        )
+        assert leaked_schedule == 0, (
+            "workspace A's retry action must never enqueue work against "
+            "workspace B's pipeline run"
+        )
+
+
+@pytest.mark.asyncio
+async def test_emergency_stop_never_revokes_a_foreign_workspaces_credential(
+    client, new_user
+):
+    """Defense-in-depth regression. `emergency_stop` revokes every ACTIVE
+    WorkerCredential for each worker it targets, filtered only by
+    worker_id — not by workspace_id, even though WorkerCredential has its
+    own workspace_id column. `worker_credentials` is FORCE RLS with no
+    policies (fully service-role-only), so this query is the only line of
+    defense; today it's safe only because every credential-creation path
+    always sets `credential.workspace_id = registration.workspace_id`.
+    Simulate that invariant being violated directly and confirm the
+    revocation query no longer reaches a foreign-workspace credential.
+    """
+    _uid, _tok, headers = new_user
+    ws_a = (
+        await client.post("/workspaces", headers=headers, json={"name": "Stop A"})
+    ).json()["id"]
+    ws_b = (
+        await client.post("/workspaces", headers=headers, json={"name": "Stop B"})
+    ).json()["id"]
+
+    worker_a = await client.post(
+        f"/workspaces/{ws_a}/workers",
+        headers=headers,
+        json={"name": "stop-a-worker", "supported_stages": ["scripting"]},
+    )
+    assert worker_a.status_code == 201, worker_a.text
+    worker_a_id = worker_a.json()["worker_id"]
+
+    foreign_credential_id = uuid.uuid4()
+    async with AsyncSessionLocal() as session:
+        # A credential row for worker A's own worker_id, but stamped with
+        # workspace B — the scenario that would arise if the "credential
+        # always inherits its worker's workspace" invariant were ever
+        # violated upstream.
+        await session.execute(
+            text(
+                """
+                INSERT INTO worker_credentials (id, worker_id, workspace_id, secret_hash, status)
+                VALUES (:id, :worker, :ws_b, 'test-hash-not-a-real-secret', 'active')
+                """
+            ),
+            {"id": str(foreign_credential_id), "worker": worker_a_id, "ws_b": ws_b},
+        )
+        await session.commit()
+
+    stop = await client.post(
+        f"/workspaces/{ws_a}/operations/actions/emergency-stop",
+        headers=headers,
+    )
+    assert stop.status_code == 200, stop.text
+
+    async with AsyncSessionLocal() as session:
+        status = await session.scalar(
+            text("SELECT status FROM worker_credentials WHERE id = :id"),
+            {"id": str(foreign_credential_id)},
+        )
+        assert status == "active", (
+            "workspace A's emergency-stop must never revoke a credential "
+            "stamped with a different workspace_id"
+        )

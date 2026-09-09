@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 
 import pytest
 from sqlalchemy import text
@@ -274,3 +275,207 @@ async def test_v4_endpoints_require_admin(client, new_user):
         json={"question": "Show private spend"},
     )
     assert assistant.status_code == 403
+
+
+async def _seed_billing(workspace_id: str, *, amount_cents: int) -> None:
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text(
+                """
+                INSERT INTO workspace_billing (
+                    workspace_id, plan, status, stripe_customer_id
+                ) VALUES (
+                    :ws, 'pro', 'active', :customer
+                )
+                ON CONFLICT (workspace_id) DO UPDATE
+                SET plan = EXCLUDED.plan,
+                    status = EXCLUDED.status,
+                    stripe_customer_id = EXCLUDED.stripe_customer_id
+                """
+            ),
+            {"ws": workspace_id, "customer": f"cus_{uuid.uuid4().hex[:10]}"},
+        )
+        await session.execute(
+            text(
+                """
+                INSERT INTO billing_webhook_events (
+                    id, stripe_event_id, event_type, workspace_id, processed_at, payload
+                ) VALUES (
+                    :id, :event_id, 'invoice.paid', :ws, :processed,
+                    CAST(:payload AS jsonb)
+                )
+                """
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "event_id": f"evt_{uuid.uuid4().hex}",
+                "ws": workspace_id,
+                "processed": datetime.now(UTC),
+                "payload": f'{{"data":{{"object":{{"amount_paid":{amount_cents}}}}}}}',
+            },
+        )
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_single_workspace_reports_never_blend_another_admined_workspace(
+    client, new_user
+):
+    """Regression (2026-09-08 audit finding): /operations/insights,
+    /operations/executive-mode, and /operations/search were pulling
+    billing/revenue/customer data from EVERY workspace the caller
+    administers, not just the one workspace_id in the URL. An agency
+    admin running two clients would see one client's revenue/name bleed
+    into the other's dashboard. /operations/customers is the one
+    INTENTIONAL cross-workspace "portfolio" view and must still include
+    both workspaces.
+    """
+    _user_id, _token, headers = new_user
+    workspace_a = (
+        await client.post(
+            "/workspaces", headers=headers, json={"name": "Blend Guard Client A"}
+        )
+    ).json()["id"]
+    workspace_b = (
+        await client.post(
+            "/workspaces", headers=headers, json={"name": "Blend Guard Client B"}
+        )
+    ).json()["id"]
+
+    # B gets far more revenue and far more members than A, so any leak of
+    # B's numbers into A's report is unmistakable rather than coincidental.
+    await _seed_billing(workspace_a, amount_cents=1000)  # $10.00
+    await _seed_billing(workspace_b, amount_cents=500000)  # $5000.00
+
+    for _ in range(3):
+        member = str(uuid.uuid4())
+        async with AsyncSessionLocal() as session:
+            await session.execute(
+                text("INSERT INTO auth.users (id, email) VALUES (:id, :e)"),
+                {"id": member, "e": f"{member}@example.com"},
+            )
+            await session.execute(
+                text(
+                    "INSERT INTO workspace_memberships (workspace_id, user_id, role) "
+                    "VALUES (:ws, :u, 'editor')"
+                ),
+                {"ws": workspace_b, "u": member},
+            )
+            await session.commit()
+
+    # --- executive-mode: revenue_mtd_usd must be A's own $10, not $5010 ---
+    exec_mode = await client.get(
+        f"/workspaces/{workspace_a}/operations/executive-mode", headers=headers
+    )
+    assert exec_mode.status_code == 200, exec_mode.text
+    assert Decimal(str(exec_mode.json()["revenue_mtd_usd"])) == Decimal("10.00")
+
+    # --- insights: most_active_customer must not be Client B's name ---
+    insights = await client.get(
+        f"/workspaces/{workspace_a}/operations/insights", headers=headers
+    )
+    assert insights.status_code == 200, insights.text
+    assert insights.json()["most_active_customer"] != "Blend Guard Client B"
+
+    # --- search: Client B must not appear as a "customer" hit from A's search ---
+    search = await client.get(
+        f"/workspaces/{workspace_a}/operations/search",
+        headers=headers,
+        params={"q": "Blend Guard"},
+    )
+    assert search.status_code == 200, search.text
+    customer_hits = [r for r in search.json()["results"] if r["type"] == "customer"]
+    assert all(r["title"] != "Blend Guard Client B" for r in customer_hits)
+
+    # --- customers: the intentional portfolio view must still see BOTH ---
+    portfolio = await client.get(
+        f"/workspaces/{workspace_a}/operations/customers", headers=headers
+    )
+    assert portfolio.status_code == 200, portfolio.text
+    names = {row["name"] for row in portfolio.json()["customers"]}
+    assert names == {"Blend Guard Client A", "Blend Guard Client B"}
+    assert Decimal(str(portfolio.json()["revenue_mtd_usd"])) == Decimal("5010.00")
+
+
+@pytest.mark.asyncio
+async def test_assistant_generic_idle_question_reports_the_actually_idle_worker(
+    client, new_user
+):
+    """A generic phrasing ("are any workers idle?") has no worker name for
+    the intent's regex to capture, leaving `needle` empty. The buggy version
+    used `needle in row.name.lower()`, and an empty string is a substring of
+    everything, so it silently matched whichever worker sorted first
+    alphabetically and answered about that worker regardless of whether it
+    was actually idle. Name the busy worker so it sorts first, to prove the
+    fix reports the real idle worker rather than the alphabetically-first one.
+    """
+    _user_id, _token, headers = new_user
+    workspace_id = (
+        await client.post("/workspaces", headers=headers, json={"name": "Idle Q&A"})
+    ).json()["id"]
+
+    content = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=headers,
+        json={"topic": "Idle assistant topic", "script_body": "draft"},
+    )
+    assert content.status_code == 201, content.text
+    run_id = content.json()["pipeline_run_id"]
+
+    busy = await client.post(
+        f"/workspaces/{workspace_id}/workers",
+        headers=headers,
+        json={"name": "aaa-busy-worker", "supported_stages": ["scripting"]},
+    )
+    assert busy.status_code == 201, busy.text
+    idle = await client.post(
+        f"/workspaces/{workspace_id}/workers",
+        headers=headers,
+        json={"name": "zzz-idle-worker", "supported_stages": ["scripting"]},
+    )
+    assert idle.status_code == 201, idle.text
+
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text(
+                """
+                INSERT INTO stage_assignments (
+                    id, workspace_id, pipeline_run_id, stage, attempt_number,
+                    worker_id, status, idempotency_key, lease_expires_at,
+                    dispatched_at, priority, provider
+                ) VALUES (
+                    :id, :ws, :run, 'scripting'::content_stage, 1, :worker,
+                    'dispatched'::stage_assignment_status, :idem, :lease,
+                    :dispatched, 0, 'draft_desk'
+                )
+                """
+            ),
+            {
+                "id": str(uuid.uuid4()),
+                "ws": workspace_id,
+                "run": run_id,
+                "worker": busy.json()["worker_id"],
+                "idem": f"idle-q-{uuid.uuid4()}",
+                "lease": datetime.now(UTC) + timedelta(minutes=5),
+                "dispatched": datetime.now(UTC),
+            },
+        )
+        await session.commit()
+
+    answer = await client.post(
+        f"/workspaces/{workspace_id}/operations/assistant",
+        headers=headers,
+        json={"question": "Are any workers idle right now?"},
+    )
+    assert answer.status_code == 200, answer.text
+    body = answer.json()
+    assert body["intent"] == "worker_idle"
+    # The free-text answer truncates to the first 10 names (this shared test
+    # DB accumulates global workers across the whole session's test runs, so
+    # "zzz-idle-worker" is not guaranteed to be one of the first 10 shown) —
+    # `facts` is the untruncated, authoritative list and is what actually
+    # proves the fix: the real idle worker is identified, the busy one isn't.
+    assert "aaa-busy-worker" not in body["answer"]
+    idle_ids = {fact["worker_id"] for fact in body["facts"]}
+    assert idle.json()["worker_id"] in idle_ids
+    assert busy.json()["worker_id"] not in idle_ids

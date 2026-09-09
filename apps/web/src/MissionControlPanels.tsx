@@ -1,4 +1,4 @@
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useRef, useState, type FormEvent, type ReactNode } from "react";
 import {
   createContentJob,
   createWorkspace,
@@ -51,6 +51,17 @@ function MetricCard({
 function Empty({ children }: { children: string }) {
   return <div className="empty">{children}</div>;
 }
+
+const ACTION_LABELS: Record<string, string> = {
+  "pause-workers": "Pause Workers",
+  "resume-workers": "Resume Workers",
+  "emergency-stop": "Emergency Stop",
+  "retry-failed-jobs": "Retry Failed Jobs",
+  "clear-dead-letter": "Clear Dead Letter Queue",
+  "sync-github": "Sync GitHub",
+  create_workspace: "Create Workspace",
+  create_pipeline: "Create Pipeline",
+};
 
 function StatusPill({ value }: { value: string }) {
   const normalized = value.toLowerCase();
@@ -304,8 +315,14 @@ export function QuickActionsView({
   const [confirmationAction, setConfirmationAction] = useState<string | null>(null);
   const [workspaceName, setWorkspaceName] = useState("");
   const [pipelineTopic, setPipelineTopic] = useState("");
+  const inFlight = useRef(false);
 
-  const run = async (action: string, fn: () => Promise<QuickActionResult | { message: string }>) => {
+  const run = async (
+    action: string,
+    fn: () => Promise<QuickActionResult | { message: string }>,
+  ) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(action);
     setError(null);
     try {
@@ -323,8 +340,9 @@ export function QuickActionsView({
       }
     } catch (err) {
       setResult(null);
-      setError(err instanceof Error ? err.message : "Action failed");
+      setError(`${ACTION_LABELS[action] ?? action} failed: ${err instanceof Error ? err.message : "Action failed"}`);
     } finally {
+      inFlight.current = false;
       setBusy(null);
     }
   };
@@ -452,10 +470,10 @@ export function QuickActionsView({
       {result ? (
         <div className={`alert-card alert-card--${result.ok ? "info" : "critical"}`}>
           <div>
-            <h3>{result.action}</h3>
+            <h3>{ACTION_LABELS[result.action] ?? result.action}</h3>
             <p>{result.message}</p>
           </div>
-          <strong>{result.affected}</strong>
+          <strong>{result.affected} affected</strong>
         </div>
       ) : null}
     </>

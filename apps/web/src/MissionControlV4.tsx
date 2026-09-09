@@ -297,6 +297,13 @@ export function LiveLogsView({
     job_id: "",
     severity: "",
   });
+  const hasActiveFilter = Boolean(filters.worker_id || filters.pipeline_id || filters.job_id || filters.severity);
+  useEffect(() => {
+    // The parent polls and passes a fresh unfiltered `initial` payload on an
+    // interval; only adopt it while no local filter is active, so an
+    // auto-refresh can't silently wipe out a filtered view the user set up.
+    if (!hasActiveFilter) setData(initial);
+  }, [initial]);
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     setBusy(true);
