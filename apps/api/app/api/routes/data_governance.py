@@ -53,6 +53,8 @@ async def export_workspace_data(
         "row_counts": bundle.row_counts,
         "excluded_tables": list(bundle.excluded_tables),
         "exclusion_reason": bundle.exclusion_reason,
+        "unattributable_tables": list(bundle.unattributable_tables),
+        "unattributable_reason": bundle.unattributable_reason,
         "tables": bundle.tables,
     }
 

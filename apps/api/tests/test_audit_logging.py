@@ -14,6 +14,18 @@ def test_audit_refuses_sensitive_fields(field):
         audit(None, "some_event", **{field: "value-that-must-never-be-logged"})
 
 
+@pytest.mark.parametrize("field", ["name", "module", "filename", "message", "args"])
+def test_audit_refuses_log_record_reserved_fields(field):
+    """Regression: `audit(request, "workspace_created", name=...)` passed
+    Python's own `logging.LogRecord` type-checks and unit-tested cleanly,
+    then raised KeyError deep inside stdlib logging the first time an
+    actual request hit it, because `extra={"name": ...}` collides with
+    the LogRecord's own `name` attribute. Catch these at the call site.
+    """
+    with pytest.raises(ValueError, match="LogRecord"):
+        audit(None, "some_event", **{field: "value"})
+
+
 def test_audit_accepts_identifiers(caplog):
     with caplog.at_level("INFO", logger="audit"):
         audit(None, "worker_registered", worker_id="abc", credential_id="def")

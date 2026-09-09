@@ -362,6 +362,28 @@ async def test_webhook_http_rejects_bad_signature(client, billing_on):
 
 
 @pytest.mark.asyncio
+async def test_webhook_rejection_is_audit_logged(client, billing_on, caplog):
+    """INFO-2: a rejected webhook (bad signature) is a potential
+    attack/misconfiguration signal and must land in the audit trail, not
+    just general application logs.
+    """
+    with caplog.at_level("INFO", logger="audit"):
+        res = await client.post(
+            "/webhooks/stripe",
+            content=b'{"id":"evt_x"}',
+            headers={"Stripe-Signature": "t=1,v1=deadbeef"},
+        )
+    assert res.status_code == 400
+    record = next(
+        r
+        for r in caplog.records
+        if r.name == "audit" and r.getMessage() == "stripe_webhook_rejected"
+    )
+    assert record.audit_event == "stripe_webhook_rejected"
+    assert record.code == "invalid_signature"
+
+
+@pytest.mark.asyncio
 async def test_checkout_already_entitled(client, new_user, billing_on):
     _uid, _tok, headers = new_user
     ws = await client.post("/workspaces", headers=headers, json={"name": "Already Pro"})
@@ -381,3 +403,122 @@ async def test_checkout_already_entitled(client, new_user, billing_on):
         json={},
     )
     assert res.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_checkout_customer_create_failure_raises_clean_billing_error(
+    client, new_user, billing_on
+):
+    """LOW-1: a Stripe failure on Customer.create must surface as a clean
+    503 (BillingError), not an unhandled 500, and must not leave a
+    half-applied stripe_customer_id behind for a retry to skip past.
+    """
+    import stripe
+
+    _uid, _tok, headers = new_user
+    ws = await client.post("/workspaces", headers=headers, json={"name": "Cust Fail"})
+    ws_id = ws.json()["id"]
+    # Seed the billing row via a separately-committed transaction, matching
+    # production: GET /billing always seeds it first (routes/billing.py),
+    # so by the time checkout runs the row already exists in the DB.
+    await client.get(f"/workspaces/{ws_id}/billing", headers=headers)
+
+    with patch(
+        "app.services.billing.stripe.Customer.create",
+        side_effect=stripe.error.StripeError("network blip"),
+    ):
+        res = await client.post(
+            f"/workspaces/{ws_id}/billing/checkout",
+            headers=headers,
+            json={},
+        )
+    assert res.status_code == 503, res.text
+
+    async with AsyncSessionLocal() as session:
+        row = await session.get(WorkspaceBilling, uuid.UUID(ws_id))
+        assert row is not None
+        assert row.stripe_customer_id is None
+
+
+@pytest.mark.asyncio
+async def test_checkout_session_create_failure_does_not_persist_customer_id(
+    client, new_user, billing_on
+):
+    """LOW-1: if Customer.create succeeds but Session.create then fails, the
+    route must not commit the half-applied stripe_customer_id — otherwise a
+    retry would skip Customer.create (branch already covered by
+    test_checkout_reuses_existing_stripe_customer_id) while the checkout
+    itself never actually completed.
+    """
+    import stripe
+
+    _uid, _tok, headers = new_user
+    ws = await client.post("/workspaces", headers=headers, json={"name": "Sess Fail"})
+    ws_id = ws.json()["id"]
+    await client.get(f"/workspaces/{ws_id}/billing", headers=headers)
+    fake_customer = {"id": f"cus_test_{uuid.uuid4().hex[:8]}"}
+
+    with (
+        patch(
+            "app.services.billing.stripe.Customer.create",
+            return_value=fake_customer,
+        ),
+        patch(
+            "app.services.billing.stripe.checkout.Session.create",
+            side_effect=stripe.error.StripeError("stripe 5xx"),
+        ),
+    ):
+        res = await client.post(
+            f"/workspaces/{ws_id}/billing/checkout",
+            headers=headers,
+            json={},
+        )
+    assert res.status_code == 503, res.text
+
+    async with AsyncSessionLocal() as session:
+        row = await session.get(WorkspaceBilling, uuid.UUID(ws_id))
+        assert row is not None
+        assert row.stripe_customer_id is None, (
+            "the route only commits after create_checkout_session returns "
+            "successfully, so a failure between the two Stripe calls must "
+            "roll back the customer id rather than persist it half-applied"
+        )
+
+
+@pytest.mark.asyncio
+async def test_checkout_reuses_existing_stripe_customer_id(client, new_user, billing_on):
+    """The existing-customer branch: Customer.create must not be called
+    again once stripe_customer_id is already set on the billing row.
+    """
+    _uid, _tok, headers = new_user
+    ws = await client.post("/workspaces", headers=headers, json={"name": "Reuse Cust"})
+    ws_id = ws.json()["id"]
+    existing_customer_id = f"cus_existing_{uuid.uuid4().hex[:8]}"
+
+    async with AsyncSessionLocal() as session:
+        row = await billing_service.ensure_workspace_billing(
+            session, workspace_id=uuid.UUID(ws_id)
+        )
+        row.stripe_customer_id = existing_customer_id
+        await session.commit()
+
+    fake_session = {
+        "id": f"cs_test_{uuid.uuid4().hex[:8]}",
+        "url": "https://checkout.stripe.test/cs_test_reuse",
+    }
+    with (
+        patch("app.services.billing.stripe.Customer.create") as create_customer,
+        patch(
+            "app.services.billing.stripe.checkout.Session.create",
+            return_value=fake_session,
+        ) as create_session,
+    ):
+        res = await client.post(
+            f"/workspaces/{ws_id}/billing/checkout",
+            headers=headers,
+            json={},
+        )
+    assert res.status_code == 200, res.text
+    create_customer.assert_not_called()
+    create_session.assert_called_once()
+    assert create_session.call_args.kwargs["customer"] == existing_customer_id

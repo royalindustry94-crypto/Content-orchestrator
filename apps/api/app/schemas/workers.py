@@ -203,6 +203,12 @@ class LeaseOut(BaseModel):
     lease_expires_at: datetime | None
     lease_extension_count: int
     attempt_number: int
+    # Populated on ack only (None on renew, which reserves no effect key).
+    # False means a *prior* attempt of this same assignment already
+    # reserved this effect key — the caller must not perform the
+    # provider-facing side effect again before checking whether that
+    # prior attempt actually completed it.
+    provider_effect_created: bool | None = None
 
 
 class SubmitIn(BaseModel):
