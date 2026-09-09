@@ -1622,6 +1622,7 @@ export default function LumoraDashboard({
       setNotifications(notificationsResult.value);
       setNotificationsError(null);
     } else {
+      setNotifications(null);
       setNotificationsError(
         notificationsResult.reason instanceof Error
           ? notificationsResult.reason.message

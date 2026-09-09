@@ -440,6 +440,38 @@ describe("dashboard navigation smoke test", () => {
     clearIntervalSpy.mockRestore();
   });
 
+  it("clears the notification badge instead of showing a stale count when a refresh fails", async () => {
+    const api = await import("./api");
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    const intervals: Array<TimerHandler> = [];
+    const setIntervalSpy = vi.spyOn(window, "setInterval").mockImplementation(((handler: TimerHandler) => {
+      intervals.push(handler);
+      return intervals.length as unknown as number;
+    }) as typeof window.setInterval);
+    const clearIntervalSpy = vi.spyOn(window, "clearInterval").mockImplementation(() => {});
+
+    (api.getNotifications as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
+      notifications: [{ key: "n1", title: "Job failed", message: "Retry needed", severity: "critical", count: 1 }],
+      generated_at: "2026-09-09T00:00:00Z",
+    });
+
+    renderShell();
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeDefined();
+    await waitFor(() => expect(screen.getByLabelText("Notifications").textContent).toContain("1"));
+
+    (api.getNotifications as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("503: backend unavailable"),
+    );
+
+    for (const handler of intervals) {
+      if (typeof handler === "function") handler();
+    }
+
+    await waitFor(() => expect(screen.getByLabelText("Notifications").textContent).not.toContain("1"));
+    setIntervalSpy.mockRestore();
+    clearIntervalSpy.mockRestore();
+  });
+
   it("ignores a late response from a route that is no longer active", async () => {
     const api = await import("./api");
     renderShell();
