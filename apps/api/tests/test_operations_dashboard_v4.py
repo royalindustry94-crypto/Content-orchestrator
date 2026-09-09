@@ -470,7 +470,11 @@ async def test_assistant_generic_idle_question_reports_the_actually_idle_worker(
     assert answer.status_code == 200, answer.text
     body = answer.json()
     assert body["intent"] == "worker_idle"
-    assert "zzz-idle-worker" in body["answer"]
+    # The free-text answer truncates to the first 10 names (this shared test
+    # DB accumulates global workers across the whole session's test runs, so
+    # "zzz-idle-worker" is not guaranteed to be one of the first 10 shown) —
+    # `facts` is the untruncated, authoritative list and is what actually
+    # proves the fix: the real idle worker is identified, the busy one isn't.
     assert "aaa-busy-worker" not in body["answer"]
     idle_ids = {fact["worker_id"] for fact in body["facts"]}
     assert idle.json()["worker_id"] in idle_ids

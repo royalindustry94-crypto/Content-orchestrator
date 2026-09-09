@@ -725,7 +725,11 @@ async def assistant_answer(
                     "has an active assignment."
                 )
             else:
-                names = ", ".join(row.name for row in idle)
+                shown = [row.name for row in idle[:10]]
+                names = ", ".join(shown)
+                remainder = len(idle) - len(shown)
+                if remainder > 0:
+                    names += f", and {remainder} more"
                 answer = f"{len(idle)} worker(s) are idle: {names}."
             facts = [
                 {
