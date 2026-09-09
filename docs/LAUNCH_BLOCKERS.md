@@ -1,8 +1,18 @@
 # Launch Blockers
 
 **Repository:** Content Orchestrator  
-**Updated:** 2026-08-28  
+**Updated:** 2026-09-09 (RUNTIME-001 closed; see note below — remainder of this file otherwise reflects `main`'s 2026-08-28 state, not yet the unmerged `claude/project-builder-handover-k95wpm` fixes)  
 **Audited baseline:** `main` after PR #49 governance merge  
+
+> **2026-09-09 update:** RUNTIME-001 below is now CLOSED — the Supabase MCP connector was
+> connected and a live read-only audit performed against the actual managed project
+> (`content-orchestrator-test`), including verifying the "RLS disabled" advisor findings are
+> not exploitable (zero grants to `anon`/`authenticated`) and bringing the managed database's
+> migration state in sync with the branch (head `0054`). See `docs/TECHNICAL_DEBT_REGISTER.md`
+> TD-071. Separately, TD-072 through TD-088 (RLS backstops on two more route files, a CRITICAL
+> cross-tenant dashboard-blending fix, billing hardening, and three workspace-scoping/logic
+> bugs) are fix-pushed on `claude/project-builder-handover-k95wpm` / PR #94, pending independent
+> re-audit before merge — not yet part of this file's "Merged audited baseline" below.
 **Source of truth:** exact-head CI, retained browser evidence, repository/runtime probes — not prior chat claims
 
 ## Rule
@@ -17,7 +27,7 @@ Nothing is considered deployable or releasable from documentation alone. The cur
 |---|---|---|
 | Product code baseline | **PRIVATE-BETA CAPABLE** | Business Manager + audited Research → Strategy → Content → Production → Compliance preview is merged and fail-closed |
 | Development governance | **CONDITIONAL** | Independent audit standard is merged; GitHub `main` branch protection is still disabled (issue #50) |
-| Operational private beta | **CONDITIONAL / NOT YET RUNTIME-VERIFIED** | Managed deployment/Supabase runtime evidence and current operator verification are not established in this audit |
+| Operational private beta | **CONDITIONAL / AWAITING OPERATOR VERIFICATION** | Managed Supabase runtime evidence is now established (RUNTIME-001 closed 2026-09-09); a hands-on Founder test of the live app is still pending |
 | Production | **BLOCKED** | Live providers, production auth/runtime evidence, managed PITR, billing go-live, policy/rights adapters and external publishing remain separate gates |
 
 ---
@@ -71,9 +81,13 @@ Required before scaling development throughput or relying on repository enforcem
 
 Current evidence: GitHub reports `main` as unprotected with no required status checks enforced.
 
-### RUNTIME-001 — Managed Supabase/runtime verification — **OPEN**
+### RUNTIME-001 — Managed Supabase/runtime verification — **CLOSED (2026-09-09)**
 
-The Supabase connector is installed but has not exposed a project to the current audit session. No managed database, production-auth, backup/PITR, or deployment claim may be marked verified from this state.
+Supabase MCP connector connected; live read-only audit performed against the actual managed
+project (`content-orchestrator-test`, ref `vagfnbcnvtojljggxvxr`). Database/RLS/grant state
+independently verified, migration drift found and corrected (now at head `0054`). PITR/backup
+policy specifically was not part of this pass — reopen narrowly for that if needed before a real
+go-live certification. See `docs/TECHNICAL_DEBT_REGISTER.md` TD-071 for full evidence.
 
 ### PROVIDER-001 — Live provider activation — **OPEN / DEFERRED**
 
