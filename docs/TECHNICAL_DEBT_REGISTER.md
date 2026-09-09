@@ -30,15 +30,15 @@ None currently open. TD-070 (below) closed 2026-09-09.
 | Recommendation | Raise the floor deliberately after measuring module-specific gaps; do not game coverage |
 | Effort | S |
 
-### TD-034 — No explicit application rate limiting — **OPEN**
+### TD-034 — No explicit application rate limiting — **CLOSED (2026-09-09)**
 
 | Field | Value |
 |---|---|
 | Severity | MEDIUM |
-| Evidence | Existing baseline does not establish a dedicated per-workspace/IP rate limiter |
-| Risk | Abuse and cost amplification, particularly when live providers are enabled |
-| Recommendation | Add bounded per-workspace/IP/provider limits before broad live-provider exposure |
-| Effort | M |
+| Evidence | No request had ever been rate-limited; a single client could flood the API or credential-stuff across many emails (the existing lockout in `local_auth.py` is per-*credential*, not per-IP, so it only engages once a specific known email is targeted). |
+| Fix | `app/core/rate_limit.py`: dependency-free, in-process, per-IP fixed-window limiter (`InMemoryRateLimiter` + `RateLimitMiddleware`). A global limit (default 300 req/60s per IP) applies to every route except `/health/*` and `/metrics`; a stricter dedicated limit (default 10 req/60s per IP) applies to `/auth/signup` and `/auth/login`. Rejections return `429` with `Retry-After` and are audit-logged (`rate_limit_exceeded`). Keys on `request.client.host`, not `X-Forwarded-For` (a client-supplied header would let any caller bypass the limit by varying it). New settings: `RATE_LIMIT_ENABLED` (default `true`), `RATE_LIMIT_WINDOW_SECONDS`, `RATE_LIMIT_REQUESTS_PER_WINDOW`, `AUTH_RATE_LIMIT_REQUESTS_PER_WINDOW`. See `docs/work-packages/WP-P1-010-rate-limiting.md` for the full design, including why this is deliberately in-process (single-container deployment topology today — no Redis dependency added without its own work package) and per-workspace/per-provider limits are deferred (tied to TD-041 live-provider activation, which isn't built yet). |
+| Tests | `tests/test_rate_limit.py`: limiter unit tests (window rollover, key isolation, invalid construction) plus a standalone-app integration suite (429 + `Retry-After`, auth paths use the stricter limiter independently of the global budget, exempt paths never limited, distinct client IPs have independent budgets) — 10 new tests, `app/core/rate_limit.py` at 100% coverage. Also asserts the shared `app` singleton does **not** attach the middleware under `ENVIRONMENT=test` — the full pytest session imports that module once and shares its state across ~340 unrelated tests, so enforcing it there would produce cross-test flakiness rather than signal; this mirrors the existing precedent in `app/main.py` for other interval/background behavior. Full suite: 349 passed (was 339), 81.23% coverage, verified from a clean install before closing this finding. |
+| Status | **CLOSED.** Self-implemented and self-tested in this pass (Phase 3 forward delivery, not a milestone-audit closure) — flagging per this register's own rule that the builder isn't the sole certifier of milestone-level work; this is a bounded P1 addition, not a milestone, so it doesn't require a separate independent audit before merge, but an independent read is still welcome. |
 
 ### TD-041 — BYOK / live-provider activation incomplete — **OPEN**
 
