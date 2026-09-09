@@ -424,15 +424,31 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
             elif event_type == "invoice.payment_failed":
                 sub = data_object.get("subscription")
                 if isinstance(sub, str):
-                    row = (
+                    found_workspace_id = (
                         await session.execute(
-                            select(WorkspaceBilling).where(
+                            select(WorkspaceBilling.workspace_id).where(
                                 WorkspaceBilling.stripe_subscription_id == sub
                             )
                         )
                     ).scalar_one_or_none()
-                    if row is not None:
-                        workspace_id = row.workspace_id
+                    if found_workspace_id is not None:
+                        workspace_id = found_workspace_id
+                        # Lock the row (same lock _apply_subscription takes)
+                        # BEFORE reading freshness, not after: a plain,
+                        # unlocked read here would let a concurrent,
+                        # genuinely parallel transaction (a newer
+                        # subscription.updated) still be uncommitted when
+                        # this reads "latest applied event", so this event
+                        # could wrongly conclude it's not stale, decide to
+                        # write, and then only *incidentally* block at
+                        # flush() on the other transaction's lock — meaning
+                        # the decision was made on stale data even though
+                        # the write itself is correctly serialized. Locking
+                        # first forces this read to happen only once the
+                        # concurrent transaction has actually committed.
+                        row = await ensure_workspace_billing(
+                            session, workspace_id=workspace_id, for_update=True
+                        )
                         # Unlike a subscription-status transition (the
                         # current, authoritative state of the subscription
                         # as of that event), a payment-failure notification

@@ -513,3 +513,75 @@ async def test_ensure_workspace_billing_for_update_locks_concurrent_readers(bill
     finally:
         await holder.close()
         await waiter.close()
+
+
+@pytest.mark.asyncio
+async def test_concurrent_stale_payment_failure_does_not_overwrite_a_committed_active_state(
+    billing_on,
+):
+    """Codex P1 on 7c07137: the payment-failure branch read WorkspaceBilling
+    without FOR UPDATE before running its own freshness comparison. Under
+    genuine concurrency — two separate transactions, not just two events in
+    one session — an older invoice.payment_failed transaction's freshness
+    check can run before a newer customer.subscription.updated "active"
+    transaction's receipt has committed, so it correctly sees nothing to
+    compare against, decides "not stale", and queues an unconditional
+    status="past_due" write. That write's flush() only *incidentally* blocks
+    on the active transaction's row lock (any UPDATE does); by the time it's
+    unblocked and applied, the decision to overwrite was already made on
+    stale information, so it clobbers the now-committed "active" status with
+    "past_due" regardless of true event order. The freshness read must
+    happen only *after* acquiring the same row lock _apply_subscription
+    takes (via ensure_workspace_billing(..., for_update=True)), so a
+    concurrent writer is forced to serialize behind the commit it needs to
+    see before it decides anything.
+    """
+    async with AsyncSessionLocal() as setup:
+        ws = await _workspace(setup)
+        sub = f"sub_{uuid.uuid4().hex[:10]}"
+        # Seed the row — with stripe_subscription_id already committed, so
+        # the payment-failure branch's lookup-by-subscription-id finds it
+        # regardless of which transaction commits first — so both sides hit
+        # the SELECT ... FOR UPDATE path.
+        seeded = await billing_service.ensure_workspace_billing(setup, workspace_id=ws)
+        seeded.stripe_subscription_id = sub
+        await setup.commit()
+
+    base = int(datetime.now(UTC).timestamp())
+    active_session = AsyncSessionLocal()
+    failed_session = AsyncSessionLocal()
+    try:
+        active_event = _subscription_event(
+            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
+            status="active", sub_id=sub, created=base + 3600,
+        )
+        # active_session processes the newer event and holds its row lock
+        # open (uncommitted) — exactly the window the race needs.
+        await billing_service.process_stripe_event(active_session, event=active_event)
+
+        failed_event = {
+            "id": f"evt_{uuid.uuid4().hex[:12]}",
+            "type": "invoice.payment_failed",
+            "created": base,
+            "data": {"object": {"id": f"in_{uuid.uuid4().hex[:10]}", "subscription": sub}},
+        }
+        failed_task = asyncio.create_task(
+            billing_service.process_stripe_event(failed_session, event=failed_event)
+        )
+        await asyncio.sleep(0.2)
+
+        await active_session.commit()
+        await asyncio.wait_for(failed_task, timeout=5)
+        await failed_session.commit()
+
+        async with AsyncSessionLocal() as verify:
+            row = await verify.get(WorkspaceBilling, ws)
+            assert row is not None
+            assert row.status == "active", (
+                "a payment-failure transaction racing a newer active "
+                "transaction must not overwrite the committed active state "
+                "once its own freshness check can actually see it"
+            )
+    finally:
+        await active_session.close()
+        await failed_session.close()
