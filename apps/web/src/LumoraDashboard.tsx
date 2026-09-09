@@ -1595,6 +1595,7 @@ export default function LumoraDashboard({
   const requestId = useRef(0);
   const dataRef = useRef<ViewData>(null);
   const loadedKeyRef = useRef<string | null>(null);
+  const loadInFlightRef = useRef(false);
   const mobileNavRef = useDialogFocus<HTMLElement>(mobileOpen, () => setMobileOpen(false));
 
   const currentWorkspace = workspaces.find((workspace) => workspace.id === workspaceId);
@@ -1613,29 +1614,30 @@ export default function LumoraDashboard({
     return () => { active = false; };
   }, [token]);
 
-  const refreshShellStatus = useCallback(async () => {
-    const [notificationsResult, gatesResult] = await Promise.allSettled([
-      getNotifications(token, workspaceId),
-      listReviewGates(token, workspaceId),
-    ]);
-    if (notificationsResult.status === "fulfilled") {
-      setNotifications(notificationsResult.value);
-      setNotificationsError(null);
-    } else {
-      setNotifications(null);
-      setNotificationsError(
-        notificationsResult.reason instanceof Error
-          ? notificationsResult.reason.message
-          : "Unable to refresh notifications.",
-      );
-    }
-    if (gatesResult.status === "fulfilled") {
-      setReviewCount(gatesResult.value.length);
-    }
-    setNotificationsLoading(false);
-  }, [token, workspaceId]);
-
   useEffect(() => {
+    let active = true;
+    const refreshShellStatus = async () => {
+      const [notificationsResult, gatesResult] = await Promise.allSettled([
+        getNotifications(token, workspaceId),
+        listReviewGates(token, workspaceId),
+      ]);
+      if (!active) return;
+      if (notificationsResult.status === "fulfilled") {
+        setNotifications(notificationsResult.value);
+        setNotificationsError(null);
+      } else {
+        setNotifications(null);
+        setNotificationsError(
+          notificationsResult.reason instanceof Error
+            ? notificationsResult.reason.message
+            : "Unable to refresh notifications.",
+        );
+      }
+      if (gatesResult.status === "fulfilled") {
+        setReviewCount(gatesResult.value.length);
+      }
+      setNotificationsLoading(false);
+    };
     setNotificationsLoading(true);
     void refreshShellStatus();
     const interval = window.setInterval(() => {
@@ -1643,8 +1645,11 @@ export default function LumoraDashboard({
         void refreshShellStatus();
       }
     }, AUTO_REFRESH_MS);
-    return () => window.clearInterval(interval);
-  }, [refreshShellStatus]);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [token, workspaceId]);
 
   useEffect(() => {
     // Dashboard and Settings already fetch health as part of their atomic page
@@ -1664,6 +1669,7 @@ export default function LumoraDashboard({
         }
       } catch (cause) {
         if (active) {
+          setHealth(null);
           setHealthWorkspaceId(workspaceId);
           setHealthError(cause instanceof Error ? cause.message : "Unable to refresh system health.");
         }
@@ -1687,6 +1693,7 @@ export default function LumoraDashboard({
     const currentRequest = requestId.current + 1;
     requestId.current = currentRequest;
     const isCurrent = () => requestId.current === currentRequest;
+    loadInFlightRef.current = true;
     if (options.background && hasCurrentData) {
       setRefreshing(true);
     } else {
@@ -1802,6 +1809,7 @@ export default function LumoraDashboard({
         setLoading(false);
         setRefreshing(false);
       }
+      loadInFlightRef.current = false;
     }
   }, [nav, missionTab, token, workspaceId]);
 
@@ -1810,7 +1818,7 @@ export default function LumoraDashboard({
   useEffect(() => {
     if (nav === "ask" || isMissionAssistant(nav, missionTab)) return;
     const interval = window.setInterval(() => {
-      if (document.visibilityState === "visible") {
+      if (document.visibilityState === "visible" && !loadInFlightRef.current) {
         void load({ background: true });
       }
     }, AUTO_REFRESH_MS);

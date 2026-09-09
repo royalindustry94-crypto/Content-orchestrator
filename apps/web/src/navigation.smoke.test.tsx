@@ -414,6 +414,47 @@ describe("dashboard navigation smoke test", () => {
     clearIntervalSpy.mockRestore();
   });
 
+  it("skips a polling tick while the previous background refresh is still in flight", async () => {
+    const api = await import("./api");
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    const intervals: Array<TimerHandler> = [];
+    const setIntervalSpy = vi.spyOn(window, "setInterval").mockImplementation(((handler: TimerHandler) => {
+      intervals.push(handler);
+      return intervals.length as unknown as number;
+    }) as typeof window.setInterval);
+    const clearIntervalSpy = vi.spyOn(window, "clearInterval").mockImplementation(() => {});
+
+    renderShell();
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeDefined();
+    expect(api.getExecutiveDashboard).toHaveBeenCalledTimes(1);
+
+    let resolveSlowLoad: (() => void) | undefined;
+    (api.getExecutiveDashboard as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise((resolve) => { resolveSlowLoad = () => resolve(executive); }),
+    );
+
+    for (const handler of intervals) {
+      if (typeof handler === "function") handler();
+    }
+    await waitFor(() => expect(api.getExecutiveDashboard).toHaveBeenCalledTimes(2));
+
+    for (const handler of intervals) {
+      if (typeof handler === "function") handler();
+    }
+    expect(api.getExecutiveDashboard).toHaveBeenCalledTimes(2);
+
+    resolveSlowLoad?.();
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Home" })).toBeDefined());
+
+    for (const handler of intervals) {
+      if (typeof handler === "function") handler();
+    }
+    await waitFor(() => expect(api.getExecutiveDashboard).toHaveBeenCalledTimes(3));
+
+    setIntervalSpy.mockRestore();
+    clearIntervalSpy.mockRestore();
+  });
+
   it("shows a visible stale-data warning when a background refresh fails", async () => {
     const api = await import("./api");
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
