@@ -1635,9 +1635,10 @@ export default function LumoraDashboard({
       }
       if (gatesResult.status === "fulfilled") {
         setReviewCount(gatesResult.value.length);
-      } else {
-        setReviewCount(0);
       }
+      // Deliberately not cleared on failure: Human Review is a safety-critical
+      // gate, so a stale-but-real count is safer than a false "0 waiting" that
+      // could read as "nothing pending" when the refresh simply failed.
       setNotificationsLoading(false);
     };
     setNotificationsLoading(true);
@@ -2208,7 +2209,7 @@ export default function LumoraDashboard({
           ) : null}
           {refreshError ? (
             <p className="error" role="alert">
-              Live refresh failed: {refreshError} Showing the last successful data.
+              Live refresh failed: {refreshError}. Showing the last successful data.
             </p>
           ) : null}
           {nav === "mission" ? (
