@@ -1,8 +1,8 @@
 # Technical Debt Register
 
 **Repository:** Content Orchestrator  
-**Updated:** 2026-09-08  
-**Current reference:** `claude/project-builder-handover-k95wpm` (unmerged; base `main` remains PR #49)
+**Updated:** 2026-09-09 (Phase 0/1 recovery audit — reconciled against merged `main`)  
+**Current reference:** `main` @ `2ca92f8` (PR #94 and PR #95 merged 2026-09-09T13:19 UTC; superseded the prior unmerged `claude/project-builder-handover-k95wpm` reference below)
 
 Severity: CRITICAL · HIGH · MEDIUM · LOW · INFO
 
@@ -14,15 +14,7 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 
 ### HIGH
 
-### TD-070 — `main` branch protection disabled — **OPEN**
-
-| Field | Value |
-|---|---|
-| Severity | HIGH |
-| Evidence | GitHub reports `main` unprotected with no required status checks enforced; tracked by issue #50 |
-| Risk | Direct push or unverified merge can bypass the audited workflow |
-| Recommendation | Require PRs, relevant CI gates, block force push/deletion, tightly control emergency bypass, then independently re-read protection/ruleset state |
-| Effort | S |
+None currently open. TD-070 (below) closed 2026-09-09.
 
 ---
 
@@ -79,12 +71,39 @@ Do not mark HIGH/CRITICAL resolved without exact commit/PR evidence, regression 
 | TD-050 | Ruff format is not a distinct CI gate | LOW |
 | TD-060 | FORCE RLS remains a positive architectural control | INFO — exact current table count should be derived from live/current migration evidence when needed |
 | TD-061 | Migration round-trip through current head `0054` | INFO — PASS (branch `claude/project-builder-handover-k95wpm`; not yet on `main`) |
-| TD-062 | API baseline | INFO — **333 passed / 81% coverage** on the same branch (was 299/81.09% on `main`) |
+| TD-062 | API baseline | INFO — **333 passed / 81% coverage** on the pre-merge branch (was 299/81.09% on `main`); **339 passed / 80.82% coverage** independently reproduced on merged `main` @ `2ca92f8` (2026-09-09 recovery audit, fresh install/venv, full pytest+coverage run) |
 | TD-063 | Exact-head browser smoke | INFO — retained desktop + exact-390px CI evidence now exists on `main`; not re-run for this unmerged branch |
 
 ---
 
+## Closed — 2026-09-09 Phase 0/1 recovery audit
+
+### TD-070 — `main` branch protection disabled — **CLOSED**
+
+| Field | Value |
+|---|---|
+| Severity | HIGH |
+| Evidence | Issue #50 was closed 2026-08-28 as "completed," but its only linked implementation, PR #59 (a `workflow_dispatch` job to `PUT` protection via the REST API), was left **open and draft** — never merged — because it depended on a Founder-supplied `ADMIN_PAT` secret and a manual run. That left the register unable to tell, from the PR trail alone, whether protection was ever actually turned on. Re-probed live via `mcp__github__list_branches` during this recovery audit (2026-09-09): `main` now reports `"protected": true`. Protection was evidently applied directly (GitHub UI or equivalent), not through PR #59's workflow — PR #59 itself is stale/superseded and safe to close without merging, at the Founder's discretion, since the control it exists to add is already live by another path. |
+| Verification | Live GitHub API read this session: `{"name":"main","sha":"2ca92f8...","protected":true}`. Ruleset detail (required-checks list, force-push/deletion block, admin-enforcement) was not individually re-read in this pass — the connected tool surface exposes only the `protected` boolean, not the full ruleset payload; re-open narrowly if per-check enforcement detail is ever needed as evidence for an external audit. |
+| Status | **CLOSED.** `main` is protected as of this verification. Issue #50's closure is corroborated, not just trusted. |
+
+---
+
 ## Closed — independently re-audited (2026-09-07 Claude cross-check batch, issue #91)
+
+**2026-09-09 update:** PR #94 (TD-072 through TD-088, all 15 findings below) and PR #95
+(Operations Dashboard frontend hardening) are now **merged to `main`** (head `2ca92f8`).
+The independent re-audit (issue #91) that had already passed all 15 findings on the
+pre-merge branch was re-verified against `main` itself in this recovery audit: API suite
+reproduced clean from a fresh install — **339 passed, 80.82% coverage** (75% floor),
+migration upgrade → downgrade-to-base → re-upgrade clean through head `0054`, `ruff check`
+clean; worker suite reproduced clean — 7 passed, lint clean; web suite reproduced clean —
+lint clean, `tsc -b && vite build` clean, 31 tests passed, `npm audit --audit-level=high`
+clean (2 pre-existing moderate `@vitest/mocker` advisories in a dev-only test-runner
+dependency, not shipped, not high/critical, matching CI's own `--audit-level=high` gate).
+Codex's Section 1 gate on protected `main` (issue #91, 2026-09-08) should now be re-checked
+against this merged head — the coupling and evidence trail below remains the authoritative
+per-finding record.
 
 Per this register's own rule, the builder who found these is also the one who
 fixed them, so none were self-certified closed. A separate Claude session,
@@ -318,8 +337,9 @@ The following previously resolved controls remain closed unless new evidence sho
 
 ## Current burn-down priority
 
-1. TD-072…TD-082, TD-085…TD-088 are independently re-audited PASS (issue #91, 2026-09-09) — get PR #94 through Founder review and merged to `main`, then re-verify there (Codex's Section 1 gate stays FAIL on `main` until this lands and is re-checked in place).
-2. **TD-070 / issue #50:** technically protect `main`.
+1. ~~TD-072…TD-082, TD-085…TD-088 through PR #94; get it merged to `main`~~ — **DONE.** PR #94 and PR #95 merged 2026-09-09; re-verified against merged `main` in this recovery audit (see evidence above). Codex's Section 1 gate should be re-run against `main` @ `2ca92f8` to close the loop formally.
+2. ~~**TD-070 / issue #50:** technically protect `main`~~ — **DONE.** `main` verified `protected: true` live.
 3. Select one revenue-producing private-beta workflow and verify it end-to-end in the managed environment.
 4. Activate cost-bearing providers one at a time with spend, retry, idempotency and Human Review controls — see TD-041's build-order gap list.
 5. Raise coverage/security/observability depth based on measured risk, not feature-count pressure.
+6. Housekeeping (low priority, not blocking): ~30 open PRs and dozens of stale branches remain from earlier multi-agent lanes, mostly superseded by the now-merged audited baseline (`main` @ `2ca92f8`). Per `coordination hub #90`, none should be closed/merged/absorbed without an explicit Founder decision — flagged here for Founder triage, not acted on unilaterally.
