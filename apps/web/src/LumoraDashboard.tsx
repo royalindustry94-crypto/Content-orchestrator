@@ -1596,9 +1596,6 @@ export default function LumoraDashboard({
   const dataRef = useRef<ViewData>(null);
   const loadedKeyRef = useRef<string | null>(null);
   const loadInFlightRef = useRef(false);
-  const notificationsInFlightRef = useRef(false);
-  const gatesInFlightRef = useRef(false);
-  const healthInFlightRef = useRef(false);
   const mobileNavRef = useDialogFocus<HTMLElement>(mobileOpen, () => setMobileOpen(false));
 
   const currentWorkspace = workspaces.find((workspace) => workspace.id === workspaceId);
@@ -1618,11 +1615,17 @@ export default function LumoraDashboard({
   }, [token]);
 
   useEffect(() => {
+    // In-flight flags are closures scoped to this effect run, not shared
+    // refs: a workspace switch discards them entirely along with the rest
+    // of this closure, so a hung request from the previous workspace can
+    // never block the new workspace's own fetches or poll ticks.
     let active = true;
+    let notificationsInFlight = false;
+    let gatesInFlight = false;
 
     const refreshNotifications = () => {
-      if (notificationsInFlightRef.current) return;
-      notificationsInFlightRef.current = true;
+      if (notificationsInFlight) return;
+      notificationsInFlight = true;
       getNotifications(token, workspaceId)
         .then((value) => {
           if (!active) return;
@@ -1635,14 +1638,14 @@ export default function LumoraDashboard({
           setNotificationsError(cause instanceof Error ? cause.message : "Unable to refresh notifications.");
         })
         .finally(() => {
-          notificationsInFlightRef.current = false;
+          notificationsInFlight = false;
           if (active) setNotificationsLoading(false);
         });
     };
 
     const refreshGates = () => {
-      if (gatesInFlightRef.current) return;
-      gatesInFlightRef.current = true;
+      if (gatesInFlight) return;
+      gatesInFlight = true;
       listReviewGates(token, workspaceId)
         .then((rows) => {
           if (!active) return;
@@ -1653,7 +1656,7 @@ export default function LumoraDashboard({
         })
         .catch(() => {})
         .finally(() => {
-          gatesInFlightRef.current = false;
+          gatesInFlight = false;
         });
     };
 
@@ -1680,9 +1683,10 @@ export default function LumoraDashboard({
       return;
     }
     let active = true;
+    let healthInFlight = false;
     const refreshShellHealth = async () => {
-      if (healthInFlightRef.current) return;
-      healthInFlightRef.current = true;
+      if (healthInFlight) return;
+      healthInFlight = true;
       try {
         const value = await getSystemHealth(token, workspaceId);
         if (active) {
@@ -1697,7 +1701,7 @@ export default function LumoraDashboard({
           setHealthError(cause instanceof Error ? cause.message : "Unable to refresh system health.");
         }
       } finally {
-        healthInFlightRef.current = false;
+        healthInFlight = false;
       }
     };
     void refreshShellHealth();
