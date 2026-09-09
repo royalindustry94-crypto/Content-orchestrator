@@ -126,8 +126,17 @@ def upgrade() -> None:
     # --- worker_credentials: zero grant, zero policy (0025: service-role-
     # only). workspace_id is NOT NULL on this table (every credential
     # belongs to exactly one workspace via its worker), so no extra guard
-    # is needed the way worker_registry's nullable column required. -------
-    op.execute("GRANT SELECT, UPDATE ON worker_credentials TO app_runtime;")
+    # is needed the way worker_registry's nullable column required.
+    # Column-scoped: emergency_stop() only needs to identify and revoke a
+    # credential (id, worker_id, workspace_id, status), never its
+    # secret_hash — granting SELECT/UPDATE table-wide would let an admin's
+    # RLS session read the hash, reversing 0025's "secret hashes are never
+    # readable by user roles" guarantee for no operational reason. -------
+    op.execute(
+        "GRANT SELECT (id, worker_id, workspace_id, status, created_at, rotated_at, expires_at) "
+        "ON worker_credentials TO app_runtime;"
+    )
+    op.execute("GRANT UPDATE (status) ON worker_credentials TO app_runtime;")
     op.execute(
         "CREATE POLICY worker_credentials_admin_select ON worker_credentials FOR SELECT "
         "USING (app_user_has_workspace_role(workspace_id, ARRAY['admin']::workspace_role[]));"

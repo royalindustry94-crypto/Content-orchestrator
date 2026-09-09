@@ -13,7 +13,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -804,18 +804,21 @@ async def emergency_stop(
     revoked = 0
     for worker in workers:
         await session.get(WorkerRegistration, worker.id, with_for_update=True)
-        creds = (
-            await session.execute(
-                select(WorkerCredential).where(
-                    WorkerCredential.worker_id == worker.id,
-                    WorkerCredential.workspace_id == workspace_id,
-                    WorkerCredential.status == WorkerCredentialStatus.ACTIVE,
-                )
+        # Bulk UPDATE rather than SELECT-then-mutate: this route runs over
+        # the admin's RLS-scoped session, which is deliberately granted
+        # UPDATE on `status` only (never SELECT on `secret_hash`) — an ORM
+        # `select(WorkerCredential)` would hydrate every column, including
+        # the hash, and fail against that narrower grant.
+        result = await session.execute(
+            update(WorkerCredential)
+            .where(
+                WorkerCredential.worker_id == worker.id,
+                WorkerCredential.workspace_id == workspace_id,
+                WorkerCredential.status == WorkerCredentialStatus.ACTIVE,
             )
-        ).scalars().all()
-        for credential in creds:
-            credential.status = WorkerCredentialStatus.REVOKED
-            revoked += 1
+            .values(status=WorkerCredentialStatus.REVOKED)
+        )
+        revoked += result.rowcount or 0
         await reap_worker_assignments(
             session, worker.id, reason=RecoveryReason.WORKER_REVOKED
         )

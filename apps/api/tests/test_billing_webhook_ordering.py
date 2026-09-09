@@ -216,6 +216,43 @@ async def test_delayed_older_event_does_not_resurrect_a_newer_cancellation(billi
 
 
 @pytest.mark.asyncio
+async def test_equal_timestamp_active_event_does_not_win_over_a_cancellation(billing_on):
+    """Stripe `created` is second-granularity, so two distinct events for the
+    same subscription can share the exact same timestamp. A tie must not let
+    whichever event is merely delivered/processed *last* decide the outcome:
+    an entitlement-granting event tied with an already-applied cancellation
+    must lose, while the cancellation itself is always safe to apply.
+    """
+    async with AsyncSessionLocal() as session:
+        ws = await _workspace(session)
+        sub = f"sub_{uuid.uuid4().hex[:10]}"
+        tie = int(datetime.now(UTC).timestamp())
+        canceled = _subscription_event(
+            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
+            status="canceled", sub_id=sub, event_type="customer.subscription.deleted",
+            created=tie,
+        )
+        active_same_instant = _subscription_event(
+            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
+            status="active", sub_id=sub, event_type="customer.subscription.updated",
+            created=tie,
+        )
+
+        first = await billing_service.process_stripe_event(session, event=canceled)
+        await session.commit()
+        assert first["status"] == "processed"
+
+        second = await billing_service.process_stripe_event(session, event=active_same_instant)
+        await session.commit()
+        assert second["status"] == "processed"
+
+        row = await session.get(WorkspaceBilling, ws)
+        assert row is not None
+        assert row.status == "canceled"
+        assert billing_service.is_entitled(row, billing_enabled=True) is False
+
+
+@pytest.mark.asyncio
 async def test_failed_handler_rolls_back_receipt_and_state(billing_on):
     """A handler error must leave no receipt and no partial mutation, so
     Stripe's retry is processed cleanly rather than being swallowed as a

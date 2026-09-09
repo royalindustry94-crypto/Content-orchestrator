@@ -215,15 +215,18 @@ def _period_end_from_subscription(sub: dict) -> datetime | None:
 
 
 async def _latest_applied_event_created(
-    session: AsyncSession, *, workspace_id: uuid.UUID
+    session: AsyncSession, *, workspace_id: uuid.UUID, exclude_event_id: str
 ) -> int | None:
     """Max Stripe `created` timestamp among subscription-lifecycle webhook
-    receipts already stored for this workspace (includes the event currently
-    being applied, since its receipt is flushed before this is called)."""
+    receipts already stored for this workspace, excluding the event
+    currently being applied (its own receipt is flushed before this is
+    called, so it would otherwise tie with itself on a brand-new
+    subscription and be mistaken for an already-applied prior event)."""
     rows = (
         await session.execute(
             select(BillingWebhookEvent.payload).where(
                 BillingWebhookEvent.workspace_id == workspace_id,
+                BillingWebhookEvent.stripe_event_id != exclude_event_id,
                 BillingWebhookEvent.event_type.in_(
                     (
                         "customer.subscription.created",
@@ -247,19 +250,28 @@ async def _apply_subscription(
     *,
     workspace_id: uuid.UUID,
     subscription: dict,
+    event_id: str,
     event_created: int | None = None,
 ) -> None:
     billing = await ensure_workspace_billing(
         session, workspace_id=workspace_id, for_update=True
     )
+    status = str(subscription.get("status") or "inactive")
     if event_created is not None:
-        latest = await _latest_applied_event_created(session, workspace_id=workspace_id)
-        if latest is not None and event_created < latest:
-            # Stripe does not guarantee event delivery order: this event is
-            # older than one already applied (e.g. a delayed "active" update
-            # arriving after a newer "canceled" was processed). Applying it
-            # would incorrectly resurrect a superseded state, so skip the
-            # mutation while still keeping the receipt row for idempotency.
+        latest = await _latest_applied_event_created(
+            session, workspace_id=workspace_id, exclude_event_id=event_id
+        )
+        # Stripe `created` timestamps are second-granularity, so two distinct
+        # events can genuinely tie. A strict "<" only rejects an event that's
+        # unambiguously older; on a tie, whichever was delivered last would
+        # otherwise win regardless of which one actually reflects the later
+        # state. Fail closed on ties and on stale events: always accept a
+        # cancellation/downgrade (moving *out* of entitlement is safe to
+        # apply immediately), but only accept an entitlement-granting status
+        # when this event is unambiguously the newest one seen.
+        is_entitling = status in ACTIVE_STATUSES
+        stale_or_tied = latest is not None and event_created <= latest
+        if stale_or_tied and is_entitling:
             logger.info(
                 "stripe_webhook_stale_event_skipped",
                 extra={
@@ -276,7 +288,6 @@ async def _apply_subscription(
     elif isinstance(customer, dict) and customer.get("id"):
         billing.stripe_customer_id = customer["id"]
 
-    status = str(subscription.get("status") or "inactive")
     billing.status = status
     if status in ACTIVE_STATUSES:
         billing.plan = PRO_PLAN
@@ -402,6 +413,7 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
                     session,
                     workspace_id=workspace_id,
                     subscription=data_object,
+                    event_id=event_id,
                     event_created=raw_created if isinstance(raw_created, int) else None,
                 )
             elif event_type == "invoice.payment_failed":
