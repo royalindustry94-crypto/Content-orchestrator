@@ -1,0 +1,42 @@
+name: Claude Code
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+concurrency:
+  # Each mention gets its own run. Repository contents are read-only below, so
+  # parallel requests cannot race while committing to the same branch.
+  group: claude-${{ github.repository }}-${{ github.event.comment.id }}
+  cancel-in-progress: false
+
+jobs:
+  claude:
+    if: >-
+      contains(github.event.comment.body, '@claude') &&
+      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: write
+      id-token: write
+      actions: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 1
+      - uses: anthropics/claude-code-action@9c5ddab2e6d17b83ea679153b31f1d5f023cf636 # v1.0.217
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          additional_permissions: |
+            contents: read
+          prompt: |
+            This workflow intentionally has read-only repository contents so
+            every @claude request can run independently without overlapping
+            code writes. Do not edit, commit, or push. For a requested code
+            change, respond with a scoped implementation plan or patch advice.
+          claude_args: "--max-turns 5"
