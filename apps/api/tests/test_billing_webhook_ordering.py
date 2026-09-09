@@ -60,12 +60,13 @@ async def _workspace(session) -> uuid.UUID:
 def _subscription_event(
     *, event_id: str, workspace_id: uuid.UUID, status: str, sub_id: str,
     event_type: str = "customer.subscription.updated", period_end: datetime | None = None,
+    created: int | None = None,
 ) -> dict:
     end = period_end or (datetime.now(UTC) + timedelta(days=30))
     return {
         "id": event_id,
         "type": event_type,
-        "created": int(end.timestamp()),
+        "created": created if created is not None else int(end.timestamp()),
         "data": {
             "object": {
                 "id": sub_id,
@@ -164,6 +165,53 @@ async def test_out_of_order_events_converge_on_latest_delivered_state(billing_on
         assert again["status"] == "duplicate"
         await session.refresh(row)
         assert row.status == "canceled"
+        assert billing_service.is_entitled(row, billing_enabled=True) is False
+
+
+@pytest.mark.asyncio
+async def test_delayed_older_event_does_not_resurrect_a_newer_cancellation(billing_on):
+    """Two *distinct* events (different ids) for the same subscription: an
+    older 'active' update and a newer cancellation. Stripe explicitly does
+    not guarantee delivery order, so the older event can arrive at this
+    service *after* the newer one has already been applied. It must not
+    overwrite the newer state — this is different from literal event-id
+    redelivery, which the duplicate-receipt guard already handles.
+    """
+    async with AsyncSessionLocal() as session:
+        ws = await _workspace(session)
+        sub = f"sub_{uuid.uuid4().hex[:10]}"
+        base = int(datetime.now(UTC).timestamp())
+        older_active = _subscription_event(
+            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
+            status="active", sub_id=sub, event_type="customer.subscription.updated",
+            created=base,
+        )
+        newer_canceled = _subscription_event(
+            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
+            status="canceled", sub_id=sub, event_type="customer.subscription.deleted",
+            created=base + 3600,
+        )
+
+        # Newer event arrives and is applied first (realistic: the older
+        # event's original delivery attempt failed and Stripe is retrying it).
+        first = await billing_service.process_stripe_event(session, event=newer_canceled)
+        await session.commit()
+        assert first["status"] == "processed"
+
+        row = await session.get(WorkspaceBilling, ws)
+        assert row is not None and row.status == "canceled"
+        assert billing_service.is_entitled(row, billing_enabled=True) is False
+
+        # The older event now arrives late, as a genuinely distinct event
+        # (not a redelivery) — it must be accepted as a receipt (not a
+        # duplicate) but must NOT resurrect entitlement.
+        second = await billing_service.process_stripe_event(session, event=older_active)
+        await session.commit()
+        assert second["status"] == "processed"
+
+        await session.refresh(row)
+        assert row.status == "canceled"
+        assert row.plan == "none"
         assert billing_service.is_entitled(row, billing_enabled=True) is False
 
 

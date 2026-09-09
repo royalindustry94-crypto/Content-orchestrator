@@ -214,15 +214,61 @@ def _period_end_from_subscription(sub: dict) -> datetime | None:
     return datetime.fromtimestamp(int(raw), tz=UTC)
 
 
+async def _latest_applied_event_created(
+    session: AsyncSession, *, workspace_id: uuid.UUID
+) -> int | None:
+    """Max Stripe `created` timestamp among subscription-lifecycle webhook
+    receipts already stored for this workspace (includes the event currently
+    being applied, since its receipt is flushed before this is called)."""
+    rows = (
+        await session.execute(
+            select(BillingWebhookEvent.payload).where(
+                BillingWebhookEvent.workspace_id == workspace_id,
+                BillingWebhookEvent.event_type.in_(
+                    (
+                        "customer.subscription.created",
+                        "customer.subscription.updated",
+                        "customer.subscription.deleted",
+                    )
+                ),
+            )
+        )
+    ).scalars().all()
+    created_values = [
+        row.get("created")
+        for row in rows
+        if isinstance(row, dict) and isinstance(row.get("created"), int)
+    ]
+    return max(created_values) if created_values else None
+
+
 async def _apply_subscription(
     session: AsyncSession,
     *,
     workspace_id: uuid.UUID,
     subscription: dict,
+    event_created: int | None = None,
 ) -> None:
     billing = await ensure_workspace_billing(
         session, workspace_id=workspace_id, for_update=True
     )
+    if event_created is not None:
+        latest = await _latest_applied_event_created(session, workspace_id=workspace_id)
+        if latest is not None and event_created < latest:
+            # Stripe does not guarantee event delivery order: this event is
+            # older than one already applied (e.g. a delayed "active" update
+            # arriving after a newer "canceled" was processed). Applying it
+            # would incorrectly resurrect a superseded state, so skip the
+            # mutation while still keeping the receipt row for idempotency.
+            logger.info(
+                "stripe_webhook_stale_event_skipped",
+                extra={
+                    "workspace_id": str(workspace_id),
+                    "event_created": event_created,
+                    "latest_applied_created": latest,
+                },
+            )
+            return
     billing.stripe_subscription_id = subscription.get("id") or billing.stripe_subscription_id
     customer = subscription.get("customer")
     if isinstance(customer, str):
@@ -351,8 +397,12 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
                             "subscription event could not be mapped to a workspace",
                         )
                     workspace_id = row.workspace_id
+                raw_created = event.get("created")
                 await _apply_subscription(
-                    session, workspace_id=workspace_id, subscription=data_object
+                    session,
+                    workspace_id=workspace_id,
+                    subscription=data_object,
+                    event_created=raw_created if isinstance(raw_created, int) else None,
                 )
             elif event_type == "invoice.payment_failed":
                 sub = data_object.get("subscription")
