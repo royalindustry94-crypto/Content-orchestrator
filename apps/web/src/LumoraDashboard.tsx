@@ -1635,6 +1635,8 @@ export default function LumoraDashboard({
       }
       if (gatesResult.status === "fulfilled") {
         setReviewCount(gatesResult.value.length);
+      } else {
+        setReviewCount(0);
       }
       setNotificationsLoading(false);
     };
@@ -1808,8 +1810,8 @@ export default function LumoraDashboard({
       if (isCurrent()) {
         setLoading(false);
         setRefreshing(false);
+        loadInFlightRef.current = false;
       }
-      loadInFlightRef.current = false;
     }
   }, [nav, missionTab, token, workspaceId]);
 

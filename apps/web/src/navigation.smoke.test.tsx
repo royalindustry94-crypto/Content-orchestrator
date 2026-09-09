@@ -176,6 +176,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe("Mission Control destructive-action interlock", () => {
@@ -393,7 +394,7 @@ describe("dashboard navigation smoke test", () => {
 
   it("auto-refreshes the current dashboard view on an interval", async () => {
     const api = await import("./api");
-    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
     const intervals: Array<TimerHandler> = [];
     const setIntervalSpy = vi.spyOn(window, "setInterval").mockImplementation(((handler: TimerHandler) => {
       intervals.push(handler);
@@ -416,7 +417,7 @@ describe("dashboard navigation smoke test", () => {
 
   it("skips a polling tick while the previous background refresh is still in flight", async () => {
     const api = await import("./api");
-    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
     const intervals: Array<TimerHandler> = [];
     const setIntervalSpy = vi.spyOn(window, "setInterval").mockImplementation(((handler: TimerHandler) => {
       intervals.push(handler);
@@ -457,7 +458,7 @@ describe("dashboard navigation smoke test", () => {
 
   it("shows a visible stale-data warning when a background refresh fails", async () => {
     const api = await import("./api");
-    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
     const intervals: Array<TimerHandler> = [];
     const setIntervalSpy = vi.spyOn(window, "setInterval").mockImplementation(((handler: TimerHandler) => {
       intervals.push(handler);
@@ -483,7 +484,7 @@ describe("dashboard navigation smoke test", () => {
 
   it("clears the notification badge instead of showing a stale count when a refresh fails", async () => {
     const api = await import("./api");
-    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
     const intervals: Array<TimerHandler> = [];
     const setIntervalSpy = vi.spyOn(window, "setInterval").mockImplementation(((handler: TimerHandler) => {
       intervals.push(handler);
