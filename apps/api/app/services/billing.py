@@ -267,16 +267,23 @@ async def _apply_subscription(
             session, workspace_id=workspace_id, exclude_event_id=event_id
         )
         # Stripe `created` timestamps are second-granularity, so two distinct
-        # events can genuinely tie. A strict "<" only rejects an event that's
-        # unambiguously older; on a tie, whichever was delivered last would
-        # otherwise win regardless of which one actually reflects the later
-        # state. Fail closed on ties and on stale events: always accept a
-        # cancellation/downgrade (moving *out* of entitlement is safe to
-        # apply immediately), but only accept an entitlement-granting status
-        # when this event is unambiguously the newest one seen.
+        # events can genuinely tie. An unambiguously (strictly) older event
+        # must always be rejected regardless of direction: a `past_due`/
+        # `unpaid`/`incomplete` status via subscription.updated is a
+        # *reversible* sub-state of an ongoing subscription, not terminal
+        # the way subscription.deleted's "canceled" is (once really
+        # canceled, nothing legitimately supersedes it for that subscription
+        # id) — so a strictly older downgrade arriving late must not
+        # overwrite a newer, already-applied active state any more than a
+        # strictly older active event may resurrect a newer downgrade. A
+        # genuine *tie* is the only case kept ambiguous enough to fail
+        # closed: it still favors a downgrade over an entitlement grant,
+        # since whichever was merely delivered/processed last would
+        # otherwise decide the outcome.
         is_entitling = status in ACTIVE_STATUSES
-        stale_or_tied = latest is not None and event_created <= latest
-        if stale_or_tied and is_entitling:
+        stale = latest is not None and event_created < latest
+        tied = latest is not None and event_created == latest
+        if stale or (tied and is_entitling):
             logger.info(
                 "stripe_webhook_stale_event_skipped",
                 extra={
@@ -455,9 +462,15 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
                         # only describes one invoice attempt at a point in
                         # time — it can be superseded by a later successful
                         # renewal. Stripe retries webhook delivery for days,
-                        # so a stale, delayed failure must not overwrite an
-                        # already-applied newer event (e.g. the customer
-                        # fixed their card and renewed).
+                        # so a strictly older, delayed failure must not
+                        # overwrite an already-applied newer event (e.g. the
+                        # customer fixed their card and renewed). A genuine
+                        # timestamp tie is kept ambiguous enough to fail
+                        # closed in this action's own (downgrading)
+                        # direction, same as _apply_subscription's tie
+                        # handling — this action only ever revokes
+                        # entitlement, so applying it on a tie is the safe
+                        # choice, not overwriting a competing state.
                         raw_created = event.get("created")
                         latest = None
                         if isinstance(raw_created, int):
@@ -466,7 +479,7 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
                                 workspace_id=workspace_id,
                                 exclude_event_id=event_id,
                             )
-                        if latest is not None and raw_created <= latest:
+                        if latest is not None and raw_created < latest:
                             logger.info(
                                 "stripe_webhook_stale_payment_failure_skipped",
                                 extra={

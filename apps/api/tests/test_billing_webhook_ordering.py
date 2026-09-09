@@ -253,6 +253,64 @@ async def test_equal_timestamp_active_event_does_not_win_over_a_cancellation(bil
 
 
 @pytest.mark.asyncio
+async def test_delayed_older_subscription_downgrade_does_not_overwrite_a_newer_active_state(
+    billing_on,
+):
+    """Codex P1 on b58adb7: _apply_subscription's staleness guard only
+    rejected a stale/tied event when it was entitlement-*granting*
+    (``stale_or_tied and is_entitling``) — a stale/tied *downgrade*
+    (past_due/unpaid/incomplete via customer.subscription.updated) always
+    applied unconditionally, on the theory that moving out of entitlement is
+    always safe. That's true for a genuine terminal cancellation
+    (subscription.deleted is authoritative regardless of delivery order —
+    once really canceled, nothing legitimately supersedes it for that
+    subscription id), but a `past_due`/`unpaid`/`incomplete` status is a
+    *reversible* sub-state of an ongoing subscription, not terminal — a
+    strictly older one arriving late must not overwrite a newer, already-
+    applied `active` state, exactly the same delayed-retry hazard already
+    fixed for invoice.payment_failed's own branch. Unambiguous staleness
+    (strictly older, not just tied) must be rejected regardless of
+    direction; only a genuine timestamp *tie* keeps the fail-closed
+    exception that favors a downgrade.
+    """
+    async with AsyncSessionLocal() as session:
+        ws = await _workspace(session)
+        sub = f"sub_{uuid.uuid4().hex[:10]}"
+        base = int(datetime.now(UTC).timestamp())
+
+        await billing_service.process_stripe_event(
+            session,
+            event=_subscription_event(
+                event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
+                status="active", sub_id=sub, created=base + 3600,
+            ),
+        )
+        await session.commit()
+
+        row = await session.get(WorkspaceBilling, ws)
+        assert row is not None and row.status == "active"
+
+        # A stale, distinct customer.subscription.updated "past_due" event —
+        # strictly older than the applied "active" event, e.g. a delayed
+        # retry of an earlier failed-payment update that has since been
+        # resolved — arrives late.
+        stale_past_due = _subscription_event(
+            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
+            status="past_due", sub_id=sub, created=base,
+        )
+        result = await billing_service.process_stripe_event(session, event=stale_past_due)
+        await session.commit()
+        assert result["status"] == "processed"
+
+        await session.refresh(row)
+        assert row.status == "active", (
+            "a strictly-older subscription downgrade must not overwrite a "
+            "newer already-applied active state"
+        )
+        assert billing_service.is_entitled(row, billing_enabled=True) is True
+
+
+@pytest.mark.asyncio
 async def test_delayed_older_active_event_does_not_resurrect_a_payment_failure(billing_on):
     """invoice.payment_failed sets status="past_due" directly, bypassing
     _apply_subscription's ordering check entirely. If a *distinct*, older
