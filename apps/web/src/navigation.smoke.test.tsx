@@ -175,6 +175,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 describe("Mission Control destructive-action interlock", () => {
@@ -204,6 +205,34 @@ describe("Mission Control destructive-action interlock", () => {
     await waitFor(() =>
       expect(api.postMissionAction).toHaveBeenCalledWith("t", "ws-1", "emergency-stop"),
     );
+  });
+
+  it("prevents duplicate requests when a quick action is clicked repeatedly", async () => {
+    const api = await import("./api");
+    let resolveAction!: (value: { action: string; ok: boolean; affected: number; message: string; details: Record<string, unknown> }) => void;
+    (api.postMissionAction as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => new Promise((resolve) => {
+        resolveAction = resolve;
+      }),
+    );
+
+    render(<QuickActionsView token="t" workspaceId="ws-1" />);
+    const pause = screen.getByRole("button", { name: "Pause Workers" });
+    fireEvent.click(pause);
+    fireEvent.click(pause);
+
+    expect(api.postMissionAction).toHaveBeenCalledTimes(1);
+
+    resolveAction({
+      action: "pause-workers",
+      ok: true,
+      affected: 3,
+      message: "Paused 3 workers.",
+      details: {},
+    });
+
+    expect(await screen.findByText("Paused 3 workers.")).toBeDefined();
+    expect(await screen.findByText("3 affected")).toBeDefined();
   });
 });
 
@@ -360,6 +389,55 @@ describe("dashboard navigation smoke test", () => {
     expect(await screen.findByText(/We couldn’t load this view|We couldn't load this view/i)).toBeDefined();
     // Shell still intact.
     expect(screen.getAllByText("The Business Manager").length).toBeGreaterThan(0);
+  });
+
+  it("auto-refreshes the current dashboard view on an interval", async () => {
+    const api = await import("./api");
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    const intervals: Array<TimerHandler> = [];
+    const setIntervalSpy = vi.spyOn(window, "setInterval").mockImplementation(((handler: TimerHandler) => {
+      intervals.push(handler);
+      return intervals.length as unknown as number;
+    }) as typeof window.setInterval);
+    const clearIntervalSpy = vi.spyOn(window, "clearInterval").mockImplementation(() => {});
+
+    renderShell();
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeDefined();
+    expect(api.getExecutiveDashboard).toHaveBeenCalledTimes(1);
+
+    for (const handler of intervals) {
+      if (typeof handler === "function") handler();
+    }
+
+    await waitFor(() => expect(api.getExecutiveDashboard).toHaveBeenCalledTimes(2));
+    setIntervalSpy.mockRestore();
+    clearIntervalSpy.mockRestore();
+  });
+
+  it("shows a visible stale-data warning when a background refresh fails", async () => {
+    const api = await import("./api");
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    const intervals: Array<TimerHandler> = [];
+    const setIntervalSpy = vi.spyOn(window, "setInterval").mockImplementation(((handler: TimerHandler) => {
+      intervals.push(handler);
+      return intervals.length as unknown as number;
+    }) as typeof window.setInterval);
+    const clearIntervalSpy = vi.spyOn(window, "clearInterval").mockImplementation(() => {});
+
+    renderShell();
+    expect(await screen.findByRole("heading", { name: "Home" })).toBeDefined();
+    (api.getExecutiveDashboard as unknown as ReturnType<typeof vi.fn>).mockRejectedValueOnce(
+      new Error("503: backend unavailable"),
+    );
+
+    for (const handler of intervals) {
+      if (typeof handler === "function") handler();
+    }
+
+    expect(await screen.findByText(/Live refresh failed: 503: backend unavailable/i)).toBeDefined();
+    expect(screen.getByText(/Connect a financial source to see verified business performance/i)).toBeDefined();
+    setIntervalSpy.mockRestore();
+    clearIntervalSpy.mockRestore();
   });
 
   it("ignores a late response from a route that is no longer active", async () => {

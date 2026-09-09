@@ -241,6 +241,8 @@ const NAV: Array<{ id: NavKey; label: string; icon: IconName }> = [
   { id: "settings", label: "Settings", icon: "settings" },
 ];
 
+const AUTO_REFRESH_MS = 20_000;
+
 function formatDate(value: string | null | undefined): string {
   if (!value) return "Unavailable";
   return new Intl.DateTimeFormat(undefined, {
@@ -337,16 +339,24 @@ function SectionHeader({
   );
 }
 
+function isMissionAssistant(nav: NavKey, missionTab: MissionTab) {
+  return nav === "mission" && missionTab === "assistant";
+}
+
 function DashboardHome({
   data,
   token,
   workspaceId,
   navigate,
+  onRefresh,
+  refreshing,
 }: {
   data: DashboardData;
   token: string;
   workspaceId: string;
   navigate: (key: NavKey) => void;
+  onRefresh: () => void;
+  refreshing: boolean;
 }) {
   const [askNotice, setAskNotice] = useState<string | null>(null);
   const priority = { critical: 0, warning: 1, info: 2 } as const;
@@ -383,7 +393,18 @@ function DashboardHome({
           <h2>Home</h2>
           <p>What happened, what it cost, what it made, and what needs your decision.</p>
         </div>
-        <span className="live-indicator"><i /> Workspace-backed data</span>
+        <div className="view-actions">
+          <span className="live-indicator"><i /> Workspace-backed data</span>
+          <button
+            aria-label="Refresh dashboard data"
+            className="icon-button refresh-button"
+            disabled={refreshing}
+            onClick={onRefresh}
+            type="button"
+          >
+            <Icon name="refresh" />
+          </button>
+        </div>
       </section>
 
       <section className="financial-overview" aria-label="Business performance">
@@ -474,15 +495,23 @@ function DashboardHome({
         </section>
         <section className="surface health-surface">
           <SectionHeader title="System signals" detail="Advanced operational detail" />
-          <div className="health-list">
-            {data.health.indicators.map((indicator) => (
-              <div className="health-row" key={indicator.key}>
-                <span className={`health-dot health-dot--${indicator.status}`} />
-                <div><strong>{indicator.label}</strong><small>{indicator.detail}</small></div>
-                <Status value={indicator.status} />
-              </div>
-            ))}
-          </div>
+          {data.health.indicators.length === 0 ? (
+            <EmptyState
+              icon="activity"
+              title="System status unavailable"
+              message="No health indicators were returned for this workspace."
+            />
+          ) : (
+            <div className="health-list">
+              {data.health.indicators.map((indicator) => (
+                <div className="health-row" key={indicator.key}>
+                  <span className={`health-dot health-dot--${indicator.status}`} />
+                  <div><strong>{indicator.label}</strong><small>{indicator.detail}</small></div>
+                  <Status value={indicator.status} />
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       </div>
 
@@ -1551,7 +1580,12 @@ export default function LumoraDashboard({
   const [health, setHealth] = useState<SystemHealth | null>(null);
   const [healthWorkspaceId, setHealthWorkspaceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
+  const [notificationsError, setNotificationsError] = useState<string | null>(null);
+  const [notificationsLoading, setNotificationsLoading] = useState(true);
+  const [healthError, setHealthError] = useState<string | null>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
@@ -1559,10 +1593,17 @@ export default function LumoraDashboard({
   const [reviewBusy, setReviewBusy] = useState<string | null>(null);
   const [reviewActionError, setReviewActionError] = useState<string | null>(null);
   const requestId = useRef(0);
+  const dataRef = useRef<ViewData>(null);
+  const loadedKeyRef = useRef<string | null>(null);
   const mobileNavRef = useDialogFocus<HTMLElement>(mobileOpen, () => setMobileOpen(false));
 
   const currentWorkspace = workspaces.find((workspace) => workspace.id === workspaceId);
   const viewKey = `${workspaceId}:${nav}:${missionTab}`;
+
+  useEffect(() => {
+    dataRef.current = data;
+    loadedKeyRef.current = loadedKey;
+  }, [data, loadedKey]);
 
   useEffect(() => {
     let active = true;
@@ -1572,45 +1613,85 @@ export default function LumoraDashboard({
     return () => { active = false; };
   }, [token]);
 
-  useEffect(() => {
-    let active = true;
-    void getNotifications(token, workspaceId)
-      .then((value) => { if (active) setNotifications(value); })
-      .catch(() => { if (active) setNotifications(null); });
-    void listReviewGates(token, workspaceId)
-      .then((gates) => { if (active) setReviewCount(gates.length); })
-      .catch(() => { if (active) setReviewCount(0); });
-    return () => { active = false; };
+  const refreshShellStatus = useCallback(async () => {
+    const [notificationsResult, gatesResult] = await Promise.allSettled([
+      getNotifications(token, workspaceId),
+      listReviewGates(token, workspaceId),
+    ]);
+    if (notificationsResult.status === "fulfilled") {
+      setNotifications(notificationsResult.value);
+      setNotificationsError(null);
+    } else {
+      setNotificationsError(
+        notificationsResult.reason instanceof Error
+          ? notificationsResult.reason.message
+          : "Unable to refresh notifications.",
+      );
+    }
+    if (gatesResult.status === "fulfilled") {
+      setReviewCount(gatesResult.value.length);
+    }
+    setNotificationsLoading(false);
   }, [token, workspaceId]);
+
+  useEffect(() => {
+    setNotificationsLoading(true);
+    void refreshShellStatus();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshShellStatus();
+      }
+    }, AUTO_REFRESH_MS);
+    return () => window.clearInterval(interval);
+  }, [refreshShellStatus]);
 
   useEffect(() => {
     // Dashboard and Settings already fetch health as part of their atomic page
     // load. Other routes fetch it here for the persistent shell footer.
-    if (nav === "dashboard" || nav === "settings") return;
+    if (nav === "dashboard" || nav === "settings") {
+      setHealthError(null);
+      return;
+    }
     let active = true;
-    void getSystemHealth(token, workspaceId)
-      .then((value) => {
+    const refreshShellHealth = async () => {
+      try {
+        const value = await getSystemHealth(token, workspaceId);
         if (active) {
           setHealth(value);
           setHealthWorkspaceId(workspaceId);
+          setHealthError(null);
         }
-      })
-      .catch(() => {
+      } catch (cause) {
         if (active) {
-          setHealth(null);
           setHealthWorkspaceId(workspaceId);
+          setHealthError(cause instanceof Error ? cause.message : "Unable to refresh system health.");
         }
-      });
-    return () => { active = false; };
+      }
+    };
+    void refreshShellHealth();
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void refreshShellHealth();
+      }
+    }, AUTO_REFRESH_MS);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
   }, [nav, token, workspaceId]);
 
-  const load = useCallback(async () => {
-    const currentRequest = requestId.current + 1;
+  const load = useCallback(async (options: { background?: boolean } = {}) => {
     const currentViewKey = `${workspaceId}:${nav}:${missionTab}`;
+    const hasCurrentData = loadedKeyRef.current === currentViewKey && dataRef.current !== null;
+    const currentRequest = requestId.current + 1;
     requestId.current = currentRequest;
     const isCurrent = () => requestId.current === currentRequest;
-    setLoading(true);
-    setError(null);
+    if (options.background && hasCurrentData) {
+      setRefreshing(true);
+    } else {
+      setLoading(true);
+      setError(null);
+    }
     try {
       let next: ViewData;
       if (nav === "dashboard") {
@@ -1695,24 +1776,45 @@ export default function LumoraDashboard({
       if (!isCurrent()) return;
       setData(next);
       setLoadedKey(currentViewKey);
+      setRefreshError(null);
       if (nav === "dashboard" && next && "health" in next) {
         setHealth((next as DashboardData).health);
         setHealthWorkspaceId(workspaceId);
+        setHealthError(null);
       } else if (nav === "settings" && next && "health" in next) {
         setHealth((next as { health: SystemHealth }).health);
         setHealthWorkspaceId(workspaceId);
+        setHealthError(null);
       }
     } catch (cause) {
       if (!isCurrent()) return;
-      setData(null);
-      setLoadedKey(currentViewKey);
-      setError(cause instanceof Error ? cause.message : "Unable to load this view");
+      const message = cause instanceof Error ? cause.message : "Unable to load this view";
+      if (options.background && hasCurrentData) {
+        setRefreshError(message);
+      } else {
+        setData(null);
+        setLoadedKey(currentViewKey);
+        setError(message);
+      }
     } finally {
-      if (isCurrent()) setLoading(false);
+      if (isCurrent()) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
   }, [nav, missionTab, token, workspaceId]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (nav === "ask" || isMissionAssistant(nav, missionTab)) return;
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void load({ background: true });
+      }
+    }, AUTO_REFRESH_MS);
+    return () => window.clearInterval(interval);
+  }, [load, missionTab, nav]);
 
   const navigate = (next: NavKey) => {
     if (next !== nav) {
@@ -1720,6 +1822,7 @@ export default function LumoraDashboard({
       setData(null);
       setLoadedKey(null);
       setError(null);
+      setRefreshError(null);
       setLoading(true);
       setMissionTab("overview");
     }
@@ -1733,6 +1836,7 @@ export default function LumoraDashboard({
       setData(null);
       setLoadedKey(null);
       setError(null);
+      setRefreshError(null);
       setLoading(true);
       setMissionTab(next);
     }
@@ -1743,6 +1847,7 @@ export default function LumoraDashboard({
     setData(null);
     setLoadedKey(null);
     setError(null);
+    setRefreshError(null);
     setLoading(next !== "assistant");
     setNav("mission");
     setMissionTab(next);
@@ -1754,6 +1859,11 @@ export default function LumoraDashboard({
   const notificationCount = notifications?.notifications.length ?? 0;
   const displayedHealth = healthWorkspaceId === workspaceId ? health : null;
   const healthLevel = aggregateHealth(displayedHealth);
+  const healthStatusCopy = healthError
+    ? "System status refresh failed."
+    : displayedHealth
+      ? `Updated ${relativeTime(displayedHealth.generated_at)}`
+      : "Checking service status…";
 
   const decide = async (gate: ReviewGate, approved: boolean) => {
     setReviewBusy(gate.id);
@@ -1798,7 +1908,18 @@ export default function LumoraDashboard({
     if (loadedKey !== viewKey) return <Loading />;
 
     if (nav === "dashboard") {
-      if (isDashboardData(data)) return <DashboardHome data={data} navigate={navigate} token={token} workspaceId={workspaceId} />;
+      if (isDashboardData(data)) {
+        return (
+          <DashboardHome
+            data={data}
+            navigate={navigate}
+            onRefresh={() => void load({ background: true })}
+            refreshing={refreshing}
+            token={token}
+            workspaceId={workspaceId}
+          />
+        );
+      }
       return <Loading />;
     }
     if (nav === "mission") {
@@ -1969,7 +2090,7 @@ export default function LumoraDashboard({
           <span className={`status-orb status-orb--${HEALTH_COPY[healthLevel].orb}`} />
           <div>
             <strong>{HEALTH_COPY[healthLevel].label}</strong>
-            <small>{displayedHealth ? `Updated ${relativeTime(displayedHealth.generated_at)}` : "Live service status"}</small>
+            <small>{healthStatusCopy}</small>
           </div>
         </button>
       </aside>
@@ -2029,13 +2150,15 @@ export default function LumoraDashboard({
               {notificationOpen ? (
                 <div className="top-popover notifications-popover">
                   <SectionHeader title="Notifications" />
-                  {notifications?.notifications.slice(0, 4).map((item) => (
+                  {notificationsLoading ? <p>Loading notifications…</p> : null}
+                  {notificationsError ? <p className="error" role="alert">Notifications unavailable: {notificationsError}</p> : null}
+                  {!notificationsLoading && !notificationsError ? notifications?.notifications.slice(0, 4).map((item) => (
                     <button key={item.key} onClick={() => { setNotificationOpen(false); navigate("mission"); }} type="button">
                       <span className={`health-dot health-dot--${item.severity === "critical" ? "red" : "amber"}`} />
                       <span><strong>{item.title}</strong><small>{item.message}</small></span>
                     </button>
-                  ))}
-                  {!notificationCount ? <p>No active notifications.</p> : null}
+                  )) : null}
+                  {!notificationsLoading && !notificationsError && !notificationCount ? <p>No active notifications.</p> : null}
                 </div>
               ) : null}
             </div>
@@ -2061,8 +2184,21 @@ export default function LumoraDashboard({
           {nav !== "dashboard" ? (
             <header className="view-header">
               <div><p>The Business Manager / {title}</p><h1>{title}</h1></div>
-              <button aria-label="Refresh data" className="icon-button refresh-button" disabled={loading} onClick={() => void load()} type="button"><Icon name="refresh" /></button>
+              <button
+                aria-label="Refresh data"
+                className="icon-button refresh-button"
+                disabled={loading || refreshing}
+                onClick={() => void load({ background: true })}
+                type="button"
+              >
+                <Icon name="refresh" />
+              </button>
             </header>
+          ) : null}
+          {refreshError ? (
+            <p className="error" role="alert">
+              Live refresh failed: {refreshError} Showing the last successful data.
+            </p>
           ) : null}
           {nav === "mission" ? (
             <div className="view-tabs" role="tablist">
