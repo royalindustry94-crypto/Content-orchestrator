@@ -8,10 +8,13 @@
 > connected and a live read-only audit performed against the actual managed project
 > (`content-orchestrator-test`), including verifying the "RLS disabled" advisor findings are
 > not exploitable (zero grants to `anon`/`authenticated`) and bringing the managed database's
-> migration state in sync with the branch (head `0054`). See `docs/TECHNICAL_DEBT_REGISTER.md`
-> TD-071. Separately, TD-072 through TD-088 (RLS backstops on two more route files, a CRITICAL
-> cross-tenant dashboard-blending fix, billing hardening, and three workspace-scoping/logic
-> bugs) are fix-pushed on `claude/project-builder-handover-k95wpm` / PR #94, pending independent
+> migration state in sync with the branch's head *at that time* (`0053`). See
+> `docs/TECHNICAL_DEBT_REGISTER.md` TD-071. The branch has since advanced to migration `0054`
+> (TD-082, in this same PR) — that migration has **not** been applied to or verified against the
+> managed database; only `0053` is confirmed live there. Separately, TD-072 through TD-088 (RLS
+> backstops on two more route files, a CRITICAL cross-tenant dashboard-blending fix, billing
+> hardening, and three workspace-scoping/logic bugs) are fix-pushed on
+> `claude/project-builder-handover-k95wpm` / PR #94, pending independent
 > re-audit before merge — not yet part of this file's "Merged audited baseline" below.
 **Source of truth:** exact-head CI, retained browser evidence, repository/runtime probes — not prior chat claims
 
