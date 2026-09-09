@@ -96,6 +96,8 @@ const executiveMode = {
 
 vi.mock("./api", () => ({
   getExecutiveDashboard: vi.fn(async () => executive),
+  getContentProfile: vi.fn(async () => null),
+  saveContentProfile: vi.fn(async () => ({})),
   getPipelineMonitor: vi.fn(async () => pipelines),
   getOperationsAlerts: vi.fn(async () => alerts),
   getActivityFeed: vi.fn(async () => ({ items: [], generated_at: "" })),
@@ -548,5 +550,107 @@ describe("mobile smoke test", () => {
     const searchToggle = screen.getByRole("button", { name: /^Search$/i });
     fireEvent.click(searchToggle);
     expect(searchToggle.getAttribute("aria-expanded")).toBe("true");
+  });
+});
+
+describe("business setup wizard", () => {
+  it("shows the quick-setup banner for a workspace with no saved profile", async () => {
+    renderShell();
+    expect(await screen.findByText("Get your business set up")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Quick Setup" })).toBeDefined();
+    expect(screen.getByRole("button", { name: "Set up manually" })).toBeDefined();
+  });
+
+  it("shows a 'finish setup' banner instead when a partial profile exists", async () => {
+    const api = await import("./api");
+    (api.getContentProfile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      workspace_id: "ws-1",
+      business_name: "Acme Studio",
+      offer: null,
+      target_audience: null,
+      brand_voice: null,
+      target_platform: null,
+      content_goal: null,
+      updated_at: "2026-09-09T00:00:00Z",
+      is_complete: false,
+    });
+    renderShell();
+    expect(await screen.findByText("Finish setting up your business")).toBeDefined();
+    expect(screen.getByRole("button", { name: "Finish setup" })).toBeDefined();
+  });
+
+  it("hides the banner once the profile is complete", async () => {
+    const api = await import("./api");
+    (api.getContentProfile as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      workspace_id: "ws-1",
+      business_name: "Acme Studio",
+      offer: "Video production",
+      target_audience: "Restaurant owners",
+      brand_voice: "Warm and direct",
+      target_platform: "instagram",
+      content_goal: "book more tastings",
+      updated_at: "2026-09-09T00:00:00Z",
+      is_complete: true,
+    });
+    renderShell();
+    await screen.findByRole("heading", { name: "Home" });
+    expect(screen.queryByText("Get your business set up")).toBeNull();
+    expect(screen.queryByText("Finish setting up your business")).toBeNull();
+  });
+
+  it("walks the four steps and saves the full payload on finish", async () => {
+    const api = await import("./api");
+    renderShell();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Quick Setup" }));
+    expect(await screen.findByRole("heading", { name: "Your business" })).toBeDefined();
+
+    fireEvent.change(screen.getByLabelText("Business name"), { target: { value: "Acme Studio" } });
+    fireEvent.change(screen.getByLabelText("What do you offer?"), {
+      target: { value: "Short-form video for restaurants" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(await screen.findByRole("heading", { name: "Who you're for" })).toBeDefined();
+    fireEvent.change(screen.getByLabelText("Who is this content for?"), {
+      target: { value: "Restaurant owners in mid-size US cities" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(await screen.findByRole("heading", { name: "Brand voice" })).toBeDefined();
+    fireEvent.change(screen.getByLabelText("How should your content sound?"), {
+      target: { value: "Warm, direct, a little playful" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Next" }));
+
+    expect(await screen.findByRole("heading", { name: "Content plan" })).toBeDefined();
+    fireEvent.change(screen.getByLabelText("Primary platform"), { target: { value: "instagram" } });
+    fireEvent.change(screen.getByLabelText("What's the goal?"), {
+      target: { value: "book more tastings" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Finish setup" }));
+
+    await waitFor(() =>
+      expect(api.saveContentProfile).toHaveBeenCalledWith("t", "ws-1", {
+        business_name: "Acme Studio",
+        offer: "Short-form video for restaurants",
+        target_audience: "Restaurant owners in mid-size US cities",
+        brand_voice: "Warm, direct, a little playful",
+        target_platform: "instagram",
+        content_goal: "book more tastings",
+      }),
+    );
+  });
+
+  it("closes without saving when Skip for now is clicked on the first step", async () => {
+    const api = await import("./api");
+    renderShell();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Quick Setup" }));
+    await screen.findByRole("heading", { name: "Your business" });
+    fireEvent.click(screen.getByRole("button", { name: "Skip for now" }));
+
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Your business" })).toBeNull());
+    expect(api.saveContentProfile).not.toHaveBeenCalled();
   });
 });
