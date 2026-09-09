@@ -731,6 +731,45 @@ export function postMissionAction(
   );
 }
 
+export type ContentProfile = {
+  workspace_id: string;
+  business_name: string | null;
+  offer: string | null;
+  target_audience: string | null;
+  brand_voice: string | null;
+  target_platform: string | null;
+  content_goal: string | null;
+  updated_at: string;
+  is_complete: boolean;
+};
+
+export type ContentProfileInput = {
+  business_name?: string | null;
+  offer?: string | null;
+  target_audience?: string | null;
+  brand_voice?: string | null;
+  target_platform?: string | null;
+  content_goal?: string | null;
+};
+
+export function getContentProfile(
+  token: string,
+  workspaceId: string,
+): Promise<ContentProfile | null> {
+  return apiFetch<ContentProfile | null>(`/workspaces/${workspaceId}/content-profile`, token);
+}
+
+export function saveContentProfile(
+  token: string,
+  workspaceId: string,
+  payload: ContentProfileInput,
+): Promise<ContentProfile> {
+  return apiFetch<ContentProfile>(`/workspaces/${workspaceId}/content-profile`, token, {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function createContentJob(
   token: string,
   workspaceId: string,

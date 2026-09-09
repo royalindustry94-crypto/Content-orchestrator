@@ -8,6 +8,7 @@ import {
 } from "react";
 import ErrorBoundary from "./ErrorBoundary";
 import { BusinessManagerMark } from "./BusinessManagerMark";
+import { BusinessProfileSettings, ContentSetupWizard } from "./ContentSetupWizard";
 import { useDialogFocus } from "./useDialogFocus";
 import {
   auditOpportunity,
@@ -20,6 +21,7 @@ import {
   decideReviewGate,
   getActivityFeed,
   getContentCommand,
+  getContentProfile,
   listChiefAudits,
   getComplianceSummary,
   getContentDepartmentSummary,
@@ -65,6 +67,7 @@ import {
   type ContentAudit,
   type ContentCommand,
   type ContentDepartmentSummary,
+  type ContentProfile,
   type ContentPackage,
   type ContentPackageDetail,
   type CostControl,
@@ -359,6 +362,25 @@ function DashboardHome({
   refreshing: boolean;
 }) {
   const [askNotice, setAskNotice] = useState<string | null>(null);
+  const [contentProfile, setContentProfile] = useState<ContentProfile | null | undefined>(undefined);
+  const [setupWizardOpen, setSetupWizardOpen] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setContentProfile(undefined);
+    getContentProfile(token, workspaceId)
+      .then((profile) => {
+        if (active) setContentProfile(profile);
+      })
+      .catch(() => {
+        // Non-fatal: leave it undefined so the banner stays hidden rather
+        // than misreading a failed fetch as "no profile saved yet."
+      });
+    return () => {
+      active = false;
+    };
+  }, [token, workspaceId]);
+
   const priority = { critical: 0, warning: 1, info: 2 } as const;
   const decisionTargets: Record<string, NavKey> = {
     review_required: "review",
@@ -406,6 +428,40 @@ function DashboardHome({
           </button>
         </div>
       </section>
+
+      {contentProfile !== undefined && !contentProfile?.is_complete ? (
+        <section className="setup-banner" aria-label="Business setup">
+          <div>
+            <h3>{contentProfile ? "Finish setting up your business" : "Get your business set up"}</h3>
+            <p>
+              {contentProfile
+                ? "A few details are still missing — finish in under a minute."
+                : "Four quick steps: business, audience, brand voice, and content plan. Everything you enter is saved to this workspace and used as the default for new content."}
+            </p>
+          </div>
+          <div className="setup-banner__actions">
+            <button className="button button--primary" onClick={() => setSetupWizardOpen(true)} type="button">
+              {contentProfile ? "Finish setup" : "Quick Setup"}
+            </button>
+            <button className="button button--ghost" onClick={() => navigate("settings")} type="button">
+              Set up manually
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {setupWizardOpen ? (
+        <ContentSetupWizard
+          token={token}
+          workspaceId={workspaceId}
+          initialProfile={contentProfile ?? null}
+          onClose={() => setSetupWizardOpen(false)}
+          onSaved={(profile) => {
+            setContentProfile(profile);
+            setSetupWizardOpen(false);
+          }}
+        />
+      ) : null}
 
       <section className="financial-overview" aria-label="Business performance">
         <header className="financial-overview__header">
@@ -2043,6 +2099,7 @@ export default function LumoraDashboard({
       if (!isSettingsData(data)) return <Loading />;
       return (
         <div className="settings-grid">
+          <BusinessProfileSettings token={token} workspaceId={workspaceId} />
           <section className="surface"><SectionHeader title="System health" detail="Environment and service readiness" /><SystemHealthView data={data.health} /></section>
           <section className="surface deployment-card">
             <SectionHeader title="Deployment" detail="Current release metadata" />
