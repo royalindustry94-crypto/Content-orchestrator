@@ -305,6 +305,66 @@ async def test_delayed_older_active_event_does_not_resurrect_a_payment_failure(b
 
 
 @pytest.mark.asyncio
+async def test_delayed_older_payment_failure_does_not_revoke_a_newer_active_state(billing_on):
+    """Mirror image of test_delayed_older_active_event_does_not_resurrect_a_
+    payment_failure: invoice.payment_failed's own handler set status =
+    "past_due" completely unconditionally, with no ordering check at all
+    (widening _latest_applied_event_created's read-side filter only helps
+    other events that check it — it does not make this handler check
+    anything). So a stale, delayed invoice.payment_failed retry — older
+    than a customer.subscription.updated "active" event that has already
+    been applied (e.g. the customer fixed their card and renewed) — could
+    incorrectly revoke entitlement from an already-current, paying
+    workspace, since Stripe retries webhook delivery for days and a
+    payment-failure notification isn't authoritative about *current*
+    subscription state the way a terminal status transition is. Unlike a
+    subscription cancellation (always safe to apply immediately — a real
+    cancellation is inherently the terminal truth), a payment-failure event
+    only describes a single invoice attempt at a point in time and can be
+    superseded by a later successful renewal, so it must lose an ordering
+    comparison against a newer already-applied event.
+    """
+    async with AsyncSessionLocal() as session:
+        ws = await _workspace(session)
+        sub = f"sub_{uuid.uuid4().hex[:10]}"
+        base = int(datetime.now(UTC).timestamp())
+
+        # Newer "active" event applied first (realistic: the customer's
+        # renewal succeeded and Stripe delivered this promptly).
+        await billing_service.process_stripe_event(
+            session,
+            event=_subscription_event(
+                event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
+                status="active", sub_id=sub, created=base + 3600,
+            ),
+        )
+        await session.commit()
+
+        row = await session.get(WorkspaceBilling, ws)
+        assert row is not None and row.status == "active"
+
+        # A stale invoice.payment_failed — older than the applied "active"
+        # event, e.g. a delayed retry of an earlier failed attempt that has
+        # since been resolved — arrives late.
+        stale_failed = {
+            "id": f"evt_{uuid.uuid4().hex[:12]}",
+            "type": "invoice.payment_failed",
+            "created": base,
+            "data": {"object": {"id": f"in_{uuid.uuid4().hex[:10]}", "subscription": sub}},
+        }
+        result = await billing_service.process_stripe_event(session, event=stale_failed)
+        await session.commit()
+        assert result["status"] == "processed"
+
+        await session.refresh(row)
+        assert row.status == "active", (
+            "a stale, delayed payment-failure event must not revoke "
+            "entitlement that a newer applied event already confirmed"
+        )
+        assert billing_service.is_entitled(row, billing_enabled=True) is True
+
+
+@pytest.mark.asyncio
 async def test_failed_handler_rolls_back_receipt_and_state(billing_on):
     """A handler error must leave no receipt and no partial mutation, so
     Stripe's retry is processed cleanly rather than being swallowed as a

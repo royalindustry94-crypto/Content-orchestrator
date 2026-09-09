@@ -432,8 +432,35 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
                         )
                     ).scalar_one_or_none()
                     if row is not None:
-                        row.status = "past_due"
                         workspace_id = row.workspace_id
+                        # Unlike a subscription-status transition (the
+                        # current, authoritative state of the subscription
+                        # as of that event), a payment-failure notification
+                        # only describes one invoice attempt at a point in
+                        # time — it can be superseded by a later successful
+                        # renewal. Stripe retries webhook delivery for days,
+                        # so a stale, delayed failure must not overwrite an
+                        # already-applied newer event (e.g. the customer
+                        # fixed their card and renewed).
+                        raw_created = event.get("created")
+                        latest = None
+                        if isinstance(raw_created, int):
+                            latest = await _latest_applied_event_created(
+                                session,
+                                workspace_id=workspace_id,
+                                exclude_event_id=event_id,
+                            )
+                        if latest is not None and raw_created <= latest:
+                            logger.info(
+                                "stripe_webhook_stale_payment_failure_skipped",
+                                extra={
+                                    "workspace_id": str(workspace_id),
+                                    "event_created": raw_created,
+                                    "latest_applied_created": latest,
+                                },
+                            )
+                        else:
+                            row.status = "past_due"
                         await session.flush()
             else:
                 logger.info(
