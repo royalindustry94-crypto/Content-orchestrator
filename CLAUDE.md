@@ -1,13 +1,11 @@
 # Claude Code instructions
 
-Read and follow `AGENTS.md` and `.github/AGENT_OPERATING_PROTOCOL.md` before planning or changing anything in this repository. `AGENT_OPERATING_PROTOCOL.md` is this repository's canonical agent operating model, covering roles, handoffs, and Build Watchdog continuity rules; this file adds Claude-specific safeguards on top of it. Use [coordination hub #90](https://github.com/royalindustry94-crypto/Content-orchestrator/issues/90) for the current `CLAIM`, `HEARTBEAT`, and `HANDOFF` record before editing.
+Read and follow `AGENTS.md` first — it is authoritative, including its "Operating authority" section: standing authority to commit, push, resolve findings, and merge without per-change Founder approval. `.github/AGENT_OPERATING_PROTOCOL.md` adds the coordination model (roles, handoffs, Build Watchdog continuity) on top of that. Use [coordination hub #90](https://github.com/royalindustry94-crypto/Content-orchestrator/issues/90) for the current `CLAIM`, `HEARTBEAT`, and `HANDOFF` record before editing, if multiple agents are active on this repo at once.
 
-- Work only on an explicitly assigned issue and scope.
-- Preserve the Human Review Gate, FORCE RLS workspace isolation, spend controls, provider abstraction, and audit logging.
+- Preserve the Human Review Gate, FORCE RLS workspace isolation, spend controls, provider abstraction, and audit logging — these are product safety guarantees, not process gates, and are not any agent's to weaken.
 - Do not weaken security or CI gates.
 - Do not commit secrets or `.env` files.
-- Use one task, one Builder, one branch, and one pull request; never push directly to `main`.
-- Run the relevant tests and report the exact head SHA and evidence before proposing a merge.
+- Use one task, one Builder, one branch, and one pull request when more than one agent is working the repo concurrently.
+- Run the relevant tests, reproduce any review finding before trusting or dismissing it, and report the exact head SHA and evidence before merging.
 - If blocked or interrupted, leave a durable handoff with the blocker, last verified SHA, tests, and next action.
-- Treat product-code changes as out of scope unless the Founder explicitly queues or requests them.
-- Never auto-merge or bypass Founder approval, Human Review, CI, or an independent audit.
+- Real money, destructive/irreversible actions, and repo/org access changes still get flagged to the Founder clearly before acting, even without a formal approval step.
