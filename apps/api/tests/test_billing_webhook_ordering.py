@@ -253,6 +253,58 @@ async def test_equal_timestamp_active_event_does_not_win_over_a_cancellation(bil
 
 
 @pytest.mark.asyncio
+async def test_delayed_older_active_event_does_not_resurrect_a_payment_failure(billing_on):
+    """invoice.payment_failed sets status="past_due" directly, bypassing
+    _apply_subscription's ordering check entirely. If a *distinct*, older
+    customer.subscription.updated "active" event (Stripe's own retry of an
+    earlier delivery attempt) arrives afterward, it must not overwrite the
+    payment failure — the payment failure is the newer, authoritative state
+    even though it was applied through a different code path.
+    """
+    async with AsyncSessionLocal() as session:
+        ws = await _workspace(session)
+        sub = f"sub_{uuid.uuid4().hex[:10]}"
+        base = int(datetime.now(UTC).timestamp())
+
+        await billing_service.process_stripe_event(
+            session,
+            event=_subscription_event(
+                event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
+                status="active", sub_id=sub, created=base,
+            ),
+        )
+        await session.commit()
+
+        failed = {
+            "id": f"evt_{uuid.uuid4().hex[:12]}",
+            "type": "invoice.payment_failed",
+            "created": base + 3600,
+            "data": {"object": {"id": f"in_{uuid.uuid4().hex[:10]}", "subscription": sub}},
+        }
+        first = await billing_service.process_stripe_event(session, event=failed)
+        await session.commit()
+        assert first["status"] == "processed"
+
+        row = await session.get(WorkspaceBilling, ws)
+        assert row is not None and row.status == "past_due"
+
+        # A stale, distinct "active" event — older than the payment failure —
+        # arrives late. It must be recorded as a receipt but must not
+        # resurrect entitlement.
+        stale_active = _subscription_event(
+            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
+            status="active", sub_id=sub, created=base + 1800,
+        )
+        second = await billing_service.process_stripe_event(session, event=stale_active)
+        await session.commit()
+        assert second["status"] == "processed"
+
+        await session.refresh(row)
+        assert row.status == "past_due"
+        assert billing_service.is_entitled(row, billing_enabled=True) is False
+
+
+@pytest.mark.asyncio
 async def test_failed_handler_rolls_back_receipt_and_state(billing_on):
     """A handler error must leave no receipt and no partial mutation, so
     Stripe's retry is processed cleanly rather than being swallowed as a

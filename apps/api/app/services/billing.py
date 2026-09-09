@@ -217,11 +217,15 @@ def _period_end_from_subscription(sub: dict) -> datetime | None:
 async def _latest_applied_event_created(
     session: AsyncSession, *, workspace_id: uuid.UUID, exclude_event_id: str
 ) -> int | None:
-    """Max Stripe `created` timestamp among subscription-lifecycle webhook
+    """Max Stripe `created` timestamp among entitlement-affecting webhook
     receipts already stored for this workspace, excluding the event
     currently being applied (its own receipt is flushed before this is
     called, so it would otherwise tie with itself on a brand-new
-    subscription and be mistaken for an already-applied prior event)."""
+    subscription and be mistaken for an already-applied prior event).
+    Includes invoice.payment_failed: it mutates billing.status directly
+    (see process_stripe_event) via a path that bypasses _apply_subscription,
+    so without it here a delayed-but-actually-older "active" subscription
+    event could appear newest and overwrite a payment failure's "past_due"."""
     rows = (
         await session.execute(
             select(BillingWebhookEvent.payload).where(
@@ -232,6 +236,7 @@ async def _latest_applied_event_created(
                         "customer.subscription.created",
                         "customer.subscription.updated",
                         "customer.subscription.deleted",
+                        "invoice.payment_failed",
                     )
                 ),
             )
