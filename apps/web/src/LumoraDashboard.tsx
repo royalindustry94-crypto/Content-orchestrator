@@ -633,6 +633,7 @@ function ReviewQueue({
   const [draftHook, setDraftHook] = useState("");
   const [draftBody, setDraftBody] = useState("");
   const [draftCta, setDraftCta] = useState("");
+  const [editingVersionId, setEditingVersionId] = useState<string | null>(null);
   const [editError, setEditError] = useState<string | null>(null);
   const closeDrawer = () => {
     setSelected(null);
@@ -645,12 +646,20 @@ function ReviewQueue({
       const fresh = [...gates, ...approvedGates].find((gate) => gate.id === selected.id);
       if (fresh) setSelected(fresh);
     }
+    // Deliberately not syncing draftHook/Body/Cta/editingVersionId here:
+    // the background auto-refresh interval can update `gates` while an
+    // edit form is open, and if it silently re-pinned the save to the
+    // now-current version, a stale draft would pass the version check
+    // while still submitting stale text — exactly defeating the
+    // lost-update protection. The captured editingVersionId (and draft
+    // text) only change when the user explicitly starts editing again.
   }, [gates, approvedGates]);
 
   const startEditing = (gate: ReviewGate) => {
     setDraftHook(gate.script_hook ?? "");
     setDraftBody(gate.script_body ?? "");
     setDraftCta(gate.script_cta ?? "");
+    setEditingVersionId(gate.content_version_id);
     setEditError(null);
     setEditing(true);
   };
@@ -659,7 +668,10 @@ function ReviewQueue({
     if (!selected) return;
     setEditError(null);
     try {
-      await onEdit(selected, { script_hook: draftHook, script_body: draftBody, script_cta: draftCta });
+      await onEdit(
+        { ...selected, content_version_id: editingVersionId },
+        { script_hook: draftHook, script_body: draftBody, script_cta: draftCta },
+      );
       setEditing(false);
     } catch (cause) {
       setEditError(cause instanceof Error ? cause.message : "Unable to save the edit.");
@@ -2073,8 +2085,8 @@ export default function LumoraDashboard({
       : "Checking service status…";
 
   const decide = async (gate: ReviewGate, approved: boolean) => {
-    if (!gate.content_version_id) {
-      setReviewActionError("This review gate has no content version on record; refresh and try again.");
+    if (approved && !gate.content_version_id) {
+      setReviewActionError("This review gate has no content version on record and cannot be approved.");
       return;
     }
     setReviewBusy(gate.id);

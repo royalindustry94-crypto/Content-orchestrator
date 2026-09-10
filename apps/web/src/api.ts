@@ -820,7 +820,7 @@ export function decideReviewGate(
   workspaceId: string,
   gateId: string,
   approved: boolean,
-  expectedContentVersionId: string,
+  expectedContentVersionId: string | null,
   notes?: string,
 ): Promise<ReviewGate> {
   return apiFetch<ReviewGate>(
