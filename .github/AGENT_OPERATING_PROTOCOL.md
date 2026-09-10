@@ -2,19 +2,23 @@
 
 This protocol applies to every human or AI agent working in this repository. `AGENTS.md` remains authoritative, including its "Operating authority" section (added 2026-09-09): the coding agent has standing authority to resolve findings and merge without per-change Founder approval. Where this document's older role table below implies a Founder-approval merge gate, `AGENTS.md`'s current authority section wins. If instructions conflict on anything else, the stricter safety, review, and evidence requirement wins.
 
+**2026-09-10 update (Milestone 0 — Multi-Agent Orchestration Ready, Founder-directed):** Claude Code is the **Lead Orchestrator** for this repository — it dispatches bounded work to the other agents below, using GitHub MCP (issues/PRs/comments/reviews) as the permanent control plane, and drives every delegated task through independent review before merge. This supersedes the older "Orchestrator: Codex" row below. Codex and Copilot remain independent workers/reviewers — critically, **Claude Code never treats its own dispatch of a task as that task's independent review**; a worker's output still gets a separate review pass (another agent, or a from-scratch reproduction) before merge, per the existing "Builders cannot certify their own work" rule. See [coordination hub #90](https://github.com/royalindustry94-crypto/Content-orchestrator/issues/90) for the live Milestone 0 evidence trail (per-worker READY/BLOCKED status, delegation tests, end-to-end results).
+
 ## Job ownership
 
 | Role | Primary worker | Owns | Must not do |
 | --- | --- | --- | --- |
 | Founder | Mitch / `royalindustry94-crypto` | Priorities, product decisions, real-money/credential decisions | Delegate the Human Review Gate to automation |
-| Orchestrator | Codex | Triage, task boundaries, owner assignment, handoffs, evidence collection | Implement the same task it independently audits |
-| Builder | Claude Code or Cursor, explicitly assigned per task | One queued issue, one branch, implementation, tests, pull request, and — once evidence supports it — the merge itself | Merge on unresolved P0/P1 evidence, weaken controls, or work outside the assigned issue |
-| Pair assistant | GitHub Copilot | Small suggestions inside the active Builder's task | Own a task, approve a PR, or act as independent reviewer |
-| Reviewer / QA | A fresh Codex or other designated agent that did not build the change | Scope review, regression checks, exact-head CI evidence | Modify the reviewed head while claiming independence |
+| **Lead Orchestrator** | **Claude Code** | Dispatch: routes bounded work to the cheapest capable worker below, tracks task ownership/handoffs, drives every delegated task through independent review, reports evidence-backed PASS/CONDITIONAL/FAIL | Certify its own dispatched work as independently reviewed; weaken a non-negotiable to get a task to green |
+| Delegated implementation worker | Cursor (background/cloud agent) | Bounded implementation tasks assigned via Cursor's own dispatch surface, once connected | Merge, deploy, or act outside an assigned bounded task |
+| Complex implementation / review / security worker | Codex (`@codex review` / `@codex security review` on a PR) | Independent code + security review, complex analysis, release-readiness evidence | Approve or merge; self-certify a task it also implemented |
+| Cheaper bounded-work / test / docs worker | GitHub Copilot (`assign_copilot_to_issue`, `request_copilot_review`) | Small, well-specified bounded tasks (test fixes, docs, lint-scale changes) end-to-end: issue → PR; lightweight PR review | Own architecturally significant work; merge its own PR; act as sole reviewer of its own diff |
+| Builder (legacy label, still valid) | Claude Code or Cursor, explicitly assigned per task | One queued issue, one branch, implementation, tests, pull request, and — once evidence supports it — the merge itself | Merge on unresolved P0/P1 evidence, weaken controls, or work outside the assigned issue |
+| Reviewer / QA | A fresh Codex, Copilot, or other designated agent that did not build the change | Scope review, regression checks, exact-head CI evidence | Modify the reviewed head while claiming independence |
 | Security auditor | Independent agent | PASS / CONDITIONAL / FAIL audit against the exact head SHA and non-negotiables | Approve its own implementation or ignore missing evidence |
 | Build watchdog | GitHub Actions | Monitor the latest repository CI run only and retry genuine failures within bounded limits | Change product code, alter protections, expose secrets, or merge |
 
-Only one Builder owns a task at a time. A task must have an issue, a named owner, a branch, and a pull request before it can reach review.
+Only one Builder/worker owns a task at a time. A task must have an issue, a named owner, a branch, and a pull request before it can reach review.
 
 ## Work states
 
