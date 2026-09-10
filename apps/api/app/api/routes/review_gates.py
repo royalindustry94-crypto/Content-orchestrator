@@ -93,6 +93,7 @@ async def edit_review_gate(
             workspace_id=workspace_id,
             gate_id=gate_id,
             editor_id=uuid.UUID(user.id),
+            expected_content_version_id=payload.expected_content_version_id,
             script_hook=payload.script_hook,
             script_body=payload.script_body,
             script_cta=payload.script_cta,

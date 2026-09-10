@@ -2093,10 +2093,13 @@ export default function LumoraDashboard({
     gate: ReviewGate,
     edits: { script_hook?: string; script_body?: string; script_cta?: string },
   ) => {
+    if (!gate.content_version_id) {
+      throw new Error("This review gate has no content version on record; refresh and try again.");
+    }
     setReviewBusy(gate.id);
     setReviewActionError(null);
     try {
-      await editReviewGateContent(token, workspaceId, gate.id, edits);
+      await editReviewGateContent(token, workspaceId, gate.id, gate.content_version_id, edits);
       // Background reload: a foreground load() sets `loading`, which
       // unmounts ReviewQueue via the `loading` guard in renderView() and
       // wipes its `selected`/`editing` state — the drawer must stay open

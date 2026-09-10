@@ -803,11 +803,15 @@ export function editReviewGateContent(
   token: string,
   workspaceId: string,
   gateId: string,
+  expectedContentVersionId: string,
   payload: { script_hook?: string; script_body?: string; script_cta?: string },
 ): Promise<ReviewGate> {
   return apiFetch<ReviewGate>(`/workspaces/${workspaceId}/review-gates/${gateId}`, token, {
     method: "PATCH",
-    body: JSON.stringify(payload),
+    body: JSON.stringify({
+      ...payload,
+      expected_content_version_id: expectedContentVersionId,
+    }),
   });
 }
 

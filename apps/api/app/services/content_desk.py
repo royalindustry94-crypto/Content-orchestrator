@@ -381,7 +381,7 @@ async def decide_review_gate(
     gate_id: uuid.UUID,
     reviewer_id: uuid.UUID,
     approved: bool,
-    expected_content_version_id: uuid.UUID,
+    expected_content_version_id: uuid.UUID | None = None,
     notes: str | None = None,
 ) -> dict:
     gate = (
@@ -398,7 +398,16 @@ async def decide_review_gate(
         raise ReviewGateNotFoundError("review gate not found")
     if gate.status != ReviewGateStatus.AWAITING:
         raise ValueError("review gate is not awaiting a decision")
-    if expected_content_version_id != gate.content_version_id:
+    # Approval must always be pinned to the exact version reviewed — the
+    # schema already requires the field when approved=True, so a None
+    # gate.content_version_id here means a historical gate with no version
+    # on record, which can never be approved (only rejected).
+    if approved and gate.content_version_id is None:
+        raise ValueError("review gate has no content version on record; it cannot be approved")
+    if (
+        expected_content_version_id is not None
+        and expected_content_version_id != gate.content_version_id
+    ):
         raise ValueError(
             "review gate content has changed since it was loaded; refresh and try again"
         )
@@ -432,6 +441,7 @@ async def edit_review_gate_content(
     workspace_id: uuid.UUID,
     gate_id: uuid.UUID,
     editor_id: uuid.UUID,
+    expected_content_version_id: uuid.UUID,
     script_hook: str | None,
     script_body: str | None,
     script_cta: str | None,
@@ -448,6 +458,12 @@ async def edit_review_gate_content(
     equal `item.current_version_id` at publish time — it must move with
     the edit, or a legitimately edited-then-approved item would be
     permanently blocked from publication by its own review gate.
+
+    `expected_content_version_id` must match the gate's current snapshot
+    under its row lock, or a second editor saving a draft loaded before
+    someone else's edit landed would silently clobber that edit — a save
+    always submits all three script fields, so it would overwrite even
+    fields only the first editor touched.
     """
     gate = (
         await session.execute(
@@ -463,6 +479,10 @@ async def edit_review_gate_content(
         raise ReviewGateNotFoundError("review gate not found")
     if gate.status != ReviewGateStatus.AWAITING:
         raise ValueError("review gate is not awaiting a decision")
+    if expected_content_version_id != gate.content_version_id:
+        raise ValueError(
+            "review gate content has changed since it was loaded; refresh and try again"
+        )
 
     run = await session.get(PipelineRun, gate.pipeline_run_id)
     if run is None or run.content_item_id is None:

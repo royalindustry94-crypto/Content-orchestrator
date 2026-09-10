@@ -153,11 +153,14 @@ async def test_edit_review_gate_content_creates_new_version_and_stays_publishabl
     assert created.status_code == 201, created.text
     gate_id = created.json()["review_gate_id"]
     content_item_id = created.json()["content_item_id"]
+    version_id = await _current_version_id(
+        client, workspace_id=workspace_id, gate_id=gate_id, headers=headers
+    )
 
     edited = await client.patch(
         f"/workspaces/{workspace_id}/review-gates/{gate_id}",
         headers=headers,
-        json={"script_body": "Edited body"},
+        json={"script_body": "Edited body", "expected_content_version_id": version_id},
     )
     assert edited.status_code == 200, edited.text
     body = edited.json()
@@ -207,7 +210,7 @@ async def test_edit_review_gate_content_rejects_decided_gate(client, new_user):
     blocked = await client.patch(
         f"/workspaces/{workspace_id}/review-gates/{gate_id}",
         headers=headers,
-        json={"script_body": "Too late"},
+        json={"script_body": "Too late", "expected_content_version_id": version_id},
     )
     assert blocked.status_code == 409
 
@@ -222,11 +225,14 @@ async def test_edit_review_gate_content_requires_at_least_one_field(client, new_
         json={"topic": "Empty edit", "script_body": "Body"},
     )
     gate_id = created.json()["review_gate_id"]
+    version_id = await _current_version_id(
+        client, workspace_id=workspace_id, gate_id=gate_id, headers=headers
+    )
 
     empty = await client.patch(
         f"/workspaces/{workspace_id}/review-gates/{gate_id}",
         headers=headers,
-        json={},
+        json={"expected_content_version_id": version_id},
     )
     assert empty.status_code == 422
 
@@ -241,6 +247,9 @@ async def test_reviewer_only_cannot_edit_review_gate_content(client, new_user):
         json={"topic": "Reviewer cannot edit", "script_body": "Body"},
     )
     gate_id = created.json()["review_gate_id"]
+    version_id = await _current_version_id(
+        client, workspace_id=workspace_id, gate_id=gate_id, headers=admin_headers
+    )
 
     reviewer_id = str(uuid.uuid4())
     async with AsyncSessionLocal() as session:
@@ -263,7 +272,7 @@ async def test_reviewer_only_cannot_edit_review_gate_content(client, new_user):
     forbidden = await client.patch(
         f"/workspaces/{workspace_id}/review-gates/{gate_id}",
         headers=reviewer_headers,
-        json={"script_body": "Reviewer edit"},
+        json={"script_body": "Reviewer edit", "expected_content_version_id": version_id},
     )
     assert forbidden.status_code == 403
     assert admin_id  # silence unused in some linters
@@ -284,6 +293,9 @@ async def test_editor_can_edit_review_gate_content_under_rls(client, new_user):
         json={"topic": "Editor can edit", "script_body": "Body"},
     )
     gate_id = created.json()["review_gate_id"]
+    version_id = await _current_version_id(
+        client, workspace_id=workspace_id, gate_id=gate_id, headers=admin_headers
+    )
 
     editor_id = str(uuid.uuid4())
     async with AsyncSessionLocal() as session:
@@ -306,7 +318,7 @@ async def test_editor_can_edit_review_gate_content_under_rls(client, new_user):
     edited = await client.patch(
         f"/workspaces/{workspace_id}/review-gates/{gate_id}",
         headers=editor_headers,
-        json={"script_body": "Editor edit"},
+        json={"script_body": "Editor edit", "expected_content_version_id": version_id},
     )
     assert edited.status_code == 200, edited.text
     assert edited.json()["script_body"] == "Editor edit"
@@ -338,7 +350,7 @@ async def test_decision_rejects_stale_expected_content_version(client, new_user)
     edited = await client.patch(
         f"/workspaces/{workspace_id}/review-gates/{gate_id}",
         headers=headers,
-        json={"script_body": "V2 body"},
+        json={"script_body": "V2 body", "expected_content_version_id": v1_version_id},
     )
     assert edited.status_code == 200, edited.text
     v2_version_id = edited.json()["content_version_id"]
@@ -386,6 +398,98 @@ async def test_decision_requires_expected_version(client, new_user):
         json={"approved": True},
     )
     assert decided.status_code == 422, decided.text
+
+
+@pytest.mark.asyncio
+async def test_edit_rejects_stale_expected_content_version(client, new_user):
+    """Regression for an independent-audit P2 (round 3): a second editor
+    saving a draft loaded before someone else's edit landed must not
+    silently clobber it — a save submits all three script fields, so it
+    would overwrite even fields only the first editor touched."""
+    _user_id, _token, headers = new_user
+    workspace_id = await _create_workspace(client, headers)
+    created = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=headers,
+        json={
+            "topic": "Concurrent editors",
+            "script_hook": "Hook V1",
+            "script_body": "Body V1",
+            "script_cta": "CTA V1",
+        },
+    )
+    gate_id = created.json()["review_gate_id"]
+    v1_version_id = await _current_version_id(
+        client, workspace_id=workspace_id, gate_id=gate_id, headers=headers
+    )
+
+    # Editor A saves first, moving the gate to V2.
+    edited_a = await client.patch(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}",
+        headers=headers,
+        json={"script_hook": "Hook V2 by A", "expected_content_version_id": v1_version_id},
+    )
+    assert edited_a.status_code == 200, edited_a.text
+
+    # Editor B's drawer was still showing V1 when they save — must conflict,
+    # not silently overwrite A's script_hook change with the stale V1 value.
+    stale_edit_b = await client.patch(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}",
+        headers=headers,
+        json={"script_body": "Body V2 by B (stale)", "expected_content_version_id": v1_version_id},
+    )
+    assert stale_edit_b.status_code == 409, stale_edit_b.text
+
+    # B refreshes and retries against the real current version — succeeds.
+    v2_version_id = edited_a.json()["content_version_id"]
+    fresh_edit_b = await client.patch(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}",
+        headers=headers,
+        json={"script_body": "Body V3 by B", "expected_content_version_id": v2_version_id},
+    )
+    assert fresh_edit_b.status_code == 200, fresh_edit_b.text
+    body = fresh_edit_b.json()
+    assert body["script_body"] == "Body V3 by B"
+    # A's hook change survives — B's save only touched script_body.
+    assert body["script_hook"] == "Hook V2 by A"
+
+
+@pytest.mark.asyncio
+async def test_versionless_review_gate_can_be_rejected_but_not_approved(client, new_user):
+    """Regression for an independent-audit P2 (round 3): historical review
+    gates predating migration 0040 have `content_version_id = NULL` (see
+    `ReviewGate.content_version_id`'s docstring) and must still be
+    rejectable even though they can never be approved (publication's
+    anti-tamper check treats a null snapshot as fail-closed)."""
+    _user_id, _token, headers = new_user
+    workspace_id = await _create_workspace(client, headers)
+    created = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=headers,
+        json={"topic": "Versionless historical gate", "script_body": "Body"},
+    )
+    gate_id = created.json()["review_gate_id"]
+
+    async with AsyncSessionLocal() as session:
+        gate = await session.get(ReviewGate, uuid.UUID(gate_id))
+        assert gate is not None
+        gate.content_version_id = None
+        await session.commit()
+
+    blocked_approval = await client.post(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
+        headers=headers,
+        json={"approved": True, "expected_content_version_id": str(uuid.uuid4())},
+    )
+    assert blocked_approval.status_code == 409, blocked_approval.text
+
+    rejected = await client.post(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
+        headers=headers,
+        json={"approved": False},
+    )
+    assert rejected.status_code == 200, rejected.text
+    assert rejected.json()["status"] == "rejected"
 
 
 @pytest.mark.asyncio

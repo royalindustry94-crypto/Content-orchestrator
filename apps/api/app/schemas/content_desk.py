@@ -36,6 +36,14 @@ class ReviewGateEditIn(BaseModel):
     script_hook: str | None = Field(default=None, max_length=2000)
     script_body: str | None = Field(default=None, max_length=50000)
     script_cta: str | None = Field(default=None, max_length=2000)
+    # Required: the content_version_id the editor's client had loaded when
+    # they started editing. Compared under the gate's row lock before the
+    # new version is created, so a second editor saving a stale draft
+    # (loaded before someone else's edit landed) gets a 409 instead of
+    # silently clobbering the first editor's change — including fields
+    # only the first editor touched, since a save always submits all
+    # three script fields.
+    expected_content_version_id: uuid.UUID
 
     @model_validator(mode="after")
     def _require_at_least_one_field(self) -> ReviewGateEditIn:
@@ -49,16 +57,23 @@ class ReviewGateEditIn(BaseModel):
 class ReviewDecisionIn(BaseModel):
     approved: bool
     notes: str | None = Field(default=None, max_length=5000)
-    # Required: the content_version_id the caller's client had loaded when
-    # the reviewer chose to approve/reject. Must match the gate's current
-    # snapshot exactly, or the decision is rejected as a conflict (e.g. an
-    # editor changed the content while this gate sat open in the
-    # reviewer's drawer) rather than silently binding the reviewer's
-    # decision to content they never actually saw. Required rather than
-    # optional — an optional check a caller can simply omit protects
-    # nothing against a client (present or future, UI or direct API) that
-    # doesn't opt in.
-    expected_content_version_id: uuid.UUID
+    # The content_version_id the caller's client had loaded when the
+    # reviewer chose to approve/reject. Required when approving — approval
+    # is the direction that can lead to publication, so it must always be
+    # bound to the exact content the reviewer saw (an editor changing the
+    # content while this gate sat open in the reviewer's drawer must not
+    # silently get approved). Optional when rejecting: rejection carries
+    # no publish risk, and some historical gates predate this column and
+    # have a null `content_version_id` (see `ReviewGate.content_version_id`)
+    # — they must still be rejectable. If given on a rejection, it is
+    # still checked for consistency.
+    expected_content_version_id: uuid.UUID | None = None
+
+    @model_validator(mode="after")
+    def _require_version_when_approving(self) -> ReviewDecisionIn:
+        if self.approved and self.expected_content_version_id is None:
+            raise ValueError("expected_content_version_id is required to approve a review gate")
+        return self
 
 
 class ReviewGateOut(BaseModel):
