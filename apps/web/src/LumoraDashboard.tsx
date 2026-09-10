@@ -634,13 +634,18 @@ function ReviewQueue({
   const [draftBody, setDraftBody] = useState("");
   const [draftCta, setDraftCta] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
-  const drawerRef = useDialogFocus<HTMLElement>(selected !== null, () => setSelected(null));
+  const closeDrawer = () => {
+    setSelected(null);
+    setEditing(false);
+    setEditError(null);
+  };
+  const drawerRef = useDialogFocus<HTMLElement>(selected !== null, closeDrawer);
   useEffect(() => {
     if (selected) {
-      const fresh = gates.find((gate) => gate.id === selected.id);
+      const fresh = [...gates, ...approvedGates].find((gate) => gate.id === selected.id);
       if (fresh) setSelected(fresh);
     }
-  }, [gates]);
+  }, [gates, approvedGates]);
 
   const startEditing = (gate: ReviewGate) => {
     setDraftHook(gate.script_hook ?? "");
@@ -731,11 +736,11 @@ function ReviewQueue({
         </div>
       )}
       {selected ? (
-        <div className="drawer-backdrop" onMouseDown={() => { setSelected(null); setEditing(false); }} role="presentation">
+        <div className="drawer-backdrop" onMouseDown={closeDrawer} role="presentation">
           <aside aria-label="Review details" aria-modal="true" className="review-drawer" onMouseDown={(event) => event.stopPropagation()} ref={drawerRef} role="dialog" tabIndex={-1}>
             <header className="drawer-header">
               <div><p>Human Review Gate</p><h2>{selected.topic}</h2></div>
-              <button aria-label="Close review details" onClick={() => { setSelected(null); setEditing(false); }} type="button"><Icon name="close" /></button>
+              <button aria-label="Close review details" onClick={closeDrawer} type="button"><Icon name="close" /></button>
             </header>
             <div className="drawer-meta">
               <span><b>Status</b><Status value={selected.status} /></span>
