@@ -249,6 +249,124 @@ async def test_reviewer_only_cannot_edit_review_gate_content(client, new_user):
 
 
 @pytest.mark.asyncio
+async def test_editor_can_edit_review_gate_content_under_rls(client, new_user):
+    """Regression for an independent-audit P1: the FastAPI guard on the
+    PATCH route admits admin/editor, but `edit_review_gate_content`'s
+    `SELECT ... FOR UPDATE` on `review_gates` also has to satisfy the
+    table's RLS UPDATE policy (migration 0056) or PostgreSQL silently
+    zero-rows the locking read and the route 404s despite passing auth."""
+    admin_id, _admin_token, admin_headers = new_user
+    workspace_id = await _create_workspace(client, admin_headers)
+    created = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=admin_headers,
+        json={"topic": "Editor can edit", "script_body": "Body"},
+    )
+    gate_id = created.json()["review_gate_id"]
+
+    editor_id = str(uuid.uuid4())
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("INSERT INTO auth.users (id, email) VALUES (:id, :email)"),
+            {"id": editor_id, "email": f"{editor_id}@example.com"},
+        )
+        await session.commit()
+    from tests.conftest import make_token
+
+    editor_headers = {"Authorization": f"Bearer {make_token(user_id=editor_id)}"}
+    await _add_member(
+        client,
+        workspace_id=workspace_id,
+        admin_headers=admin_headers,
+        member_user_id=editor_id,
+        role=WorkspaceRole.EDITOR.value,
+    )
+
+    edited = await client.patch(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}",
+        headers=editor_headers,
+        json={"script_body": "Editor edit"},
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["script_body"] == "Editor edit"
+    assert admin_id  # silence unused in some linters
+
+
+@pytest.mark.asyncio
+async def test_decision_rejects_stale_expected_content_version(client, new_user):
+    """Regression for an independent-audit P1: a reviewer's client could
+    have gate V1 open in its drawer; if the content is edited to V2
+    before the reviewer clicks Approve, the decision must not silently
+    bind to V2 — the reviewer never saw it."""
+    _user_id, _token, headers = new_user
+    workspace_id = await _create_workspace(client, headers)
+    created = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=headers,
+        json={"topic": "Version race", "script_body": "V1 body"},
+    )
+    gate_id = created.json()["review_gate_id"]
+
+    loaded = await client.get(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}",
+        headers=headers,
+    )
+    v1_version_id = loaded.json()["content_version_id"]
+    assert v1_version_id is not None
+
+    edited = await client.patch(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}",
+        headers=headers,
+        json={"script_body": "V2 body"},
+    )
+    assert edited.status_code == 200, edited.text
+    v2_version_id = edited.json()["content_version_id"]
+    assert v2_version_id != v1_version_id
+
+    stale_decision = await client.post(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
+        headers=headers,
+        json={"approved": True, "expected_content_version_id": v1_version_id},
+    )
+    assert stale_decision.status_code == 409, stale_decision.text
+
+    async with AsyncSessionLocal() as session:
+        gate = await session.get(ReviewGate, uuid.UUID(gate_id))
+        assert gate is not None
+        assert gate.status.value == "awaiting"
+
+    fresh_decision = await client.post(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
+        headers=headers,
+        json={"approved": True, "expected_content_version_id": v2_version_id},
+    )
+    assert fresh_decision.status_code == 200, fresh_decision.text
+    assert fresh_decision.json()["status"] == "approved"
+
+
+@pytest.mark.asyncio
+async def test_decision_without_expected_version_still_works(client, new_user):
+    """expected_content_version_id is optional — omitting it (e.g. an
+    older client) must not break the existing decision flow."""
+    _user_id, _token, headers = new_user
+    workspace_id = await _create_workspace(client, headers)
+    created = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=headers,
+        json={"topic": "No version pin", "script_body": "Body"},
+    )
+    gate_id = created.json()["review_gate_id"]
+
+    decided = await client.post(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
+        headers=headers,
+        json={"approved": True},
+    )
+    assert decided.status_code == 200, decided.text
+    assert decided.json()["status"] == "approved"
+
+
+@pytest.mark.asyncio
 async def test_reject_fails_run_without_reject_transition(client, new_user):
     _user_id, _token, headers = new_user
     workspace_id = await _create_workspace(client, headers)

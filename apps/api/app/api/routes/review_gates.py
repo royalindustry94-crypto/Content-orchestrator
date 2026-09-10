@@ -133,6 +133,7 @@ async def decide_review_gate(
             reviewer_id=uuid.UUID(user.id),
             approved=payload.approved,
             notes=payload.notes,
+            expected_content_version_id=payload.expected_content_version_id,
         )
     except content_desk.ReviewGateNotFoundError as exc:
         raise HTTPException(

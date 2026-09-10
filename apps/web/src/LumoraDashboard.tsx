@@ -2076,7 +2076,7 @@ export default function LumoraDashboard({
     setReviewBusy(gate.id);
     setReviewActionError(null);
     try {
-      await decideReviewGate(token, workspaceId, gate.id, approved);
+      await decideReviewGate(token, workspaceId, gate.id, approved, undefined, gate.content_version_id);
       await load();
     } catch (cause) {
       setReviewActionError(cause instanceof Error ? cause.message : "Unable to save the review decision.");

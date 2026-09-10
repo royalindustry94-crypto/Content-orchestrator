@@ -49,6 +49,13 @@ class ReviewGateEditIn(BaseModel):
 class ReviewDecisionIn(BaseModel):
     approved: bool
     notes: str | None = Field(default=None, max_length=5000)
+    # Optional: the content_version_id the caller's client had loaded when
+    # the reviewer chose to approve/reject. If given and it no longer
+    # matches the gate's current snapshot (e.g. an editor changed the
+    # content while this gate sat open in the reviewer's drawer), the
+    # decision is rejected as a conflict rather than silently binding the
+    # reviewer's decision to content they never actually saw.
+    expected_content_version_id: uuid.UUID | None = None
 
 
 class ReviewGateOut(BaseModel):
@@ -58,6 +65,7 @@ class ReviewGateOut(BaseModel):
     workspace_id: uuid.UUID
     pipeline_run_id: uuid.UUID
     content_item_id: uuid.UUID
+    content_version_id: uuid.UUID | None
     topic: str
     stage: str
     status: str
