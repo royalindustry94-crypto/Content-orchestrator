@@ -29,6 +29,7 @@ from app.models.content_department import (
     CreativeDirection,
     OriginalityFingerprint,
 )
+from app.models.content_profile import get_business_context_state
 from app.models.enums import ContentStage, ContentStatus
 from app.models.strategy import StrategyBrief
 from app.orchestration.outbox import emit
@@ -193,22 +194,26 @@ async def create_manual_run(
     await _require_strategy_pass(
         session, workspace_id=workspace_id, strategy_brief_id=payload.strategy_brief_id
     )
+    business_context_state = await get_business_context_state(
+        session, workspace_id=workspace_id
+    )
+    last_error = "CONTENT PROVIDER NOT CONFIGURED"
+    if business_context_state != "complete":
+        last_error += "; BUSINESS CONTEXT INCOMPLETE"
+    last_error += "; NO CREATIVE DIRECTION OR CONTENT VERSION CREATED"
     run = ContentDepartmentRun(
         workspace_id=workspace_id,
         strategy_brief_id=payload.strategy_brief_id,
         trigger="manual",
         status="provider_not_configured",
         provider_state="not_configured",
-        business_context_state="incomplete",
+        business_context_state=business_context_state,
         max_provider_calls=payload.max_provider_calls,
         max_tokens=payload.max_tokens,
         max_cost_usd=payload.max_cost_usd,
         max_attempts=payload.max_attempts,
         timeout_seconds=payload.timeout_seconds,
-        last_error=(
-            "CONTENT PROVIDER NOT CONFIGURED; BUSINESS CONTEXT INCOMPLETE; "
-            "NO CREATIVE DIRECTION OR CONTENT VERSION CREATED"
-        ),
+        last_error=last_error,
         created_by=actor_id,
         updated_by=actor_id,
     )
@@ -746,6 +751,15 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
             )
         )
     ).scalar_one()
+    business_context_state = await get_business_context_state(
+        session, workspace_id=workspace_id
+    )
+    if last:
+        last_error = last.last_error
+    else:
+        last_error = "CONTENT PROVIDER NOT CONFIGURED"
+        if business_context_state != "complete":
+            last_error += "; BUSINESS CONTEXT INCOMPLETE"
     return {
         "provider_state": "not_configured",
         "status": last.status if last else "not_configured",
@@ -757,8 +771,8 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
         "packages_in_progress": package_counts[3],
         "claims_unverified": unverified,
         "cost_today_usd": Decimal("0.00"),
-        "last_error": last.last_error if last else "CONTENT PROVIDER NOT CONFIGURED",
+        "last_error": last_error,
         "schedule_enabled": False,
-        "business_context_state": "incomplete",
+        "business_context_state": business_context_state,
         "performance_data_state": "no_data",
     }

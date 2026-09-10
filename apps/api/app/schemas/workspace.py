@@ -5,6 +5,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
+from app.models.content_profile import is_content_profile_complete
+
 
 class WorkspaceCreate(BaseModel):
     name: str = Field(min_length=1, max_length=200)
@@ -70,13 +72,4 @@ class ContentProfileOut(BaseModel):
         value — used by the frontend to decide whether to show "complete"
         or keep prompting. Not a backend-enforced gate on anything.
         """
-        return all(
-            [
-                self.business_name,
-                self.offer,
-                self.target_audience,
-                self.brand_voice,
-                self.target_platform,
-                self.content_goal,
-            ]
-        )
+        return is_content_profile_complete(self)

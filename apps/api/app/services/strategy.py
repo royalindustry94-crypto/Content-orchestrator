@@ -17,6 +17,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.models.content_profile import get_business_context_state
 from app.models.research import Opportunity
 from app.models.strategy import (
     StrategyAudit,
@@ -224,6 +225,12 @@ async def create_manual_run(
     await _require_research_pass(
         session, workspace_id=workspace_id, opportunity_ids=opportunity_ids
     )
+    business_context_state = await get_business_context_state(
+        session, workspace_id=workspace_id
+    )
+    last_error = "STRATEGY PROVIDER NOT CONFIGURED"
+    if business_context_state != "complete":
+        last_error += "; BUSINESS CONTEXT INCOMPLETE"
     now = _utcnow()
     run = StrategyRun(
         workspace_id=workspace_id,
@@ -238,8 +245,8 @@ async def create_manual_run(
         max_attempts=payload.max_attempts,
         status="provider_not_configured",
         provider_state="not_configured",
-        business_context_state="incomplete",
-        last_error="STRATEGY PROVIDER NOT CONFIGURED; BUSINESS CONTEXT INCOMPLETE",
+        business_context_state=business_context_state,
+        last_error=last_error,
         created_by=actor_id,
         updated_by=actor_id,
     )
@@ -581,6 +588,15 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
         )
     ).scalar_one()
     cost = sum((Decimal(str(run.actual_cost_usd)) for run in runs), Decimal("0"))
+    business_context_state = await get_business_context_state(
+        session, workspace_id=workspace_id
+    )
+    if current or last:
+        last_error = (current or last).last_error
+    else:
+        last_error = "STRATEGY PROVIDER NOT CONFIGURED"
+        if business_context_state != "complete":
+            last_error += "; BUSINESS CONTEXT INCOMPLETE"
     return {
         "provider_state": "not_configured",
         "status": current.status if current else (last.status if last else "not_run"),
@@ -592,10 +608,8 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
         "briefs_passed": int(counts[1] or 0),
         "briefs_blocked": int(counts[2] or 0),
         "cost_today_usd": cost,
-        "last_error": (current or last).last_error
-        if (current or last)
-        else "STRATEGY PROVIDER NOT CONFIGURED",
+        "last_error": last_error,
         "schedule_enabled": bool(schedule.enabled) if schedule else False,
-        "business_context_state": "incomplete",
+        "business_context_state": business_context_state,
         "performance_data_state": "no_data",
     }
