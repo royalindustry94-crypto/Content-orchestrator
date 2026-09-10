@@ -48,7 +48,7 @@ jobs:
       - name: Lint
         run: ruff check .
       - name: Test with coverage gate
-        run: pytest --cov=app --cov-fail-under=75
+        run: pytest --cov=app --cov-fail-under=79
 
   worker:
     runs-on: ubuntu-latest
