@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ContentJobCreate(BaseModel):
@@ -27,6 +27,23 @@ class ContentJobOut(BaseModel):
     current_stage: str
     run_status: str
     gate_status: str
+
+
+class ReviewGateEditIn(BaseModel):
+    """At least one script field must be given; omitted fields keep their
+    current value (see `content_desk.edit_review_gate_content`)."""
+
+    script_hook: str | None = Field(default=None, max_length=2000)
+    script_body: str | None = Field(default=None, max_length=50000)
+    script_cta: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def _require_at_least_one_field(self) -> ReviewGateEditIn:
+        if self.script_hook is None and self.script_body is None and self.script_cta is None:
+            raise ValueError(
+                "at least one of script_hook, script_body, script_cta must be provided"
+            )
+        return self
 
 
 class ReviewDecisionIn(BaseModel):

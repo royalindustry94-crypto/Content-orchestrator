@@ -798,6 +798,18 @@ export function listReviewGates(
   );
 }
 
+export function editReviewGateContent(
+  token: string,
+  workspaceId: string,
+  gateId: string,
+  payload: { script_hook?: string; script_body?: string; script_cta?: string },
+): Promise<ReviewGate> {
+  return apiFetch<ReviewGate>(`/workspaces/${workspaceId}/review-gates/${gateId}`, token, {
+    method: "PATCH",
+    body: JSON.stringify(payload),
+  });
+}
+
 export function decideReviewGate(
   token: string,
   workspaceId: string,

@@ -1889,6 +1889,44 @@ button.side-link--active {
   background: #0e1118;
 }
 
+.content-preview--editing {
+  gap: 0.85rem;
+}
+
+.content-preview--editing label {
+  display: grid;
+  gap: 0.4rem;
+  color: #8d95a6;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.content-preview--editing textarea {
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #121620;
+  color: #d2d5dc;
+  font-family: inherit;
+  font-size: 0.75rem;
+  line-height: 1.7;
+  resize: vertical;
+}
+
+.review-summary--ready {
+  border-color: rgba(83, 214, 162, 0.18);
+  background: rgba(83, 214, 162, 0.045);
+}
+
+.review-summary--ready strong {
+  color: var(--success);
+}
+
+.review-card--approved {
+  min-height: auto;
+}
+
 .view-actions {
   display: flex;
   justify-content: space-between;

@@ -114,6 +114,143 @@ async def test_approve_advances_to_published(client, new_user):
 
 
 @pytest.mark.asyncio
+async def test_edit_review_gate_content_creates_new_version_and_stays_publishable(
+    client, new_user
+):
+    """Editing before approval must move both `item.current_version_id`
+    and the gate's frozen `content_version_id` snapshot together, or a
+    legitimately edited-then-approved item would be permanently blocked
+    from publication by its own review gate (see publication_policy's
+    `review_gate_content_version_mismatch` check)."""
+    _user_id, _token, headers = new_user
+    workspace_id = await _create_workspace(client, headers)
+    created = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=headers,
+        json={
+            "topic": "Edit me",
+            "script_hook": "Original hook",
+            "script_body": "Original body",
+            "script_cta": "Original cta",
+        },
+    )
+    assert created.status_code == 201, created.text
+    gate_id = created.json()["review_gate_id"]
+    content_item_id = created.json()["content_item_id"]
+
+    edited = await client.patch(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}",
+        headers=headers,
+        json={"script_body": "Edited body"},
+    )
+    assert edited.status_code == 200, edited.text
+    body = edited.json()
+    assert body["script_body"] == "Edited body"
+    # Omitted fields keep their prior value rather than being cleared.
+    assert body["script_hook"] == "Original hook"
+    assert body["script_cta"] == "Original cta"
+    assert body["status"] == "awaiting"
+
+    async with AsyncSessionLocal() as session:
+        gate = await session.get(ReviewGate, uuid.UUID(gate_id))
+        item = await session.get(ContentItem, uuid.UUID(content_item_id))
+        assert gate is not None and item is not None
+        assert gate.content_version_id == item.current_version_id
+        assert gate.content_version_id is not None
+
+    decided = await client.post(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
+        headers=headers,
+        json={"approved": True},
+    )
+    assert decided.status_code == 200, decided.text
+    assert decided.json()["script_body"] == "Edited body"
+
+
+@pytest.mark.asyncio
+async def test_edit_review_gate_content_rejects_decided_gate(client, new_user):
+    _user_id, _token, headers = new_user
+    workspace_id = await _create_workspace(client, headers)
+    created = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=headers,
+        json={"topic": "Already decided", "script_body": "Body"},
+    )
+    gate_id = created.json()["review_gate_id"]
+
+    decided = await client.post(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
+        headers=headers,
+        json={"approved": True},
+    )
+    assert decided.status_code == 200, decided.text
+
+    blocked = await client.patch(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}",
+        headers=headers,
+        json={"script_body": "Too late"},
+    )
+    assert blocked.status_code == 409
+
+
+@pytest.mark.asyncio
+async def test_edit_review_gate_content_requires_at_least_one_field(client, new_user):
+    _user_id, _token, headers = new_user
+    workspace_id = await _create_workspace(client, headers)
+    created = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=headers,
+        json={"topic": "Empty edit", "script_body": "Body"},
+    )
+    gate_id = created.json()["review_gate_id"]
+
+    empty = await client.patch(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}",
+        headers=headers,
+        json={},
+    )
+    assert empty.status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_reviewer_only_cannot_edit_review_gate_content(client, new_user):
+    admin_id, _admin_token, admin_headers = new_user
+    workspace_id = await _create_workspace(client, admin_headers)
+    created = await client.post(
+        f"/workspaces/{workspace_id}/content-jobs",
+        headers=admin_headers,
+        json={"topic": "Reviewer cannot edit", "script_body": "Body"},
+    )
+    gate_id = created.json()["review_gate_id"]
+
+    reviewer_id = str(uuid.uuid4())
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("INSERT INTO auth.users (id, email) VALUES (:id, :email)"),
+            {"id": reviewer_id, "email": f"{reviewer_id}@example.com"},
+        )
+        await session.commit()
+    from tests.conftest import make_token
+
+    reviewer_headers = {"Authorization": f"Bearer {make_token(user_id=reviewer_id)}"}
+    await _add_member(
+        client,
+        workspace_id=workspace_id,
+        admin_headers=admin_headers,
+        member_user_id=reviewer_id,
+        role=WorkspaceRole.REVIEWER.value,
+    )
+
+    forbidden = await client.patch(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}",
+        headers=reviewer_headers,
+        json={"script_body": "Reviewer edit"},
+    )
+    assert forbidden.status_code == 403
+    assert admin_id  # silence unused in some linters
+
+
+@pytest.mark.asyncio
 async def test_reject_fails_run_without_reject_transition(client, new_user):
     _user_id, _token, headers = new_user
     workspace_id = await _create_workspace(client, headers)

@@ -21,11 +21,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.audit import audit
-from app.core.authorization import require_workspace_member, require_workspace_reviewer
+from app.core.authorization import (
+    require_workspace_content_author,
+    require_workspace_member,
+    require_workspace_reviewer,
+)
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
 from app.models.enums import ReviewGateStatus
 from app.models.workspace_membership import WorkspaceMembership
-from app.schemas.content_desk import ReviewDecisionIn, ReviewGateOut
+from app.schemas.content_desk import ReviewDecisionIn, ReviewGateEditIn, ReviewGateOut
 from app.services import content_desk
 
 router = APIRouter(prefix="/workspaces/{workspace_id}/review-gates", tags=["review-gates"])
@@ -63,6 +67,50 @@ async def get_review_gate(
     row = await content_desk.get_review_gate(db, workspace_id=workspace_id, gate_id=gate_id)
     if row is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="review gate not found")
+    return ReviewGateOut.model_validate(row)
+
+
+@router.patch("/{gate_id}", response_model=ReviewGateOut)
+async def edit_review_gate(
+    workspace_id: uuid.UUID,
+    gate_id: uuid.UUID,
+    payload: ReviewGateEditIn,
+    request: Request,
+    user: AuthenticatedUser = Depends(get_current_user),
+    db: AsyncSession = Depends(get_current_session),
+    _membership: WorkspaceMembership = Depends(require_workspace_content_author),
+) -> ReviewGateOut:
+    """Edit a gate's script content while it is still AWAITING a decision.
+
+    Scoped to the same roles that may write content (`content_versions`/
+    `content_items` RLS both require admin or editor) rather than the
+    reviewer role used for decisions — reviewers approve/reject, editors
+    (and admins, who can also decide) author and revise content.
+    """
+    try:
+        row = await content_desk.edit_review_gate_content(
+            db,
+            workspace_id=workspace_id,
+            gate_id=gate_id,
+            editor_id=uuid.UUID(user.id),
+            script_hook=payload.script_hook,
+            script_body=payload.script_body,
+            script_cta=payload.script_cta,
+        )
+    except content_desk.ReviewGateNotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="review gate not found"
+        ) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    audit(
+        request,
+        "review_gate_content_edited",
+        workspace_id=str(workspace_id),
+        review_gate_id=str(gate_id),
+        editor_id=user.id,
+    )
     return ReviewGateOut.model_validate(row)
 
 

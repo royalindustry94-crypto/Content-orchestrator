@@ -19,6 +19,7 @@ import {
   createResearchRun,
   createStrategyRun,
   decideReviewGate,
+  editReviewGateContent,
   getActivityFeed,
   getContentCommand,
   getContentProfile,
@@ -614,16 +615,25 @@ function DashboardHome({
 
 function ReviewQueue({
   gates,
+  approvedGates,
   workspaceName,
   busy,
   onDecision,
+  onEdit,
 }: {
   gates: ReviewGate[];
+  approvedGates: ReviewGate[];
   workspaceName: string;
   busy: string | null;
   onDecision: (gate: ReviewGate, approved: boolean) => Promise<void>;
+  onEdit: (gate: ReviewGate, edits: { script_hook?: string; script_body?: string; script_cta?: string }) => Promise<void>;
 }) {
   const [selected, setSelected] = useState<ReviewGate | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draftHook, setDraftHook] = useState("");
+  const [draftBody, setDraftBody] = useState("");
+  const [draftCta, setDraftCta] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
   const drawerRef = useDialogFocus<HTMLElement>(selected !== null, () => setSelected(null));
   useEffect(() => {
     if (selected) {
@@ -631,6 +641,26 @@ function ReviewQueue({
       if (fresh) setSelected(fresh);
     }
   }, [gates]);
+
+  const startEditing = (gate: ReviewGate) => {
+    setDraftHook(gate.script_hook ?? "");
+    setDraftBody(gate.script_body ?? "");
+    setDraftCta(gate.script_cta ?? "");
+    setEditError(null);
+    setEditing(true);
+  };
+
+  const saveEdits = async () => {
+    if (!selected) return;
+    setEditError(null);
+    try {
+      await onEdit(selected, { script_hook: draftHook, script_body: draftBody, script_cta: draftCta });
+      setEditing(false);
+    } catch (cause) {
+      setEditError(cause instanceof Error ? cause.message : "Unable to save the edit.");
+    }
+  };
+
   return (
     <>
       <div className="review-summary">
@@ -670,12 +700,42 @@ function ReviewQueue({
           ))}
         </div>
       )}
+      <div className="review-summary review-summary--ready">
+        <div><strong>{approvedGates.length}</strong><span>Ready to publish</span></div>
+        <p>Approved content waiting on a configured publishing provider. No external publishing occurs automatically.</p>
+      </div>
+      {approvedGates.length === 0 ? (
+        <div className="empty-state">
+          <span className="empty-icon"><Icon name="pipelines" size={28} /></span>
+          <h3>Nothing ready yet</h3>
+          <p>Content approved at the Human Review Gate will appear here.</p>
+        </div>
+      ) : (
+        <div className="review-grid">
+          {approvedGates.map((gate) => (
+            <article className="review-card review-card--approved" key={gate.id}>
+              <header>
+                <Status value={gate.status} />
+                <time dateTime={gate.decided_at ?? gate.requested_at}>{relativeTime(gate.decided_at ?? gate.requested_at)}</time>
+              </header>
+              <h3>{gate.topic}</h3>
+              <div className="review-meta">
+                <span><b>Pipeline</b><code>{gate.pipeline_run_id.slice(0, 8)}</code></span>
+                <span><b>Workspace</b>{workspaceName}</span>
+              </div>
+              <footer>
+                <button className="button button--open" onClick={() => setSelected(gate)} type="button">Open <Icon name="arrow" size={14} /></button>
+              </footer>
+            </article>
+          ))}
+        </div>
+      )}
       {selected ? (
-        <div className="drawer-backdrop" onMouseDown={() => setSelected(null)} role="presentation">
+        <div className="drawer-backdrop" onMouseDown={() => { setSelected(null); setEditing(false); }} role="presentation">
           <aside aria-label="Review details" aria-modal="true" className="review-drawer" onMouseDown={(event) => event.stopPropagation()} ref={drawerRef} role="dialog" tabIndex={-1}>
             <header className="drawer-header">
               <div><p>Human Review Gate</p><h2>{selected.topic}</h2></div>
-              <button aria-label="Close review details" onClick={() => setSelected(null)} type="button"><Icon name="close" /></button>
+              <button aria-label="Close review details" onClick={() => { setSelected(null); setEditing(false); }} type="button"><Icon name="close" /></button>
             </header>
             <div className="drawer-meta">
               <span><b>Status</b><Status value={selected.status} /></span>
@@ -683,14 +743,28 @@ function ReviewQueue({
               <span><b>Pipeline</b><code>{selected.pipeline_run_id}</code></span>
               <span><b>Workspace</b>{workspaceName}</span>
             </div>
-            <div className="content-preview">
-              {selected.script_hook ? <section><h4>Hook</h4><p>{selected.script_hook}</p></section> : null}
-              {selected.script_body ? <section><h4>Script</h4><p>{selected.script_body}</p></section> : null}
-              {selected.script_cta ? <section><h4>Call to action</h4><p>{selected.script_cta}</p></section> : null}
-              {!selected.script_hook && !selected.script_body && !selected.script_cta ? <p>No text content was attached to this review.</p> : null}
-            </div>
-            {selected.status === "awaiting" ? (
+            {editing ? (
+              <div className="content-preview content-preview--editing">
+                <label>Hook<textarea onChange={(event) => setDraftHook(event.target.value)} rows={2} value={draftHook} /></label>
+                <label>Script<textarea onChange={(event) => setDraftBody(event.target.value)} rows={8} value={draftBody} /></label>
+                <label>Call to action<textarea onChange={(event) => setDraftCta(event.target.value)} rows={2} value={draftCta} /></label>
+                {editError ? <p className="error" role="alert">{editError}</p> : null}
+                <div className="drawer-actions">
+                  <button className="button" onClick={() => { setEditing(false); setEditError(null); }} type="button">Cancel</button>
+                  <button className="button button--approve" disabled={busy === selected.id} onClick={() => void saveEdits()} type="button">Save changes</button>
+                </div>
+              </div>
+            ) : (
+              <div className="content-preview">
+                {selected.script_hook ? <section><h4>Hook</h4><p>{selected.script_hook}</p></section> : null}
+                {selected.script_body ? <section><h4>Script</h4><p>{selected.script_body}</p></section> : null}
+                {selected.script_cta ? <section><h4>Call to action</h4><p>{selected.script_cta}</p></section> : null}
+                {!selected.script_hook && !selected.script_body && !selected.script_cta ? <p>No text content was attached to this review.</p> : null}
+              </div>
+            )}
+            {selected.status === "awaiting" && !editing ? (
               <footer className="drawer-actions">
+                <button className="button" onClick={() => startEditing(selected)} type="button">Edit content</button>
                 <button className="button button--reject" disabled={busy === selected.id} onClick={() => void onDecision(selected, false)} type="button">Reject</button>
                 <button className="button button--approve" disabled={busy === selected.id} onClick={() => void onDecision(selected, true)} type="button">Approve content</button>
               </footer>
@@ -1983,6 +2057,7 @@ export default function LumoraDashboard({
 
   const title = NAV.find((item) => item.id === nav)?.label ?? "Dashboard";
   const awaitingReviews = Array.isArray(data) ? data.filter((gate) => gate.status === "awaiting") : [];
+  const approvedReviews = Array.isArray(data) ? data.filter((gate) => gate.status === "approved") : [];
   const notificationCount = notifications?.notifications.length ?? 0;
   const displayedHealth = healthWorkspaceId === workspaceId ? health : null;
   const healthLevel = aggregateHealth(displayedHealth);
@@ -2005,6 +2080,24 @@ export default function LumoraDashboard({
     }
   };
 
+  const editGateContent = async (
+    gate: ReviewGate,
+    edits: { script_hook?: string; script_body?: string; script_cta?: string },
+  ) => {
+    setReviewBusy(gate.id);
+    setReviewActionError(null);
+    try {
+      await editReviewGateContent(token, workspaceId, gate.id, edits);
+      // Background reload: a foreground load() sets `loading`, which
+      // unmounts ReviewQueue via the `loading` guard in renderView() and
+      // wipes its `selected`/`editing` state — the drawer must stay open
+      // after a save so the Founder can review the edit and then Approve.
+      await load({ background: true });
+    } finally {
+      setReviewBusy(null);
+    }
+  };
+
   const renderView = () => {
     if (error) return <ErrorState error={error} retry={() => void load()} />;
 
@@ -2015,7 +2108,7 @@ export default function LumoraDashboard({
       return (
         <>
           {reviewActionError ? <p className="error" role="alert">{reviewActionError}</p> : null}
-          <ReviewQueue busy={reviewBusy} gates={awaitingReviews} onDecision={decide} workspaceName={currentWorkspace?.name ?? "Current workspace"} />
+          <ReviewQueue approvedGates={approvedReviews} busy={reviewBusy} gates={awaitingReviews} onDecision={decide} onEdit={editGateContent} workspaceName={currentWorkspace?.name ?? "Current workspace"} />
         </>
       );
     }
