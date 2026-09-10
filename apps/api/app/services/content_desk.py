@@ -381,6 +381,7 @@ async def decide_review_gate(
     gate_id: uuid.UUID,
     reviewer_id: uuid.UUID,
     approved: bool,
+    expected_content_version_id: uuid.UUID | None = None,
     notes: str | None = None,
 ) -> dict:
     gate = (
@@ -397,6 +398,19 @@ async def decide_review_gate(
         raise ReviewGateNotFoundError("review gate not found")
     if gate.status != ReviewGateStatus.AWAITING:
         raise ValueError("review gate is not awaiting a decision")
+    # Approval must always be pinned to the exact version reviewed — the
+    # schema already requires the field when approved=True, so a None
+    # gate.content_version_id here means a historical gate with no version
+    # on record, which can never be approved (only rejected).
+    if approved and gate.content_version_id is None:
+        raise ValueError("review gate has no content version on record; it cannot be approved")
+    if (
+        expected_content_version_id is not None
+        and expected_content_version_id != gate.content_version_id
+    ):
+        raise ValueError(
+            "review gate content has changed since it was loaded; refresh and try again"
+        )
 
     event = await controller.submit_review_decision(
         session,
@@ -421,6 +435,97 @@ async def decide_review_gate(
     return detail
 
 
+async def edit_review_gate_content(
+    session: AsyncSession,
+    *,
+    workspace_id: uuid.UUID,
+    gate_id: uuid.UUID,
+    editor_id: uuid.UUID,
+    expected_content_version_id: uuid.UUID,
+    script_hook: str | None,
+    script_body: str | None,
+    script_cta: str | None,
+) -> dict:
+    """Record an edit to a gate's content while it is still AWAITING.
+
+    Content versions are immutable (see `ContentVersion`), so an edit is a
+    new version row, not a mutation of the one under review — the original
+    draft stays intact in history. Omitted fields keep the current
+    version's value rather than being cleared.
+
+    `gate.content_version_id` is a frozen anti-tamper snapshot that
+    `publication_policy.check_publication_eligibility` requires to still
+    equal `item.current_version_id` at publish time — it must move with
+    the edit, or a legitimately edited-then-approved item would be
+    permanently blocked from publication by its own review gate.
+
+    `expected_content_version_id` must match the gate's current snapshot
+    under its row lock, or a second editor saving a draft loaded before
+    someone else's edit landed would silently clobber that edit — a save
+    always submits all three script fields, so it would overwrite even
+    fields only the first editor touched.
+    """
+    gate = (
+        await session.execute(
+            select(ReviewGate)
+            .where(
+                ReviewGate.workspace_id == workspace_id,
+                ReviewGate.id == gate_id,
+            )
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if gate is None:
+        raise ReviewGateNotFoundError("review gate not found")
+    if gate.status != ReviewGateStatus.AWAITING:
+        raise ValueError("review gate is not awaiting a decision")
+    if expected_content_version_id != gate.content_version_id:
+        raise ValueError(
+            "review gate content has changed since it was loaded; refresh and try again"
+        )
+
+    run = await session.get(PipelineRun, gate.pipeline_run_id)
+    if run is None or run.content_item_id is None:
+        raise ValueError(f"review_gate {gate.id} missing pipeline run / content item")
+    item = await session.get(ContentItem, run.content_item_id)
+    if item is None:
+        raise ValueError(f"review_gate {gate.id} missing content item")
+    current_version = (
+        await session.get(ContentVersion, item.current_version_id)
+        if item.current_version_id is not None
+        else None
+    )
+
+    version = ContentVersion(
+        id=uuid.uuid4(),
+        workspace_id=workspace_id,
+        content_item_id=item.id,
+        script_hook=script_hook
+        if script_hook is not None
+        else (current_version.script_hook if current_version else None),
+        script_body=script_body
+        if script_body is not None
+        else (current_version.script_body if current_version else None),
+        script_cta=script_cta
+        if script_cta is not None
+        else (current_version.script_cta if current_version else None),
+        prompt_used=None,
+        generated_by="human_edit",
+        created_by=editor_id,
+    )
+    session.add(version)
+    await session.flush()
+    item.current_version_id = version.id
+    item.updated_by = editor_id
+    gate.content_version_id = version.id
+    await session.flush()
+
+    detail = await get_review_gate(session, workspace_id=workspace_id, gate_id=gate_id)
+    if detail is None:
+        raise RuntimeError("review gate disappeared after edit")
+    return detail
+
+
 def _gate_row(
     gate: ReviewGate,
     run: PipelineRun,
@@ -435,6 +540,7 @@ def _gate_row(
         "workspace_id": gate.workspace_id,
         "pipeline_run_id": gate.pipeline_run_id,
         "content_item_id": item.id,
+        "content_version_id": gate.content_version_id,
         "topic": item.topic,
         "stage": stage,
         "status": status,

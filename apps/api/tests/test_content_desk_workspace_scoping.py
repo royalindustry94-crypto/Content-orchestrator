@@ -96,6 +96,7 @@ async def test_content_desk_decide_review_gate_rejects_mismatched_workspace():
                 gate_id=result_a.review_gate_id,
                 reviewer_id=uuid.uuid4(),
                 approved=True,
+                expected_content_version_id=uuid.uuid4(),
             )
         await session.rollback()
 

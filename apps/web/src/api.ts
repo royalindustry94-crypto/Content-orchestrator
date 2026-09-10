@@ -13,6 +13,7 @@ export type ReviewGate = {
   workspace_id: string;
   pipeline_run_id: string;
   content_item_id: string;
+  content_version_id: string | null;
   topic: string;
   stage: string;
   status: string;
@@ -798,11 +799,28 @@ export function listReviewGates(
   );
 }
 
+export function editReviewGateContent(
+  token: string,
+  workspaceId: string,
+  gateId: string,
+  expectedContentVersionId: string,
+  payload: { script_hook?: string; script_body?: string; script_cta?: string },
+): Promise<ReviewGate> {
+  return apiFetch<ReviewGate>(`/workspaces/${workspaceId}/review-gates/${gateId}`, token, {
+    method: "PATCH",
+    body: JSON.stringify({
+      ...payload,
+      expected_content_version_id: expectedContentVersionId,
+    }),
+  });
+}
+
 export function decideReviewGate(
   token: string,
   workspaceId: string,
   gateId: string,
   approved: boolean,
+  expectedContentVersionId: string | null,
   notes?: string,
 ): Promise<ReviewGate> {
   return apiFetch<ReviewGate>(
@@ -810,7 +828,11 @@ export function decideReviewGate(
     token,
     {
       method: "POST",
-      body: JSON.stringify({ approved, notes }),
+      body: JSON.stringify({
+        approved,
+        notes,
+        expected_content_version_id: expectedContentVersionId,
+      }),
     },
   );
 }
