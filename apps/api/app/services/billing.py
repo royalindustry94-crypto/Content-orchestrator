@@ -80,9 +80,15 @@ def _configure_stripe(settings: Settings) -> None:
 
 
 async def ensure_workspace_billing(
-    session: AsyncSession, *, workspace_id: uuid.UUID
+    session: AsyncSession, *, workspace_id: uuid.UUID, for_update: bool = False
 ) -> WorkspaceBilling:
-    row = await session.get(WorkspaceBilling, workspace_id)
+    """``for_update=True`` locks the row for the rest of this transaction —
+    required before any read-modify-write of subscription state, since
+    Stripe does not guarantee ordered or single-threaded webhook delivery
+    (2026-09-08 fix; see ``_apply_subscription``, the one caller that
+    actually mutates entitlement-bearing fields from webhook data).
+    """
+    row = await session.get(WorkspaceBilling, workspace_id, with_for_update=for_update)
     if row is not None:
         return row
     row = WorkspaceBilling(
@@ -150,23 +156,39 @@ async def create_checkout_session(
         raise BillingError("already_entitled", "workspace already has an active Pro plan")
 
     if not billing.stripe_customer_id:
-        customer = stripe.Customer.create(
-            email=customer_email,
-            metadata={"workspace_id": str(workspace_id)},
-        )
+        try:
+            customer = stripe.Customer.create(
+                email=customer_email,
+                metadata={"workspace_id": str(workspace_id)},
+                # Deterministic per-workspace key: a retry after a network-level
+                # ambiguous failure (e.g. the request succeeded but the response
+                # was lost) reuses the same Stripe Customer instead of orphaning
+                # a duplicate. Safe to reuse across genuinely distinct attempts
+                # too, since a workspace only ever wants one Customer object.
+                idempotency_key=f"workspace-customer-{workspace_id}",
+            )
+        except stripe.error.StripeError as exc:
+            raise BillingError(
+                "stripe_unavailable", f"Stripe customer creation failed: {exc}"
+            ) from exc
         billing.stripe_customer_id = customer["id"]
         await session.flush()
 
-    checkout = stripe.checkout.Session.create(
-        mode="subscription",
-        customer=billing.stripe_customer_id,
-        line_items=[{"price": settings.stripe_price_id_pro, "quantity": 1}],
-        success_url=settings.stripe_checkout_success_url,
-        cancel_url=settings.stripe_checkout_cancel_url,
-        client_reference_id=str(workspace_id),
-        metadata={"workspace_id": str(workspace_id)},
-        subscription_data={"metadata": {"workspace_id": str(workspace_id)}},
-    )
+    try:
+        checkout = stripe.checkout.Session.create(
+            mode="subscription",
+            customer=billing.stripe_customer_id,
+            line_items=[{"price": settings.stripe_price_id_pro, "quantity": 1}],
+            success_url=settings.stripe_checkout_success_url,
+            cancel_url=settings.stripe_checkout_cancel_url,
+            client_reference_id=str(workspace_id),
+            metadata={"workspace_id": str(workspace_id)},
+            subscription_data={"metadata": {"workspace_id": str(workspace_id)}},
+        )
+    except stripe.error.StripeError as exc:
+        raise BillingError(
+            "stripe_unavailable", f"Stripe checkout session creation failed: {exc}"
+        ) from exc
     url = checkout.get("url")
     if not url:
         raise BillingError("checkout_failed", "Stripe Checkout session missing url")
@@ -192,13 +214,85 @@ def _period_end_from_subscription(sub: dict) -> datetime | None:
     return datetime.fromtimestamp(int(raw), tz=UTC)
 
 
+async def _latest_applied_event_created(
+    session: AsyncSession, *, workspace_id: uuid.UUID, exclude_event_id: str
+) -> int | None:
+    """Max Stripe `created` timestamp among entitlement-affecting webhook
+    receipts already stored for this workspace, excluding the event
+    currently being applied (its own receipt is flushed before this is
+    called, so it would otherwise tie with itself on a brand-new
+    subscription and be mistaken for an already-applied prior event).
+    Includes invoice.payment_failed: it mutates billing.status directly
+    (see process_stripe_event) via a path that bypasses _apply_subscription,
+    so without it here a delayed-but-actually-older "active" subscription
+    event could appear newest and overwrite a payment failure's "past_due"."""
+    rows = (
+        await session.execute(
+            select(BillingWebhookEvent.payload).where(
+                BillingWebhookEvent.workspace_id == workspace_id,
+                BillingWebhookEvent.stripe_event_id != exclude_event_id,
+                BillingWebhookEvent.event_type.in_(
+                    (
+                        "customer.subscription.created",
+                        "customer.subscription.updated",
+                        "customer.subscription.deleted",
+                        "invoice.payment_failed",
+                    )
+                ),
+            )
+        )
+    ).scalars().all()
+    created_values = [
+        row.get("created")
+        for row in rows
+        if isinstance(row, dict) and isinstance(row.get("created"), int)
+    ]
+    return max(created_values) if created_values else None
+
+
 async def _apply_subscription(
     session: AsyncSession,
     *,
     workspace_id: uuid.UUID,
     subscription: dict,
+    event_id: str,
+    event_created: int | None = None,
 ) -> None:
-    billing = await ensure_workspace_billing(session, workspace_id=workspace_id)
+    billing = await ensure_workspace_billing(
+        session, workspace_id=workspace_id, for_update=True
+    )
+    status = str(subscription.get("status") or "inactive")
+    if event_created is not None:
+        latest = await _latest_applied_event_created(
+            session, workspace_id=workspace_id, exclude_event_id=event_id
+        )
+        # Stripe `created` timestamps are second-granularity, so two distinct
+        # events can genuinely tie. An unambiguously (strictly) older event
+        # must always be rejected regardless of direction: a `past_due`/
+        # `unpaid`/`incomplete` status via subscription.updated is a
+        # *reversible* sub-state of an ongoing subscription, not terminal
+        # the way subscription.deleted's "canceled" is (once really
+        # canceled, nothing legitimately supersedes it for that subscription
+        # id) — so a strictly older downgrade arriving late must not
+        # overwrite a newer, already-applied active state any more than a
+        # strictly older active event may resurrect a newer downgrade. A
+        # genuine *tie* is the only case kept ambiguous enough to fail
+        # closed: it still favors a downgrade over an entitlement grant,
+        # since whichever was merely delivered/processed last would
+        # otherwise decide the outcome.
+        is_entitling = status in ACTIVE_STATUSES
+        stale = latest is not None and event_created < latest
+        tied = latest is not None and event_created == latest
+        if stale or (tied and is_entitling):
+            logger.info(
+                "stripe_webhook_stale_event_skipped",
+                extra={
+                    "workspace_id": str(workspace_id),
+                    "event_created": event_created,
+                    "latest_applied_created": latest,
+                },
+            )
+            return
     billing.stripe_subscription_id = subscription.get("id") or billing.stripe_subscription_id
     customer = subscription.get("customer")
     if isinstance(customer, str):
@@ -206,7 +300,6 @@ async def _apply_subscription(
     elif isinstance(customer, dict) and customer.get("id"):
         billing.stripe_customer_id = customer["id"]
 
-    status = str(subscription.get("status") or "inactive")
     billing.status = status
     if status in ACTIVE_STATUSES:
         billing.plan = PRO_PLAN
@@ -327,22 +420,76 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
                             "subscription event could not be mapped to a workspace",
                         )
                     workspace_id = row.workspace_id
+                raw_created = event.get("created")
                 await _apply_subscription(
-                    session, workspace_id=workspace_id, subscription=data_object
+                    session,
+                    workspace_id=workspace_id,
+                    subscription=data_object,
+                    event_id=event_id,
+                    event_created=raw_created if isinstance(raw_created, int) else None,
                 )
             elif event_type == "invoice.payment_failed":
                 sub = data_object.get("subscription")
                 if isinstance(sub, str):
-                    row = (
+                    found_workspace_id = (
                         await session.execute(
-                            select(WorkspaceBilling).where(
+                            select(WorkspaceBilling.workspace_id).where(
                                 WorkspaceBilling.stripe_subscription_id == sub
                             )
                         )
                     ).scalar_one_or_none()
-                    if row is not None:
-                        row.status = "past_due"
-                        workspace_id = row.workspace_id
+                    if found_workspace_id is not None:
+                        workspace_id = found_workspace_id
+                        # Lock the row (same lock _apply_subscription takes)
+                        # BEFORE reading freshness, not after: a plain,
+                        # unlocked read here would let a concurrent,
+                        # genuinely parallel transaction (a newer
+                        # subscription.updated) still be uncommitted when
+                        # this reads "latest applied event", so this event
+                        # could wrongly conclude it's not stale, decide to
+                        # write, and then only *incidentally* block at
+                        # flush() on the other transaction's lock — meaning
+                        # the decision was made on stale data even though
+                        # the write itself is correctly serialized. Locking
+                        # first forces this read to happen only once the
+                        # concurrent transaction has actually committed.
+                        row = await ensure_workspace_billing(
+                            session, workspace_id=workspace_id, for_update=True
+                        )
+                        # Unlike a subscription-status transition (the
+                        # current, authoritative state of the subscription
+                        # as of that event), a payment-failure notification
+                        # only describes one invoice attempt at a point in
+                        # time — it can be superseded by a later successful
+                        # renewal. Stripe retries webhook delivery for days,
+                        # so a strictly older, delayed failure must not
+                        # overwrite an already-applied newer event (e.g. the
+                        # customer fixed their card and renewed). A genuine
+                        # timestamp tie is kept ambiguous enough to fail
+                        # closed in this action's own (downgrading)
+                        # direction, same as _apply_subscription's tie
+                        # handling — this action only ever revokes
+                        # entitlement, so applying it on a tie is the safe
+                        # choice, not overwriting a competing state.
+                        raw_created = event.get("created")
+                        latest = None
+                        if isinstance(raw_created, int):
+                            latest = await _latest_applied_event_created(
+                                session,
+                                workspace_id=workspace_id,
+                                exclude_event_id=event_id,
+                            )
+                        if latest is not None and raw_created < latest:
+                            logger.info(
+                                "stripe_webhook_stale_payment_failure_skipped",
+                                extra={
+                                    "workspace_id": str(workspace_id),
+                                    "event_created": raw_created,
+                                    "latest_applied_created": latest,
+                                },
+                            )
+                        else:
+                            row.status = "past_due"
                         await session.flush()
             else:
                 logger.info(

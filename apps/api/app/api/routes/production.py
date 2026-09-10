@@ -4,10 +4,11 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import audit
 from app.core.authorization import require_workspace_admin
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
 from app.models.production import FinalArtifact, MediaQaResult, ProductionReadiness
@@ -34,13 +35,14 @@ def _not_found(detail: str) -> HTTPException:
 async def create_run(
     workspace_id: uuid.UUID,
     payload: ProductionRunCreate,
+    request: Request,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_current_session),
 ) -> ProductionRunOut:
     del membership
     try:
-        return await production.create_production_run(
+        result = await production.create_production_run(
             db,
             workspace_id=workspace_id,
             actor_id=uuid.UUID(user.id),
@@ -59,6 +61,17 @@ async def create_run(
         raise _not_found(str(exc)) from exc
     except production.ProductionEligibilityError as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+
+    audit(
+        request,
+        "production_run_created",
+        workspace_id=str(workspace_id),
+        actor_id=user.id,
+        production_run_id=str(result.id),
+        content_package_id=str(payload.content_package_id),
+        max_cost_usd=str(payload.max_cost_usd),
+    )
+    return result
 
 
 @router.get("/summary", response_model=ProductionSummaryOut)

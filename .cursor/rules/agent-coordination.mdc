@@ -1,0 +1,16 @@
+---
+description: Shared agent coordination and one-Builder safety rules
+alwaysApply: true
+---
+
+# Agent coordination
+
+Before planning or editing, read `AGENTS.md`, `.github/AGENT_OPERATING_PROTOCOL.md`, and the active record in [coordination hub #90](https://github.com/royalindustry94-crypto/Content-orchestrator/issues/90).
+
+- Cursor may act as Builder only when explicitly assigned in the hub.
+- Enforce one task, one Builder, one branch, and one pull request. Never start or continue a duplicate implementation.
+- Post a `CLAIM` before edits. Wait for five quiet minutes, fetch the exact branch head, and re-diff before changing a branch another process may have touched.
+- Post a `HEARTBEAT` after meaningful checkpoints and a `HANDOFF` before stopping or changing ownership. Include the exact head SHA, evidence, blockers, and next action.
+- A Builder cannot certify its own work. Keep exact-head CI, code review, security review, audit evidence, and Founder approval independent.
+- Preserve mandatory Human Review, approval-time artifact and version binding, FORCE RLS tenant isolation, fail-closed spend controls, provider abstraction, audit logging, idempotency, secret hygiene, and external publishing disabled.
+- Never expose credentials, approve or merge, deploy, publish content, weaken branch protection, or bypass a human-only gate.

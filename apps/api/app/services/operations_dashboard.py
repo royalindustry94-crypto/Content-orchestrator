@@ -584,11 +584,31 @@ def _revenue_from_payload(payload: dict) -> Decimal:
 
 
 async def customers(
-    session: AsyncSession, *, admin_user_id: uuid.UUID
+    session: AsyncSession,
+    *,
+    admin_user_id: uuid.UUID,
+    workspace_id: uuid.UUID | None = None,
 ) -> CustomersOut:
-    """Customers = workspaces the caller administers, with billing + members."""
+    """Customers = workspaces the caller administers, with billing + members.
+
+    ``workspace_id=None`` (the `/customers` route's own use) is the
+    intentional cross-workspace "portfolio" view: every workspace the
+    caller administers. Pass an explicit ``workspace_id`` when calling
+    from a report whose own contract is a single workspace (executive
+    insights, executive mode, search) — omitting it there was a real bug
+    (2026-09-08 audit finding): those reports silently blended in
+    billing/revenue/member data from every *other* workspace the caller
+    also happens to administer, mislabeled as belonging to the one
+    workspace in the URL.
+    """
     now = datetime.now(UTC)
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    admin_ws_conditions = [
+        WorkspaceMembership.user_id == admin_user_id,
+        WorkspaceMembership.role == WorkspaceRole.ADMIN,
+    ]
+    if workspace_id is not None:
+        admin_ws_conditions.append(Workspace.id == workspace_id)
     admin_ws = (
         await session.execute(
             select(Workspace)
@@ -596,10 +616,7 @@ async def customers(
                 WorkspaceMembership,
                 WorkspaceMembership.workspace_id == Workspace.id,
             )
-            .where(
-                WorkspaceMembership.user_id == admin_user_id,
-                WorkspaceMembership.role == WorkspaceRole.ADMIN,
-            )
+            .where(*admin_ws_conditions)
             .order_by(Workspace.created_at.desc())
         )
     ).scalars().all()

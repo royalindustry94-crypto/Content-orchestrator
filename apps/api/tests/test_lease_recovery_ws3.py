@@ -347,6 +347,61 @@ async def test_lease_expiry_requeues_with_attempt_bump(ctx):
 
 
 @pytest.mark.asyncio
+async def test_effect_key_survives_crash_recovery_attempt_bump(ctx):
+    """Regression (2026-09-07 audit finding / TD-077): a crash-recovered
+    attempt used to get a *different* effect key (`{assignment_id}:{attempt}`),
+    so a worker that reliably crashes right after triggering a real
+    provider call would re-trigger it on every recovered attempt. The key
+    must be derived from `assignment_id` alone so the same assignment's
+    second attempt is detected as a duplicate.
+    """
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
+    wh = await _bring_online(ctx["client"], prov)
+    aid = await _seed_assignment(ctx["ws"])
+    claimed = await _claim(ctx["client"], wh)
+    assert claimed["id"] == str(aid)
+
+    ack1 = await ctx["client"].post(f"/workers/assignments/{aid}/ack", headers=wh)
+    assert ack1.status_code == 200
+
+    # Simulate the worker crashing after ack (i.e. after it may have
+    # already triggered a real provider call) — expire the lease and let
+    # recovery bump the attempt and re-queue the same assignment.
+    async with AsyncSessionLocal() as s:
+        a = await s.get(StageAssignment, aid)
+        a.lease_expires_at = datetime.now(UTC) - timedelta(seconds=1)
+        await s.commit()
+    async with AsyncSessionLocal() as s:
+        outcomes = await reap_expired_leases(s)
+        assert any(o.assignment.id == aid for o in outcomes)
+        await s.commit()
+    async with AsyncSessionLocal() as s:
+        a = await s.get(StageAssignment, aid)
+        assert a.status == StageAssignmentStatus.PENDING
+        assert a.attempt_number == 2
+
+    reclaimed = await _claim(ctx["client"], wh)
+    assert reclaimed["id"] == str(aid)
+    ack2 = await ctx["client"].post(f"/workers/assignments/{aid}/ack", headers=wh)
+    assert ack2.status_code == 200
+
+    async with AsyncSessionLocal() as s:
+        keys = (
+            await s.execute(
+                select(ProviderEffectKey).where(ProviderEffectKey.assignment_id == aid)
+            )
+        ).scalars().all()
+        # Only the first attempt's key was actually persisted — the second
+        # ack's insert hit the unique constraint and was rolled back via
+        # savepoint (created=False), proving the same logical unit of work
+        # cannot record two committed effect keys across a crash-recovery
+        # cycle.
+        assert len(keys) == 1
+        assert keys[0].attempt_number == 1
+        assert keys[0].effect_key == str(aid)
+
+
+@pytest.mark.asyncio
 async def test_lease_recovery_under_contention(ctx):
     """Two concurrent reapers partition via SKIP LOCKED — no double bump."""
     prov = await _provision(
@@ -931,7 +986,7 @@ async def test_ack_reserves_provider_effect_key(ctx):
             )
         ).scalars().all()
         assert len(keys) == 1
-        assert keys[0].effect_key == f"{aid}:1"
+        assert keys[0].effect_key == str(aid)
         # Duplicate reserve is a no-op (created=False), not an error.
         again = await ensure_provider_effect_key(
             s,
@@ -1003,3 +1058,106 @@ async def test_recovery_audit_rejects_delete(ctx):
             )
             await s.commit()
         assert "immutable" in str(exc.value).lower()
+
+
+@pytest.mark.asyncio
+async def test_emergency_stop_over_rls_session_actually_persists_all_writes(ctx):
+    """TD-082 (migration 0054): apps/api/app/api/routes/operations_dashboard.py
+    now runs POST /operations/actions/emergency-stop on the RLS-scoped
+    session instead of the owner connection. Before 0054, worker_registry
+    and worker_credentials had no write policy at all for app_runtime and
+    stage_assignments had no UPDATE policy — under FORCE RLS that means
+    the writes would have silently affected zero rows (or, for
+    worker_credentials, errored outright) while the endpoint still
+    returned 200 (recover_assignment's own SELECT ... FOR UPDATE would
+    match nothing, so no exception surfaces). A status-code-only test
+    cannot catch that class of bug; this asserts every write actually
+    landed, plus that the workspace_id IS NOT NULL guard still protects
+    a global/service worker from any workspace admin's emergency-stop.
+    """
+    from app.models.enums import WorkerCredentialStatus
+    from app.models.workers import WorkerCredential
+
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
+    wh = await _bring_online(ctx["client"], prov)
+    worker_id = uuid.UUID(prov["worker_id"])
+    await _seed_assignment(ctx["ws"])
+    assignment = await _claim(ctx["client"], wh)
+    aid = uuid.UUID(assignment["id"])
+
+    async with AsyncSessionLocal() as s:
+        a = await s.get(StageAssignment, aid)
+        assert a.status == StageAssignmentStatus.DISPATCHED
+        credential_ids = {
+            c.id
+            for c in (
+                await s.execute(
+                    select(WorkerCredential).where(
+                        WorkerCredential.worker_id == worker_id,
+                        WorkerCredential.status == WorkerCredentialStatus.ACTIVE,
+                    )
+                )
+            ).scalars().all()
+        }
+        assert credential_ids, "provisioning must have created an active credential"
+
+        # A global/service worker (no owning workspace) in the mix, to prove
+        # 0054's `workspace_id IS NOT NULL` guard holds under a real
+        # emergency-stop call, not just a synthetic RLS probe.
+        global_worker_id = uuid.uuid4()
+        now = datetime.now(UTC)
+        await s.execute(
+            text(
+                "INSERT INTO worker_registry (id, name, status, supported_stages, "
+                "max_concurrency, current_load, registered_at, instance_key) "
+                "VALUES (:id, 'global-svc-worker', 'online'::worker_status, "
+                "ARRAY['scripting'], 1, 0, :now, :ik)"
+            ),
+            {"id": str(global_worker_id), "now": now, "ik": f"global-{global_worker_id}"},
+        )
+        await s.commit()
+
+    r = await ctx["client"].post(
+        f"/workspaces/{ctx['ws']}/operations/actions/emergency-stop",
+        headers=ctx["headers"],
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["affected"] == len(credential_ids)
+
+    async with AsyncSessionLocal() as s:
+        # worker_registry: status/drain actually persisted for the
+        # workspace-pinned worker (0054's admin UPDATE policy).
+        worker = await s.get(WorkerRegistration, worker_id)
+        assert worker.status == WorkerStatus.OFFLINE
+        assert worker.drain is True
+        assert worker.current_load == 0
+
+        # worker_credentials: revocation actually persisted (0054's
+        # GRANT + admin SELECT/UPDATE policies — previously zero access).
+        revoked = (
+            await s.execute(
+                select(WorkerCredential).where(WorkerCredential.id.in_(credential_ids))
+            )
+        ).scalars().all()
+        assert revoked and all(c.status == WorkerCredentialStatus.REVOKED for c in revoked)
+
+        # stage_assignments: the in-flight assignment was actually reaped
+        # (0054's UPDATE policy — the SELECT ... FOR UPDATE lock this
+        # depends on would otherwise silently match zero rows) and a
+        # stage_recovery_audit row was actually inserted (0054's INSERT
+        # policy, with the EXISTS check still satisfied since this
+        # assignment genuinely belongs to this workspace).
+        a = await s.get(StageAssignment, aid)
+        assert a.status != StageAssignmentStatus.DISPATCHED
+        audit_row = (
+            await s.execute(
+                select(StageRecoveryAudit).where(StageRecoveryAudit.assignment_id == aid)
+            )
+        ).scalar_one()
+        assert audit_row.reason == RecoveryReason.WORKER_REVOKED
+
+        # Global worker: completely untouched by this workspace's admin.
+        global_worker = await s.get(WorkerRegistration, global_worker_id)
+        assert global_worker.status == WorkerStatus.ONLINE
+        assert global_worker.drain is False
+        assert global_worker.current_load == 0

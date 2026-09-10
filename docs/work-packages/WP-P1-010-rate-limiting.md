@@ -1,0 +1,80 @@
+# P1-010 / TD-034 — Application rate limiting
+
+## Objective
+
+Close TD-034: no request had ever been rate-limited. Add a bounded,
+dependency-free per-IP request limiter so a single client (malicious or
+misbehaving) cannot flood the API or brute-force auth across many
+credentials, without needing a new infrastructure dependency (Redis) the
+project doesn't otherwise run.
+
+## Scope
+
+In scope:
+
+- A global per-IP fixed-window limiter applied to every route except
+  `/health/*` and `/metrics` (which orchestrators/scrapers must always be
+  able to reach).
+- A stricter dedicated per-IP limiter on `/auth/signup` and `/auth/login`
+  — the highest-value targets for credential-stuffing/signup-spam abuse
+  that the existing per-*credential* lockout (`local_auth.py`,
+  `LOCKOUT_SECONDS`/`MAX_FAILED_ATTEMPTS`) doesn't cover, since that
+  lockout only engages once a specific known email is targeted.
+- HTTP `429` with a `Retry-After` header on rejection; audit-logged.
+
+Out of scope (explicitly deferred, not silently dropped):
+
+- Per-workspace and per-provider limits — the register's own TD-034 text
+  ties these to live-provider exposure (TD-041), which isn't built yet;
+  no workspace-scoped cost-amplification path exists to protect today.
+  Revisit when TD-041 ships.
+- Cross-process/shared-cluster enforcement (e.g. Redis-backed). The
+  current deployment (`docker-compose.staging.yml`, `Dockerfile`) runs a
+  single API container/process; an in-memory limiter is exact for that
+  topology. Move to a shared store if/when the API is horizontally
+  scaled — tracked as a follow-up, not built speculatively now (no new
+  framework/dependency without its own work package, per `AGENTS.md`).
+- Trusting `X-Forwarded-For`. Keying on `request.client.host` directly
+  avoids a trivial spoof-to-bypass vector; revisit only alongside a
+  documented trusted-proxy deployment.
+
+## Design
+
+`app/core/rate_limit.py`: a plain-dict fixed-window counter
+(`InMemoryRateLimiter`), safe without locks because Starlette middleware
+runs cooperatively on one event loop per process — no true parallel
+access to the dict. `RateLimitMiddleware` wraps it, checks the stricter
+auth-path limit first (for auth paths), falling back to the global limit.
+
+Test-suite safety: the middleware is only attached when
+`settings.rate_limit_enabled and settings.environment != "test"`,
+matching the existing precedent in `app/main.py` for other
+interval/background behavior (`if settings.environment != "test":` around
+the scheduler/outbox/maintenance loops) — the full pytest session imports
+the single `app` module once and shares that process-lifetime state
+across ~340 tests, none of which are about rate limiting, so enforcing it
+there would produce cross-test flakiness rather than signal. The limiter
+itself is unit-tested directly, and one integration test builds a
+standalone app with the middleware force-attached to prove the
+request/response contract end-to-end.
+
+## Settings (new, all with safe defaults — opt-out, not opt-in)
+
+- `RATE_LIMIT_ENABLED` (default `true`)
+- `RATE_LIMIT_WINDOW_SECONDS` (default `60`)
+- `RATE_LIMIT_REQUESTS_PER_WINDOW` (default `300`, global per IP)
+- `AUTH_RATE_LIMIT_REQUESTS_PER_WINDOW` (default `10`, `/auth/*` per IP)
+
+## Tests
+
+- `tests/test_rate_limit.py`: limiter unit tests (window rollover, key
+  isolation, retry-after value) + one standalone-app integration test
+  (429 + `Retry-After` after the budget is exhausted, distinct IPs stay
+  independent, exempt paths never limited).
+
+## Rollback
+
+Set `RATE_LIMIT_ENABLED=false`, or revert this change — no migration, no
+schema, no persisted state.
+
+## Status — COMPLETE (2026-09-09)

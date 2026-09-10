@@ -579,12 +579,15 @@ async def test_rls_heartbeats_admin_only_and_registry_readonly(client, workspace
         )
         await session.commit()
 
-    async def _as(sub: str, sql: str, params: dict):
+    async def _as(sub: str, sql: str, params: dict, *, commit: bool = False):
         async with RuntimeSessionLocal() as session:
             await session.execute(
                 text("SELECT set_config('request.jwt.claim.sub', :sub, true)"), {"sub": sub}
             )
-            return await session.execute(text(sql), params)
+            result = await session.execute(text(sql), params)
+            if commit:
+                await session.commit()
+            return result
 
     # Admin sees heartbeat telemetry (amendment 2)…
     admin_count = (
@@ -605,43 +608,91 @@ async def test_rls_heartbeats_admin_only_and_registry_readonly(client, workspace
     ).scalar()
     assert registry_count == 1
 
-    # User roles can never write the registry (no write policies → under
-    # FORCE RLS the UPDATE's row visibility is empty: 0 rows touched).
+    # TD-082 (migration 0054): a workspace admin CAN now write a
+    # workspace-pinned registry row directly under RLS — this is what lets
+    # the Operations Dashboard's pause/resume/emergency-stop Quick Actions
+    # run on the RLS-scoped session instead of the owner connection. A
+    # non-admin member still cannot.
     result = await _as(
         admin_id,
-        "UPDATE worker_registry SET name = 'hacked' WHERE id = :w",
+        "UPDATE worker_registry SET name = 'renamed-by-admin' WHERE id = :w",
         {"w": worker_id},
+        commit=True,
     )
-    assert result.rowcount == 0
+    assert result.rowcount == 1
     name_after = (
         await _as(admin_id, "SELECT name FROM worker_registry WHERE id = :w", {"w": worker_id})
     ).scalar()
-    assert name_after != "hacked"
-    # …and worker_credentials is completely invisible (no grants/policies).
-    with pytest.raises(Exception, match="permission denied|insufficient_privilege"):
-        await _as(admin_id, "SELECT count(*) FROM worker_credentials", {})
+    assert name_after == "renamed-by-admin"
+
+    member_result = await _as(
+        member_id,
+        "UPDATE worker_registry SET name = 'hacked-by-member' WHERE id = :w",
+        {"w": worker_id},
+    )
+    assert member_result.rowcount == 0
+    name_after_member_attempt = (
+        await _as(admin_id, "SELECT name FROM worker_registry WHERE id = :w", {"w": worker_id})
+    ).scalar()
+    assert name_after_member_attempt == "renamed-by-admin"
+
+    # …and worker_credentials is now admin-readable for their own
+    # workspace (0054 grants SELECT + an admin-scoped policy), but still
+    # invisible to a non-admin member.
+    admin_credential_count = (
+        await _as(admin_id, "SELECT count(*) FROM worker_credentials WHERE worker_id = :w",
+                  {"w": worker_id})
+    ).scalar()
+    assert admin_credential_count >= 1
+    member_credential_count = (
+        await _as(member_id, "SELECT count(*) FROM worker_credentials WHERE worker_id = :w",
+                  {"w": worker_id})
+    ).scalar()
+    assert member_credential_count == 0
 
 
 @pytest.mark.asyncio
-async def test_rls_registry_update_returns_zero_rows_or_errors(client, workspace_admin):
-    """UPDATE without RETURNING as app_runtime: under FORCE RLS with no
-    UPDATE policy the statement affects 0 rows (or errors) — either way
-    the row is untouched."""
+async def test_rls_registry_update_allowed_for_workspace_admin_only(client, workspace_admin):
+    """TD-082 (migration 0054): a workspace-pinned registry row's UPDATE
+    under RLS succeeds for the workspace admin (the Quick Actions boundary)
+    and the row remains intact/visible afterward. A worker with no
+    workspace (global/service worker, workspace_id IS NULL) is untouched
+    by this policy — that boundary from 0025 is preserved."""
     workspace_id, headers, admin_id = workspace_admin
     provisioned = await _provision(client, headers, workspace_id)
     worker_id = provisioned["worker_id"]
-    try:
-        async with RuntimeSessionLocal() as session:
-            await session.execute(
-                text("SELECT set_config('request.jwt.claim.sub', :sub, true)"), {"sub": admin_id}
-            )
-            result = await session.execute(
-                text("UPDATE worker_registry SET current_load = 0 WHERE id = :w"),
-                {"w": worker_id},
-            )
-            assert result.rowcount == 0
-            await session.rollback()
-    except Exception:
-        pass  # an outright RLS error is equally acceptable — write denied
+    async with RuntimeSessionLocal() as session:
+        await session.execute(
+            text("SELECT set_config('request.jwt.claim.sub', :sub, true)"), {"sub": admin_id}
+        )
+        result = await session.execute(
+            text("UPDATE worker_registry SET current_load = 0 WHERE id = :w"),
+            {"w": worker_id},
+        )
+        assert result.rowcount == 1
+        await session.commit()
     detail = await client.get(f"/workspaces/{workspace_id}/workers/{worker_id}", headers=headers)
     assert detail.status_code == 200  # row intact and still visible to admin
+
+    # A global worker (no owning workspace) stays out of reach of any
+    # workspace admin's RLS session — 0054's `workspace_id IS NOT NULL`
+    # guard is what enforces this.
+    async with AsyncSessionLocal() as owner:
+        global_worker_id = uuid.uuid4()
+        # workspace_id omitted (NULL by default) — a global/service worker,
+        # not pinned to any workspace. All other columns have DB defaults.
+        await owner.execute(
+            text("INSERT INTO worker_registry (id, name) VALUES (:id, 'global-worker')"),
+            {"id": str(global_worker_id)},
+        )
+        await owner.commit()
+    async with RuntimeSessionLocal() as session:
+        await session.execute(
+            text("SELECT set_config('request.jwt.claim.sub', :sub, true)"), {"sub": admin_id}
+        )
+        result = await session.execute(
+            text("UPDATE worker_registry SET current_load = 5 WHERE id = :w"),
+            {"w": str(global_worker_id)},
+        )
+        assert result.rowcount == 0
+        await session.rollback()

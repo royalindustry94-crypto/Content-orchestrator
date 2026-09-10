@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   api:
@@ -207,6 +208,77 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Validate Claude request-preservation guard
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          workflow = Path(".github/workflows/claude.yml").read_text()
+          expected_group = (
+              "group: claude-"
+              + "$"
+              + "{{ github.repository }}-"
+              + "$"
+              + "{{ github.event.comment.id }}"
+          )
+          required = (
+              expected_group,
+              "contents: read",
+              "additional_permissions: |",
+              "every @claude request can run independently",
+              "github.event.comment.author_association",
+              'fromJSON(\'["OWNER", "MEMBER", "COLLABORATOR"]\')',
+          )
+          missing = [value for value in required if value not in workflow]
+          assert not missing, f"Claude workflow guard missing: {missing}"
+          assert "contents: write" not in workflow
+          assert "pull-requests: write" not in workflow
+
+          watchdog = Path(".github/workflows/build-watchdog.yml").read_text()
+          assert "failure|cancelled|timed_out|stale|startup_failure)" in watchdog
+          assert "action_required)" in watchdog
+          assert "stale|action_required)" not in watchdog
+          assert "success|neutral|skipped)" not in watchdog
+          assert "dispatch \"${head_branch:-$default_branch}\"" not in watchdog
+          assert "CI exhausted its single stale-run retry" in watchdog
+          assert 'actions/runs/$run_id/rerun"' in watchdog
+
+          assert "queued|in_progress|requested|waiting|pending)" not in watchdog
+          assert "queued|in_progress|requested|pending)" in watchdog
+          assert "waiting on a deployment-protection approval" in watchdog
+
+          assert "monitors only the latest repository CI run" in watchdog
+          assert "cannot restart stopped AI coding sessions" in watchdog
+
+          protocol = Path(".github/AGENT_OPERATING_PROTOCOL.md").read_text()
+          assert "latest repository CI run only" in protocol
+          assert "cannot restart a stopped coding-agent session" in protocol
+
+          agent_guides = {
+              "CLAUDE.md": Path("CLAUDE.md").read_text(),
+              ".github/copilot-instructions.md": Path(
+                  ".github/copilot-instructions.md"
+              ).read_text(),
+              ".cursor/rules/agent-coordination.mdc": Path(
+                  ".cursor/rules/agent-coordination.mdc"
+              ).read_text(),
+          }
+          required_routes = (
+              "AGENTS.md",
+              ".github/AGENT_OPERATING_PROTOCOL.md",
+              "issues/90",
+          )
+          for path, guide in agent_guides.items():
+              missing = [route for route in required_routes if route not in guide]
+              assert not missing, f"{path} coordination routes missing: {missing}"
+
+          assert "pair assistant" in agent_guides[
+              ".github/copilot-instructions.md"
+          ].lower()
+          assert "one Builder" in agent_guides[
+              ".cursor/rules/agent-coordination.mdc"
+          ]
+          PY
       - name: Install API package (for dependency graph)
         working-directory: apps/api
         run: pip install -e ".[dev]"

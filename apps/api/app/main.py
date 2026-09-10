@@ -17,6 +17,7 @@ from app.api.routes.compliance import router as compliance_router
 from app.api.routes.concurrency import router as concurrency_router
 from app.api.routes.content_department import router as content_department_router
 from app.api.routes.content_jobs import router as content_jobs_router
+from app.api.routes.content_profile import router as content_profile_router
 from app.api.routes.data_governance import router as data_governance_router
 from app.api.routes.health import router as health_router
 from app.api.routes.memberships import router as memberships_router
@@ -35,6 +36,7 @@ from app.api.routes.workspaces import router as workspaces_router
 from app.core.audit import RequestIDMiddleware
 from app.core.config import get_settings, openapi_route_kwargs
 from app.core.logging import configure_logging
+from app.core.rate_limit import InMemoryRateLimiter, RateLimitMiddleware
 from app.orchestration import consumers
 
 settings = get_settings()
@@ -202,6 +204,24 @@ app.add_middleware(
 
 app.add_middleware(RequestIDMiddleware)
 
+# Rate limiting is process-local (see app/core/rate_limit.py) and
+# deliberately not attached under ENVIRONMENT=test: the test session
+# imports this module once and shares this middleware's state across the
+# full pytest run, and none of those ~340 tests are exercising rate
+# limiting — see docs/work-packages/WP-P1-010-rate-limiting.md.
+if settings.rate_limit_enabled and settings.environment != "test":
+    app.add_middleware(
+        RateLimitMiddleware,
+        global_limiter=InMemoryRateLimiter(
+            max_requests=settings.rate_limit_requests_per_window,
+            window_seconds=settings.rate_limit_window_seconds,
+        ),
+        auth_limiter=InMemoryRateLimiter(
+            max_requests=settings.auth_rate_limit_requests_per_window,
+            window_seconds=settings.rate_limit_window_seconds,
+        ),
+    )
+
 app.include_router(health_router)
 app.include_router(metrics_router)
 app.include_router(operations_dashboard_router)
@@ -211,6 +231,7 @@ app.include_router(profiles_router)
 app.include_router(workspaces_router)
 app.include_router(memberships_router)
 app.include_router(content_jobs_router)
+app.include_router(content_profile_router)
 app.include_router(content_department_router)
 app.include_router(production_router)
 app.include_router(compliance_router)

@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.audit import audit
 from app.core.authorization import require_workspace_admin
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
 from app.models.workspace_membership import WorkspaceMembership
@@ -45,13 +46,14 @@ def _audit(row: object) -> ComplianceAuditResponse:
 async def run_compliance(
     workspace_id: uuid.UUID,
     payload: ComplianceRunRequest,
+    request: Request,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_current_session),
 ) -> ComplianceAuditResponse:
     del membership
     try:
-        return _audit(
+        result = _audit(
             await compliance.create_compliance_run(
                 db,
                 workspace_id=workspace_id,
@@ -69,6 +71,16 @@ async def run_compliance(
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except compliance.ComplianceGateError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    audit(
+        request,
+        "compliance_run_created",
+        workspace_id=str(workspace_id),
+        actor_id=user.id,
+        compliance_audit_id=str(result.id),
+        final_artifact_id=str(payload.final_artifact_id),
+    )
+    return result
 
 
 @router.get("/summary", response_model=ComplianceSummaryResponse)

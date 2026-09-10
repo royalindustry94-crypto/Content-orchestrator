@@ -134,6 +134,55 @@ async def test_last_admin_cannot_be_removed(client, new_user):
 
 
 @pytest.mark.asyncio
+async def test_membership_mutations_are_audit_logged(client, new_user, caplog):
+    """Regression (2026-09-07 audit finding): invite/role-change/remove had
+    no audit trail at all, unlike every other security-relevant mutation
+    in this codebase (spend, review-gate decisions, worker credentials).
+    """
+    admin_id, _, admin_headers = new_user
+    create = await client.post(
+        "/workspaces", json={"name": "Audit Trail Co"}, headers=admin_headers
+    )
+    workspace_id = create.json()["id"]
+
+    member_id = str(_uuid.uuid4())
+    await _register_user(member_id)
+
+    with caplog.at_level("INFO", logger="audit"):
+        invite = await client.post(
+            f"/workspaces/{workspace_id}/memberships",
+            json={"user_id": member_id, "role": "editor"},
+            headers=admin_headers,
+        )
+        assert invite.status_code == 201
+
+        update = await client.patch(
+            f"/workspaces/{workspace_id}/memberships/{member_id}",
+            json={"role": "reviewer"},
+            headers=admin_headers,
+        )
+        assert update.status_code == 200
+
+        remove = await client.delete(
+            f"/workspaces/{workspace_id}/memberships/{member_id}", headers=admin_headers
+        )
+        assert remove.status_code == 204
+
+    events = {r.audit_event: r for r in caplog.records if hasattr(r, "audit_event")}
+    assert "membership_invited" in events
+    assert events["membership_invited"].target_user_id == member_id
+    assert events["membership_invited"].role == "editor"
+
+    assert "membership_role_updated" in events
+    assert events["membership_role_updated"].previous_role == "editor"
+    assert events["membership_role_updated"].new_role == "reviewer"
+
+    assert "membership_removed" in events
+    assert events["membership_removed"].removed_role == "reviewer"
+    assert events["membership_removed"].self_leave is False
+
+
+@pytest.mark.asyncio
 async def test_invalid_token_is_401_not_403_or_500(client):
     response = await client.get(
         "/workspaces", headers={"Authorization": "Bearer not-a-real-token"}

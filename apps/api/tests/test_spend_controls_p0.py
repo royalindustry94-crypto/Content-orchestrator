@@ -135,6 +135,42 @@ async def test_monthly_cap_pauses_run():
 
 
 @pytest.mark.asyncio
+async def test_reserve_spend_fails_closed_without_cap_row():
+    """Regression: a workspace with no SpendCap row (e.g. provisioned by
+    a future path other than POST /workspaces, which always seeds one)
+    must have spend blocked, not unbounded. reserve_spend must not treat
+    "no cap configured" as "no cap enforced".
+    """
+    async with AsyncSessionLocal() as session:
+        ws, user_id, item = await _user_workspace(session)
+        await session.execute(
+            text("DELETE FROM spend_caps WHERE workspace_id = :ws"),
+            {"ws": str(ws.id)},
+        )
+        run = PipelineRun(
+            id=uuid.uuid4(),
+            workspace_id=ws.id,
+            content_item_id=item.id,
+            status=PipelineRunStatus.RUNNING,
+            current_stage=ContentStage.SCRIPTING,
+            correlation_id=uuid.uuid4(),
+        )
+        session.add(run)
+        await session.flush()
+        reservation = await controller.reserve_spend(
+            session,
+            run=run,
+            stage="scripting",
+            provider="draft_desk",
+            estimated_cost_usd=Decimal("0.01"),
+        )
+        assert reservation is None
+        assert run.status == PipelineRunStatus.PAUSED
+        assert run.pause_reason == "spend_hold"
+        await session.commit()
+
+
+@pytest.mark.asyncio
 async def test_workspace_cap_counts_all_providers():
     """Regression: workspace-wide monthly cap must not be bypassed by
     spending on provider A then reserving against provider B.

@@ -68,6 +68,7 @@ EXPORTABLE_TABLES: tuple[str, ...] = (
     "spend_logs",
     "spend_reservations",
     "workspace_billing",
+    "workspace_content_profiles",
     "job_schedule",
     "workspace_concurrency_limits",
     "provider_concurrency_budgets",
@@ -76,7 +77,6 @@ EXPORTABLE_TABLES: tuple[str, ...] = (
     "stage_claim_audit",
     "stage_recovery_audit",
     "worker_registry",
-    "worker_heartbeats",
     "worker_logs",
     "dead_letter_jobs",
     "webhook_events",
@@ -120,6 +120,16 @@ EXPORTABLE_TABLES: tuple[str, ...] = (
     "artifact_publication_eligibility",
 )
 
+# Workspace-relevant tables that CANNOT be exported: they have no
+# workspace_id column, so a per-workspace export query cannot attribute
+# their rows to one tenant. worker_heartbeats is keyed only by worker_id,
+# and worker_registry.workspace_id is itself nullable (global workers have
+# none) — so even joining through it would not reliably scope this table.
+# Named explicitly here (2026-09-08 fix) rather than silently skipped by
+# the export loop's workspace_id-column check, matching this module's own
+# stated guarantee that "the bundle names every omission."
+STRUCTURALLY_UNEXPORTABLE_TABLES: tuple[str, ...] = ("worker_heartbeats",)
+
 # Customer content tables that carry ``deleted_at`` and whose RLS grants the
 # runtime role UPDATE (not DELETE). Withdrawing content is therefore a
 # tombstone write, which is what the schema was designed for: dependent
@@ -160,6 +170,7 @@ RETAINED_ON_DELETE: tuple[str, ...] = (
     "spend_caps",
     "provider_usage",
     "workspace_billing",
+    "workspace_content_profiles",
     "review_gates",
     "review_decisions",
     "stage_claim_audit",
@@ -235,6 +246,8 @@ class ExportBundle:
     tables: dict[str, list[dict]]
     excluded_tables: tuple[str, ...]
     exclusion_reason: str
+    unattributable_tables: tuple[str, ...]
+    unattributable_reason: str
     row_counts: dict[str, int] = field(default_factory=dict)
 
 
@@ -309,6 +322,11 @@ async def export_workspace(session: AsyncSession, *, workspace_id: uuid.UUID) ->
             "Excluded by policy: these tables hold credentials, credential "
             "hashes, or service-only operational records and are never "
             "included in a customer export."
+        ),
+        unattributable_tables=tuple(sorted(STRUCTURALLY_UNEXPORTABLE_TABLES)),
+        unattributable_reason=(
+            "Cannot be exported: these tables have no workspace_id column, "
+            "so their rows cannot be attributed to one tenant."
         ),
         row_counts=counts,
     )
@@ -395,5 +413,6 @@ async def verify_table_classification(session: AsyncSession) -> list[str]:
         | set(RETAINED_CONTENT_HISTORY_TABLES)
         | set(RETAINED_ON_DELETE)
         | set(EXPORT_DENYLIST)
+        | set(STRUCTURALLY_UNEXPORTABLE_TABLES)
     )
     return sorted({r[0] for r in rows} - classified)

@@ -60,6 +60,16 @@ class Settings(BaseSettings):
     # --- CORS ---
     cors_allow_origins: list[str] = Field(default_factory=lambda: ["http://localhost:5173"])
 
+    # --- Rate limiting (P1-010 / TD-034) ---
+    # In-process, per-IP fixed-window limits — see
+    # docs/work-packages/WP-P1-010-rate-limiting.md. Disabled automatically
+    # in ENVIRONMENT=test (see app/main.py) regardless of this flag, so the
+    # shared test-session process never trips it.
+    rate_limit_enabled: bool = Field(default=True)
+    rate_limit_window_seconds: float = Field(default=60.0, gt=0)
+    rate_limit_requests_per_window: int = Field(default=300, ge=1)
+    auth_rate_limit_requests_per_window: int = Field(default=10, ge=1)
+
     # --- Worker registry (Workstream 1) ---
     # Liveness thresholds, server-clock only (see app/services/workers.py).
     worker_suspect_after_seconds: int = Field(default=30)
@@ -140,6 +150,26 @@ class Settings(BaseSettings):
     def openapi_docs_enabled(self) -> bool:
         """Swagger/ReDoc/OpenAPI JSON are development-only (P-005)."""
         return self.environment.strip().lower() in {"development", "dev"}
+
+    @model_validator(mode="after")
+    def _validate_app_runtime_password(self) -> Settings:
+        """Migration 0001 creates the `app_runtime` Postgres role with the
+        literal default password `app_runtime` when it doesn't already
+        exist (see that migration's docstring — managed Supabase is
+        expected to reject the automated CREATE ROLE, but a self-hosted
+        Postgres owner connection would not). Fail closed in production
+        rather than trusting that operational assumption silently.
+        """
+        env = self.environment.strip().lower()
+        hosts = self.app_database_url.hosts()
+        default_password_in_use = any(h.get("password") == "app_runtime" for h in hosts)
+        if env in {"production", "prod"} and default_password_in_use:
+            raise ValueError(
+                "APP_DATABASE_URL still uses the migration-default app_runtime "
+                "password in a production environment; rotate the app_runtime "
+                "role's password and update APP_DATABASE_URL before starting"
+            )
+        return self
 
     @model_validator(mode="after")
     def _validate_auth_mode(self) -> Settings:

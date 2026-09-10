@@ -25,6 +25,20 @@ audit_logger = logging.getLogger("audit")
 
 _SENSITIVE_KEYS = frozenset({"secret", "worker_secret", "secret_hash", "token", "authorization"})
 
+# Attributes stdlib `logging.LogRecord` already defines. Passing one of
+# these via `extra` raises KeyError at log time (not at call time), deep
+# inside `Logger.makeRecord` — a route can pass all its unit tests and
+# still 500 in production the first time this function actually runs.
+# Caught here instead so it fails immediately, at the call site, every time.
+_RESERVED_LOG_RECORD_KEYS = frozenset(
+    {
+        "name", "msg", "args", "levelname", "levelno", "pathname", "filename",
+        "module", "exc_info", "exc_text", "stack_info", "lineno", "funcName",
+        "created", "msecs", "relativeCreated", "thread", "threadName",
+        "processName", "process", "message", "asctime", "taskName",
+    }
+)
+
 
 def audit(request: Request | None, event: str, **fields: object) -> None:
     """Emit a structured audit event, correlated to the current request.
@@ -34,6 +48,13 @@ def audit(request: Request | None, event: str, **fields: object) -> None:
     leaked = _SENSITIVE_KEYS.intersection(k.lower() for k in fields)
     if leaked:
         raise ValueError(f"refusing to audit-log sensitive fields: {sorted(leaked)}")
+    reserved = _RESERVED_LOG_RECORD_KEYS.intersection(fields)
+    if reserved:
+        raise ValueError(
+            f"refusing to audit-log fields that collide with LogRecord "
+            f"attributes: {sorted(reserved)} — rename them (e.g. 'name' -> "
+            f"'workspace_name')"
+        )
     request_id = getattr(request.state, "request_id", None) if request is not None else None
     audit_logger.info(
         event,
