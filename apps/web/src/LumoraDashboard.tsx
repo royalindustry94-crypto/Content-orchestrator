@@ -2073,10 +2073,14 @@ export default function LumoraDashboard({
       : "Checking service status…";
 
   const decide = async (gate: ReviewGate, approved: boolean) => {
+    if (!gate.content_version_id) {
+      setReviewActionError("This review gate has no content version on record; refresh and try again.");
+      return;
+    }
     setReviewBusy(gate.id);
     setReviewActionError(null);
     try {
-      await decideReviewGate(token, workspaceId, gate.id, approved, undefined, gate.content_version_id);
+      await decideReviewGate(token, workspaceId, gate.id, approved, gate.content_version_id);
       await load();
     } catch (cause) {
       setReviewActionError(cause instanceof Error ? cause.message : "Unable to save the review decision.");

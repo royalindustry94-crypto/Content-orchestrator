@@ -381,8 +381,8 @@ async def decide_review_gate(
     gate_id: uuid.UUID,
     reviewer_id: uuid.UUID,
     approved: bool,
+    expected_content_version_id: uuid.UUID,
     notes: str | None = None,
-    expected_content_version_id: uuid.UUID | None = None,
 ) -> dict:
     gate = (
         await session.execute(
@@ -398,10 +398,7 @@ async def decide_review_gate(
         raise ReviewGateNotFoundError("review gate not found")
     if gate.status != ReviewGateStatus.AWAITING:
         raise ValueError("review gate is not awaiting a decision")
-    if (
-        expected_content_version_id is not None
-        and expected_content_version_id != gate.content_version_id
-    ):
+    if expected_content_version_id != gate.content_version_id:
         raise ValueError(
             "review gate content has changed since it was loaded; refresh and try again"
         )

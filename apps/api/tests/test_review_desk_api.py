@@ -36,6 +36,17 @@ async def _add_member(
     assert response.status_code == 201, response.text
 
 
+async def _current_version_id(client, *, workspace_id: str, gate_id: str, headers: dict) -> str:
+    response = await client.get(
+        f"/workspaces/{workspace_id}/review-gates/{gate_id}",
+        headers=headers,
+    )
+    assert response.status_code == 200, response.text
+    version_id = response.json()["content_version_id"]
+    assert version_id is not None
+    return version_id
+
+
 @pytest.mark.asyncio
 async def test_content_job_lands_in_review_gate(client, new_user):
     user_id, _token, headers = new_user
@@ -92,11 +103,18 @@ async def test_approve_advances_to_published(client, new_user):
     assert created.status_code == 201, created.text
     gate_id = created.json()["review_gate_id"]
     run_id = created.json()["pipeline_run_id"]
+    version_id = await _current_version_id(
+        client, workspace_id=workspace_id, gate_id=gate_id, headers=headers
+    )
 
     decided = await client.post(
         f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
         headers=headers,
-        json={"approved": True, "notes": "Looks good"},
+        json={
+            "approved": True,
+            "notes": "Looks good",
+            "expected_content_version_id": version_id,
+        },
     )
     assert decided.status_code == 200, decided.text
     assert decided.json()["status"] == "approved"
@@ -159,7 +177,7 @@ async def test_edit_review_gate_content_creates_new_version_and_stays_publishabl
     decided = await client.post(
         f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
         headers=headers,
-        json={"approved": True},
+        json={"approved": True, "expected_content_version_id": body["content_version_id"]},
     )
     assert decided.status_code == 200, decided.text
     assert decided.json()["script_body"] == "Edited body"
@@ -175,11 +193,14 @@ async def test_edit_review_gate_content_rejects_decided_gate(client, new_user):
         json={"topic": "Already decided", "script_body": "Body"},
     )
     gate_id = created.json()["review_gate_id"]
+    version_id = await _current_version_id(
+        client, workspace_id=workspace_id, gate_id=gate_id, headers=headers
+    )
 
     decided = await client.post(
         f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
         headers=headers,
-        json={"approved": True},
+        json={"approved": True, "expected_content_version_id": version_id},
     )
     assert decided.status_code == 200, decided.text
 
@@ -345,9 +366,11 @@ async def test_decision_rejects_stale_expected_content_version(client, new_user)
 
 
 @pytest.mark.asyncio
-async def test_decision_without_expected_version_still_works(client, new_user):
-    """expected_content_version_id is optional — omitting it (e.g. an
-    older client) must not break the existing decision flow."""
+async def test_decision_requires_expected_version(client, new_user):
+    """expected_content_version_id is required, not optional — an
+    independent-audit finding on the first version of this fix: an
+    optional check a caller can simply omit protects nothing against a
+    client (present or future, UI or direct API) that doesn't opt in."""
     _user_id, _token, headers = new_user
     workspace_id = await _create_workspace(client, headers)
     created = await client.post(
@@ -362,8 +385,7 @@ async def test_decision_without_expected_version_still_works(client, new_user):
         headers=headers,
         json={"approved": True},
     )
-    assert decided.status_code == 200, decided.text
-    assert decided.json()["status"] == "approved"
+    assert decided.status_code == 422, decided.text
 
 
 @pytest.mark.asyncio
@@ -377,11 +399,14 @@ async def test_reject_fails_run_without_reject_transition(client, new_user):
     )
     gate_id = created.json()["review_gate_id"]
     run_id = created.json()["pipeline_run_id"]
+    version_id = await _current_version_id(
+        client, workspace_id=workspace_id, gate_id=gate_id, headers=headers
+    )
 
     decided = await client.post(
         f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
         headers=headers,
-        json={"approved": False, "notes": "Off brand"},
+        json={"approved": False, "notes": "Off brand", "expected_content_version_id": version_id},
     )
     assert decided.status_code == 200, decided.text
     assert decided.json()["status"] == "rejected"
@@ -423,11 +448,14 @@ async def test_editor_cannot_decide_review_gate(client, new_user):
     )
     assert created.status_code == 201, created.text
     gate_id = created.json()["review_gate_id"]
+    version_id = await _current_version_id(
+        client, workspace_id=workspace_id, gate_id=gate_id, headers=editor_headers
+    )
 
     forbidden = await client.post(
         f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
         headers=editor_headers,
-        json={"approved": True},
+        json={"approved": True, "expected_content_version_id": version_id},
     )
     assert forbidden.status_code == 403
     assert admin_id  # silence unused in some linters
@@ -513,17 +541,28 @@ async def test_concurrent_review_decisions_are_serialized(client, new_user):
     )
     assert created.status_code == 201, created.text
     gate_id = created.json()["review_gate_id"]
+    version_id = await _current_version_id(
+        client, workspace_id=workspace_id, gate_id=gate_id, headers=headers
+    )
 
     approve, reject = await asyncio.gather(
         client.post(
             f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
             headers=headers,
-            json={"approved": True, "notes": "approve race"},
+            json={
+                "approved": True,
+                "notes": "approve race",
+                "expected_content_version_id": version_id,
+            },
         ),
         client.post(
             f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
             headers=headers,
-            json={"approved": False, "notes": "reject race"},
+            json={
+                "approved": False,
+                "notes": "reject race",
+                "expected_content_version_id": version_id,
+            },
         ),
     )
 

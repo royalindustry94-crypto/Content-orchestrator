@@ -816,8 +816,8 @@ export function decideReviewGate(
   workspaceId: string,
   gateId: string,
   approved: boolean,
+  expectedContentVersionId: string,
   notes?: string,
-  expectedContentVersionId?: string | null,
 ): Promise<ReviewGate> {
   return apiFetch<ReviewGate>(
     `/workspaces/${workspaceId}/review-gates/${gateId}/decision`,
@@ -827,7 +827,7 @@ export function decideReviewGate(
       body: JSON.stringify({
         approved,
         notes,
-        expected_content_version_id: expectedContentVersionId ?? null,
+        expected_content_version_id: expectedContentVersionId,
       }),
     },
   );

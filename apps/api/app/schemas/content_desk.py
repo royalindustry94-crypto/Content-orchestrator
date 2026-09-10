@@ -49,13 +49,16 @@ class ReviewGateEditIn(BaseModel):
 class ReviewDecisionIn(BaseModel):
     approved: bool
     notes: str | None = Field(default=None, max_length=5000)
-    # Optional: the content_version_id the caller's client had loaded when
-    # the reviewer chose to approve/reject. If given and it no longer
-    # matches the gate's current snapshot (e.g. an editor changed the
-    # content while this gate sat open in the reviewer's drawer), the
-    # decision is rejected as a conflict rather than silently binding the
-    # reviewer's decision to content they never actually saw.
-    expected_content_version_id: uuid.UUID | None = None
+    # Required: the content_version_id the caller's client had loaded when
+    # the reviewer chose to approve/reject. Must match the gate's current
+    # snapshot exactly, or the decision is rejected as a conflict (e.g. an
+    # editor changed the content while this gate sat open in the
+    # reviewer's drawer) rather than silently binding the reviewer's
+    # decision to content they never actually saw. Required rather than
+    # optional — an optional check a caller can simply omit protects
+    # nothing against a client (present or future, UI or direct API) that
+    # doesn't opt in.
+    expected_content_version_id: uuid.UUID
 
 
 class ReviewGateOut(BaseModel):
