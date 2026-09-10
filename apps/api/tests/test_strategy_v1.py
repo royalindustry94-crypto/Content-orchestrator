@@ -127,6 +127,51 @@ async def test_manual_run_is_truthful_when_provider_not_configured(client, new_u
     assert summary.status_code == 200
     assert summary.json()["performance_data_state"] == "no_data"
     assert summary.json()["briefs_created"] == 0
+    assert summary.json()["business_context_state"] == "incomplete"
+
+
+@pytest.mark.asyncio
+async def test_manual_run_reflects_saved_business_context(client, new_user):
+    """PR #98 saved a workspace's business/audience/brand-voice defaults
+    (`WorkspaceContentProfile`) but nothing read it back — Strategy runs
+    and their summary kept hardcoding `business_context_state` as
+    "incomplete" even for a workspace with a fully-complete saved
+    profile. This is that truthfulness fix's regression coverage.
+    """
+    user_id, headers, workspace_id = await _tenant(client, new_user, "Strategy complete context")
+    opportunity_id = await _approved_opportunity(user_id, workspace_id)
+    profile_saved = await client.put(
+        f"/workspaces/{workspace_id}/content-profile",
+        headers=headers,
+        json={
+            "business_name": "Acme Studio",
+            "offer": "Short-form video for local restaurants",
+            "target_audience": "Restaurant owners in mid-size US cities",
+            "brand_voice": "Warm, direct, a little playful",
+            "target_platform": "instagram",
+            "content_goal": "book more tastings",
+        },
+    )
+    assert profile_saved.status_code == 200
+    assert profile_saved.json()["is_complete"] is True
+
+    response = await client.post(
+        f"/workspaces/{workspace_id}/strategy/runs",
+        headers=headers,
+        json={
+            "strategy_objective": "Assess a validated opportunity",
+            "source_opportunity_ids": [str(opportunity_id)],
+        },
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["business_context_state"] == "complete"
+    assert "STRATEGY PROVIDER NOT CONFIGURED" in body["last_error"]
+    assert "BUSINESS CONTEXT INCOMPLETE" not in body["last_error"]
+
+    summary = await client.get(f"/workspaces/{workspace_id}/strategy/summary", headers=headers)
+    assert summary.status_code == 200
+    assert summary.json()["business_context_state"] == "complete"
 
 
 @pytest.mark.asyncio
