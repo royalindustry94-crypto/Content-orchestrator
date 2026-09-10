@@ -24,18 +24,14 @@ from app.schemas.research import (
 )
 from app.services import research
 
-router = APIRouter(
-    prefix="/workspaces/{workspace_id}/research", tags=["scout-research"]
-)
+router = APIRouter(prefix="/workspaces/{workspace_id}/research", tags=["scout-research"])
 
 
 def _not_found(detail: str = "research record not found") -> HTTPException:
     return HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=detail)
 
 
-@router.post(
-    "/runs", response_model=ResearchRunOut, status_code=status.HTTP_201_CREATED
-)
+@router.post("/runs", response_model=ResearchRunOut, status_code=status.HTTP_201_CREATED)
 async def create_run(
     workspace_id: uuid.UUID,
     payload: ResearchRunCreate,
@@ -163,9 +159,7 @@ async def sources(
     ]
 
 
-@router.get(
-    "/opportunities/{opportunity_id}/audit", response_model=ResearchAuditOut | None
-)
+@router.get("/opportunities/{opportunity_id}/audit", response_model=ResearchAuditOut | None)
 async def audit_detail(
     workspace_id: uuid.UUID,
     opportunity_id: uuid.UUID,
@@ -222,6 +216,4 @@ async def send_to_strategist(
     except LookupError as exc:
         raise _not_found(str(exc)) from exc
     except research.ResearchGateError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT, detail=str(exc)
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc

@@ -4,6 +4,7 @@ Revision ID: 0010
 Revises: 0009
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -45,8 +46,12 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_spend_logs_workspace_time ON spend_logs (workspace_id, occurred_at DESC);")
-    op.execute("CREATE INDEX ix_spend_logs_workspace_provider_time ON spend_logs (workspace_id, provider, occurred_at DESC);")
+    op.execute(
+        "CREATE INDEX ix_spend_logs_workspace_time ON spend_logs (workspace_id, occurred_at DESC);"
+    )
+    op.execute(
+        "CREATE INDEX ix_spend_logs_workspace_provider_time ON spend_logs (workspace_id, provider, occurred_at DESC);"
+    )
     attach_immutable_trigger("spend_logs")
     enable_rls("spend_logs")
     grant_runtime("spend_logs", update=False, delete=False)
@@ -69,7 +74,9 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_spend_reservations_workspace_status ON spend_reservations (workspace_id, status) WHERE status = 'reserved';")
+    op.execute(
+        "CREATE INDEX ix_spend_reservations_workspace_status ON spend_reservations (workspace_id, status) WHERE status = 'reserved';"
+    )
     attach_version_trigger("spend_reservations")
     enable_rls("spend_reservations")
     grant_runtime("spend_reservations")

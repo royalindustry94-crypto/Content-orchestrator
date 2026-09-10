@@ -52,8 +52,7 @@ def upgrade() -> None:
         "ON worker_logs (workspace_id, occurred_at DESC);"
     )
     op.execute(
-        "CREATE INDEX ix_worker_logs_worker_time "
-        "ON worker_logs (worker_id, occurred_at DESC);"
+        "CREATE INDEX ix_worker_logs_worker_time ON worker_logs (worker_id, occurred_at DESC);"
     )
     op.execute(
         "CREATE INDEX ix_worker_logs_pipeline_time "

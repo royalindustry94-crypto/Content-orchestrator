@@ -27,19 +27,13 @@ async def _user_workspace(session):
         {"id": str(user_id), "email": f"{user_id}@example.com"},
     )
     await session.execute(
-        text(
-            "INSERT INTO profiles (id, email) VALUES (:id, :email) ON CONFLICT (id) DO NOTHING"
-        ),
+        text("INSERT INTO profiles (id, email) VALUES (:id, :email) ON CONFLICT (id) DO NOTHING"),
         {"id": str(user_id), "email": f"{user_id}@example.com"},
     )
     ws = Workspace(id=uuid.uuid4(), name=f"spend-{user_id}", created_by=user_id)
     session.add(ws)
     await session.flush()
-    session.add(
-        WorkspaceMembership(
-            workspace_id=ws.id, user_id=user_id, role=WorkspaceRole.ADMIN
-        )
-    )
+    session.add(WorkspaceMembership(workspace_id=ws.id, user_id=user_id, role=WorkspaceRole.ADMIN))
     await ensure_default_spend_cap(session, workspace_id=ws.id, actor_id=user_id)
     item = ContentItem(
         id=uuid.uuid4(),
@@ -95,10 +89,7 @@ async def test_monthly_cap_pauses_run():
         ).scalar_one()
         # Force a tiny monthly cap; leave daily high.
         await session.execute(
-            text(
-                "UPDATE spend_caps SET daily_cap_usd = 1000, monthly_cap_usd = 1 "
-                "WHERE id = :id"
-            ),
+            text("UPDATE spend_caps SET daily_cap_usd = 1000, monthly_cap_usd = 1 WHERE id = :id"),
             {"id": str(cap)},
         )
         session.add(
@@ -235,9 +226,7 @@ async def test_content_job_blocked_when_monthly_cap_exceeded(client, new_user):
         json={"topic": "should not land in review"},
     )
     assert blocked.status_code == 402, blocked.text
-    gates = await client.get(
-        f"/workspaces/{ws_id}/review-gates?status=awaiting", headers=headers
-    )
+    gates = await client.get(f"/workspaces/{ws_id}/review-gates?status=awaiting", headers=headers)
     assert gates.status_code == 200
     assert gates.json() == []
 

@@ -15,9 +15,7 @@ from app.db.session import AsyncSessionLocal
 @pytest.mark.asyncio
 async def test_mission_control_modules_and_actions(client, new_user):
     user_id, _token, headers = new_user
-    workspace = await client.post(
-        "/workspaces", headers=headers, json={"name": "Mission Control"}
-    )
+    workspace = await client.post("/workspaces", headers=headers, json={"name": "Mission Control"})
     assert workspace.status_code == 201
     workspace_id = workspace.json()["id"]
 
@@ -184,17 +182,13 @@ async def test_mission_control_modules_and_actions(client, new_user):
         )
         await session.commit()
 
-    activity = await client.get(
-        f"/workspaces/{workspace_id}/operations/activity", headers=headers
-    )
+    activity = await client.get(f"/workspaces/{workspace_id}/operations/activity", headers=headers)
     assert activity.status_code == 200
     titles = {item["title"] for item in activity.json()["items"]}
     assert "Worker completed job" in titles
     assert "Customer signup" in titles
 
-    health = await client.get(
-        f"/workspaces/{workspace_id}/operations/health", headers=headers
-    )
+    health = await client.get(f"/workspaces/{workspace_id}/operations/health", headers=headers)
     assert health.status_code == 200
     keys = {item["key"] for item in health.json()["indicators"]}
     expected = {
@@ -207,14 +201,9 @@ async def test_mission_control_modules_and_actions(client, new_user):
         "scheduler",
     }
     assert expected <= keys
-    assert all(
-        item["status"] in {"green", "amber", "red"}
-        for item in health.json()["indicators"]
-    )
+    assert all(item["status"] in {"green", "amber", "red"} for item in health.json()["indicators"])
 
-    cost = await client.get(
-        f"/workspaces/{workspace_id}/operations/cost-control", headers=headers
-    )
+    cost = await client.get(f"/workspaces/{workspace_id}/operations/cost-control", headers=headers)
     assert cost.status_code == 200
     cost_body = cost.json()
     assert Decimal(cost_body["daily_ai_spend_usd"]) >= Decimal("2.5")
@@ -225,11 +214,7 @@ async def test_mission_control_modules_and_actions(client, new_user):
         f"/workspaces/{workspace_id}/operations/worker-timeline", headers=headers
     )
     assert timeline.status_code == 200
-    worker = next(
-        item
-        for item in timeline.json()["workers"]
-        if item["name"] == "mission-worker"
-    )
+    worker = next(item for item in timeline.json()["workers"] if item["name"] == "mission-worker")
     assert worker["average_execution_seconds"] is not None
     assert len(worker["jobs"]) >= 1
 
@@ -239,9 +224,7 @@ async def test_mission_control_modules_and_actions(client, new_user):
     assert content.status_code == 200
     assert content.json()["waiting_for_approval"] >= 1
 
-    insights = await client.get(
-        f"/workspaces/{workspace_id}/operations/insights", headers=headers
-    )
+    insights = await client.get(f"/workspaces/{workspace_id}/operations/insights", headers=headers)
     assert insights.status_code == 200
     assert insights.json()["suggested_next_action"]
     assert insights.json()["highest_risk"]
@@ -293,10 +276,7 @@ async def test_mission_control_modules_and_actions(client, new_user):
     async with AsyncSessionLocal() as session:
         global_state = (
             await session.execute(
-                text(
-                    "SELECT status::text, drain FROM worker_registry "
-                    "WHERE id = :id"
-                ),
+                text("SELECT status::text, drain FROM worker_registry WHERE id = :id"),
                 {"id": str(global_worker_id)},
             )
         ).one()
@@ -335,9 +315,7 @@ async def test_mission_control_requires_admin(client, new_user):
         "/auth/signup",
         json={"email": f"{uuid.uuid4()}@example.com", "password": "securepass1-beta"},
     )
-    outsider_headers = {
-        "Authorization": f"Bearer {outsider.json()['access_token']}"
-    }
+    outsider_headers = {"Authorization": f"Bearer {outsider.json()['access_token']}"}
     for endpoint in (
         "activity",
         "health",
@@ -354,9 +332,7 @@ async def test_mission_control_requires_admin(client, new_user):
 
 
 @pytest.mark.asyncio
-async def test_retry_failed_jobs_never_mutates_a_foreign_workspaces_pipeline_run(
-    client, new_user
-):
+async def test_retry_failed_jobs_never_mutates_a_foreign_workspaces_pipeline_run(client, new_user):
     """Defense-in-depth regression. `retry_failed_jobs` has two loops: the
     DLQ-replay loop resolves a PipelineRun from a related id and explicitly
     re-checks `run.workspace_id == workspace_id` before touching it; the
@@ -371,12 +347,12 @@ async def test_retry_failed_jobs_never_mutates_a_foreign_workspaces_pipeline_run
     and confirm the guard now holds.
     """
     _uid, _tok, headers = new_user
-    ws_a = (
-        await client.post("/workspaces", headers=headers, json={"name": "Retry A"})
-    ).json()["id"]
-    ws_b = (
-        await client.post("/workspaces", headers=headers, json={"name": "Retry B"})
-    ).json()["id"]
+    ws_a = (await client.post("/workspaces", headers=headers, json={"name": "Retry A"})).json()[
+        "id"
+    ]
+    ws_b = (await client.post("/workspaces", headers=headers, json={"name": "Retry B"})).json()[
+        "id"
+    ]
 
     content_b = await client.post(
         f"/workspaces/{ws_b}/content-jobs",
@@ -419,26 +395,19 @@ async def test_retry_failed_jobs_never_mutates_a_foreign_workspaces_pipeline_run
             text("SELECT status FROM pipeline_runs WHERE id = :id"), {"id": run_b_id}
         )
         assert run_b_status == "failed", (
-            "workspace A's retry action must never flip workspace B's "
-            "pipeline run to running"
+            "workspace A's retry action must never flip workspace B's pipeline run to running"
         )
         leaked_schedule = await session.scalar(
-            text(
-                "SELECT count(*) FROM job_schedule WHERE ref_id = :id "
-                "AND job_type = 'retry'"
-            ),
+            text("SELECT count(*) FROM job_schedule WHERE ref_id = :id AND job_type = 'retry'"),
             {"id": run_b_id},
         )
         assert leaked_schedule == 0, (
-            "workspace A's retry action must never enqueue work against "
-            "workspace B's pipeline run"
+            "workspace A's retry action must never enqueue work against workspace B's pipeline run"
         )
 
 
 @pytest.mark.asyncio
-async def test_emergency_stop_never_revokes_a_foreign_workspaces_credential(
-    client, new_user
-):
+async def test_emergency_stop_never_revokes_a_foreign_workspaces_credential(client, new_user):
     """Defense-in-depth regression. `emergency_stop` revokes every ACTIVE
     WorkerCredential for each worker it targets, filtered only by
     worker_id — not by workspace_id, even though WorkerCredential has its
@@ -450,12 +419,8 @@ async def test_emergency_stop_never_revokes_a_foreign_workspaces_credential(
     revocation query no longer reaches a foreign-workspace credential.
     """
     _uid, _tok, headers = new_user
-    ws_a = (
-        await client.post("/workspaces", headers=headers, json={"name": "Stop A"})
-    ).json()["id"]
-    ws_b = (
-        await client.post("/workspaces", headers=headers, json={"name": "Stop B"})
-    ).json()["id"]
+    ws_a = (await client.post("/workspaces", headers=headers, json={"name": "Stop A"})).json()["id"]
+    ws_b = (await client.post("/workspaces", headers=headers, json={"name": "Stop B"})).json()["id"]
 
     worker_a = await client.post(
         f"/workspaces/{ws_a}/workers",

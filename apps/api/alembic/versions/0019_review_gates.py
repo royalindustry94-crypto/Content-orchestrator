@@ -4,6 +4,7 @@ Revision ID: 0019
 Revises: 0018
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -30,8 +31,10 @@ _ALL = ["admin", "editor", "reviewer"]
 
 
 def upgrade() -> None:
-    op.execute("CREATE TYPE review_gate_status AS ENUM "
-               "('awaiting','approved','rejected','timed_out','escalated');")
+    op.execute(
+        "CREATE TYPE review_gate_status AS ENUM "
+        "('awaiting','approved','rejected','timed_out','escalated');"
+    )
     op.execute(
         """
         CREATE TABLE review_gates (
@@ -52,9 +55,13 @@ def upgrade() -> None:
         """
     )
     op.execute("CREATE INDEX ix_review_gates_run ON review_gates (pipeline_run_id);")
-    op.execute("CREATE INDEX ix_review_gates_awaiting_timeout ON review_gates (timeout_at) "
-               "WHERE status = 'awaiting';")
-    op.execute("CREATE INDEX ix_review_gates_workspace_status ON review_gates (workspace_id, status);")
+    op.execute(
+        "CREATE INDEX ix_review_gates_awaiting_timeout ON review_gates (timeout_at) "
+        "WHERE status = 'awaiting';"
+    )
+    op.execute(
+        "CREATE INDEX ix_review_gates_workspace_status ON review_gates (workspace_id, status);"
+    )
     attach_version_trigger("review_gates")
     enable_rls("review_gates")
     grant_runtime("review_gates")

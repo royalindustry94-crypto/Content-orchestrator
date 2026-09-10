@@ -102,7 +102,9 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_content_lineage_parent ON content_lineage (parent_content_item_id);")
+    op.execute(
+        "CREATE INDEX ix_content_lineage_parent ON content_lineage (parent_content_item_id);"
+    )
     op.execute("CREATE INDEX ix_content_lineage_child ON content_lineage (child_content_item_id);")
     op.execute("CREATE INDEX ix_content_lineage_workspace ON content_lineage (workspace_id);")
     # Lineage is immutable history (an edge is a fact); append-only.

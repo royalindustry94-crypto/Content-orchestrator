@@ -52,9 +52,7 @@ async def test_mission_control_v4_integrated_modules(client, new_user):
     )
     assert provisioned.status_code == 201, provisioned.text
     worker = provisioned.json()
-    worker_headers = {
-        "Authorization": f"Bearer {worker['worker_secret']}"
-    }
+    worker_headers = {"Authorization": f"Bearer {worker['worker_secret']}"}
 
     log = await client.post(
         "/workers/logs",
@@ -84,10 +82,7 @@ async def test_mission_control_v4_integrated_modules(client, new_user):
         params={"q": "V4 Mission"},
     )
     assert customer_search.status_code == 200
-    assert any(
-        row["type"] == "customer"
-        for row in customer_search.json()["results"]
-    )
+    assert any(row["type"] == "customer" for row in customer_search.json()["results"])
 
     log_search = await client.get(
         f"/workspaces/{workspace_id}/operations/search",
@@ -105,13 +100,9 @@ async def test_mission_control_v4_integrated_modules(client, new_user):
     assert logs.status_code == 200
     assert logs.json()["logs"][0]["message"].startswith("Provider timeout")
 
-    timeline = await client.get(
-        f"/workspaces/{workspace_id}/operations/timeline", headers=headers
-    )
+    timeline = await client.get(f"/workspaces/{workspace_id}/operations/timeline", headers=headers)
     assert timeline.status_code == 200
-    assert any(
-        item["source"] == "worker_logs" for item in timeline.json()["items"]
-    )
+    assert any(item["source"] == "worker_logs" for item in timeline.json()["items"])
 
     executive = await client.get(
         f"/workspaces/{workspace_id}/operations/executive-mode",
@@ -142,9 +133,7 @@ async def test_mission_control_v4_integrated_modules(client, new_user):
 
 
 @pytest.mark.asyncio
-async def test_worker_log_ingest_rejects_foreign_references_and_oversized_context(
-    client, new_user
-):
+async def test_worker_log_ingest_rejects_foreign_references_and_oversized_context(client, new_user):
     _user_id, _token, headers = new_user
     workspace_a = (
         await client.post("/workspaces", headers=headers, json={"name": "Logs tenant A"})
@@ -248,9 +237,7 @@ async def test_worker_log_ingest_rejects_foreign_references_and_oversized_contex
 @pytest.mark.asyncio
 async def test_v4_endpoints_require_admin(client, new_user):
     _owner_id, _token, owner_headers = new_user
-    workspace = await client.post(
-        "/workspaces", headers=owner_headers, json={"name": "Private V4"}
-    )
+    workspace = await client.post("/workspaces", headers=owner_headers, json={"name": "Private V4"})
     workspace_id = workspace.json()["id"]
     outsider = await client.post(
         "/auth/signup",
@@ -259,9 +246,7 @@ async def test_v4_endpoints_require_admin(client, new_user):
             "password": "securepass1-beta",
         },
     )
-    outsider_headers = {
-        "Authorization": f"Bearer {outsider.json()['access_token']}"
-    }
+    outsider_headers = {"Authorization": f"Bearer {outsider.json()['access_token']}"}
     for endpoint in ("search?q=private", "timeline", "logs", "executive-mode"):
         response = await client.get(
             f"/workspaces/{workspace_id}/operations/{endpoint}",
@@ -318,9 +303,7 @@ async def _seed_billing(workspace_id: str, *, amount_cents: int) -> None:
 
 
 @pytest.mark.asyncio
-async def test_single_workspace_reports_never_blend_another_admined_workspace(
-    client, new_user
-):
+async def test_single_workspace_reports_never_blend_another_admined_workspace(client, new_user):
     """Regression (2026-09-08 audit finding): /operations/insights,
     /operations/executive-mode, and /operations/search were pulling
     billing/revenue/customer data from EVERY workspace the caller
@@ -332,14 +315,10 @@ async def test_single_workspace_reports_never_blend_another_admined_workspace(
     """
     _user_id, _token, headers = new_user
     workspace_a = (
-        await client.post(
-            "/workspaces", headers=headers, json={"name": "Blend Guard Client A"}
-        )
+        await client.post("/workspaces", headers=headers, json={"name": "Blend Guard Client A"})
     ).json()["id"]
     workspace_b = (
-        await client.post(
-            "/workspaces", headers=headers, json={"name": "Blend Guard Client B"}
-        )
+        await client.post("/workspaces", headers=headers, json={"name": "Blend Guard Client B"})
     ).json()["id"]
 
     # B gets far more revenue and far more members than A, so any leak of
@@ -371,9 +350,7 @@ async def test_single_workspace_reports_never_blend_another_admined_workspace(
     assert Decimal(str(exec_mode.json()["revenue_mtd_usd"])) == Decimal("10.00")
 
     # --- insights: most_active_customer must not be Client B's name ---
-    insights = await client.get(
-        f"/workspaces/{workspace_a}/operations/insights", headers=headers
-    )
+    insights = await client.get(f"/workspaces/{workspace_a}/operations/insights", headers=headers)
     assert insights.status_code == 200, insights.text
     assert insights.json()["most_active_customer"] != "Blend Guard Client B"
 
@@ -388,9 +365,7 @@ async def test_single_workspace_reports_never_blend_another_admined_workspace(
     assert all(r["title"] != "Blend Guard Client B" for r in customer_hits)
 
     # --- customers: the intentional portfolio view must still see BOTH ---
-    portfolio = await client.get(
-        f"/workspaces/{workspace_a}/operations/customers", headers=headers
-    )
+    portfolio = await client.get(f"/workspaces/{workspace_a}/operations/customers", headers=headers)
     assert portfolio.status_code == 200, portfolio.text
     names = {row["name"] for row in portfolio.json()["customers"]}
     assert names == {"Blend Guard Client A", "Blend Guard Client B"}
@@ -398,9 +373,7 @@ async def test_single_workspace_reports_never_blend_another_admined_workspace(
 
 
 @pytest.mark.asyncio
-async def test_assistant_generic_idle_question_reports_the_actually_idle_worker(
-    client, new_user
-):
+async def test_assistant_generic_idle_question_reports_the_actually_idle_worker(client, new_user):
     """A generic phrasing ("are any workers idle?") has no worker name for
     the intent's regex to capture, leaving `needle` empty. The buggy version
     used `needle in row.name.lower()`, and an empty string is a substring of

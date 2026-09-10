@@ -42,8 +42,12 @@ class ContentProfileInput(BaseModel):
     content_goal: str | None = Field(default=None, max_length=2000)
 
     @field_validator(
-        "business_name", "offer", "target_audience", "brand_voice",
-        "target_platform", "content_goal",
+        "business_name",
+        "offer",
+        "target_audience",
+        "brand_voice",
+        "target_platform",
+        "content_goal",
     )
     @classmethod
     def strip_and_blank_to_none(cls, value: str | None) -> str | None:

@@ -88,9 +88,7 @@ def upgrade() -> None:
     )
 
     # --- back-pressure state --------------------------------------------------
-    op.execute(
-        "CREATE TYPE backpressure_state AS ENUM ('normal','pressured','throttled');"
-    )
+    op.execute("CREATE TYPE backpressure_state AS ENUM ('normal','pressured','throttled');")
     op.execute(
         """
         CREATE TABLE workspace_backpressure_state (

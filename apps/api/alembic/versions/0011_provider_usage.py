@@ -4,6 +4,7 @@ Revision ID: 0011
 Revises: 0010
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -45,8 +46,12 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_provider_usage_workspace_provider_time ON provider_usage (workspace_id, provider, occurred_at DESC);")
-    op.execute("CREATE INDEX ix_provider_usage_item ON provider_usage (content_item_id) WHERE content_item_id IS NOT NULL;")
+    op.execute(
+        "CREATE INDEX ix_provider_usage_workspace_provider_time ON provider_usage (workspace_id, provider, occurred_at DESC);"
+    )
+    op.execute(
+        "CREATE INDEX ix_provider_usage_item ON provider_usage (content_item_id) WHERE content_item_id IS NOT NULL;"
+    )
     attach_immutable_trigger("provider_usage")
     enable_rls("provider_usage")
     grant_runtime("provider_usage", update=False, delete=False)

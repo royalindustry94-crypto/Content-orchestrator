@@ -4,6 +4,7 @@ Revision ID: 0017
 Revises: 0016
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -46,9 +47,13 @@ def upgrade() -> None:
         """
     )
     # Dispatcher's core query: eligible workers for a stage.
-    op.execute("CREATE INDEX ix_worker_registry_status ON worker_registry (status) "
-               "WHERE status IN ('online','busy');")
-    op.execute("CREATE INDEX ix_worker_registry_stages ON worker_registry USING GIN (supported_stages);")
+    op.execute(
+        "CREATE INDEX ix_worker_registry_status ON worker_registry (status) "
+        "WHERE status IN ('online','busy');"
+    )
+    op.execute(
+        "CREATE INDEX ix_worker_registry_stages ON worker_registry USING GIN (supported_stages);"
+    )
     op.execute(
         "CREATE TRIGGER trg_worker_registry_version BEFORE UPDATE ON worker_registry "
         "FOR EACH ROW EXECUTE FUNCTION set_version_and_updated_at();"
@@ -66,7 +71,9 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_worker_heartbeats_worker_time ON worker_heartbeats (worker_id, heartbeat_at DESC);")
+    op.execute(
+        "CREATE INDEX ix_worker_heartbeats_worker_time ON worker_heartbeats (worker_id, heartbeat_at DESC);"
+    )
     op.execute("GRANT SELECT, INSERT ON worker_heartbeats TO app_runtime;")
 
 

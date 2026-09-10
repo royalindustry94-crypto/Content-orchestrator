@@ -41,9 +41,7 @@ async def ensure_default_spend_cap(
         workspace_id=workspace_id,
         provider=None,
         daily_cap_usd=(
-            daily_cap_usd
-            if daily_cap_usd is not None
-            else settings.default_daily_spend_cap_usd
+            daily_cap_usd if daily_cap_usd is not None else settings.default_daily_spend_cap_usd
         ),
         monthly_cap_usd=(
             monthly_cap_usd
@@ -79,9 +77,7 @@ async def update_workspace_spend_cap(
     daily_cap_usd: float | Decimal | None = None,
     monthly_cap_usd: float | Decimal | None = None,
 ) -> SpendCap:
-    cap = await ensure_default_spend_cap(
-        session, workspace_id=workspace_id, actor_id=actor_id
-    )
+    cap = await ensure_default_spend_cap(session, workspace_id=workspace_id, actor_id=actor_id)
     if daily_cap_usd is not None:
         cap.daily_cap_usd = daily_cap_usd
     if monthly_cap_usd is not None:
@@ -91,9 +87,7 @@ async def update_workspace_spend_cap(
     return cap
 
 
-async def spend_snapshot(
-    session: AsyncSession, *, workspace_id: uuid.UUID
-) -> dict:
+async def spend_snapshot(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict:
     cap = await get_workspace_spend_cap(session, workspace_id=workspace_id)
     daily_used = await controller._spend_committed_plus_reserved(
         session,
@@ -108,13 +102,17 @@ async def spend_snapshot(
         since=controller._utc_month_start(),
     )
     reserved = (
-        await session.execute(
-            select(SpendReservation.estimated_cost_usd).where(
-                SpendReservation.workspace_id == workspace_id,
-                SpendReservation.status == ReservationStatus.RESERVED,
+        (
+            await session.execute(
+                select(SpendReservation.estimated_cost_usd).where(
+                    SpendReservation.workspace_id == workspace_id,
+                    SpendReservation.status == ReservationStatus.RESERVED,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     reserved_total = sum((Decimal(str(v)) for v in reserved), Decimal("0"))
     log_count = (
         await session.execute(

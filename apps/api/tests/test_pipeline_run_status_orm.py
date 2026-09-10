@@ -22,20 +22,13 @@ async def _seed_workspace(session) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
         {"id": str(user_id), "email": f"{user_id}@example.com"},
     )
     await session.execute(
-        text(
-            "INSERT INTO profiles (id, email) VALUES (:id, :email) "
-            "ON CONFLICT (id) DO NOTHING"
-        ),
+        text("INSERT INTO profiles (id, email) VALUES (:id, :email) ON CONFLICT (id) DO NOTHING"),
         {"id": str(user_id), "email": f"{user_id}@example.com"},
     )
     ws = Workspace(id=uuid.uuid4(), name=f"orm-{user_id}", created_by=user_id)
     session.add(ws)
     await session.flush()
-    session.add(
-        WorkspaceMembership(
-            workspace_id=ws.id, user_id=user_id, role=WorkspaceRole.ADMIN
-        )
-    )
+    session.add(WorkspaceMembership(workspace_id=ws.id, user_id=user_id, role=WorkspaceRole.ADMIN))
     from app.models.content import ContentItem
     from app.models.enums import ContentStage, ContentStatus
 
@@ -57,8 +50,10 @@ async def _seed_workspace(session) -> tuple[uuid.UUID, uuid.UUID, uuid.UUID]:
 async def test_db_pipeline_run_status_values_match_python_enum():
     async with AsyncSessionLocal() as session:
         rows = (
-            await session.execute(text("SELECT unnest(enum_range(NULL::pipeline_run_status))"))
-        ).scalars().all()
+            (await session.execute(text("SELECT unnest(enum_range(NULL::pipeline_run_status))")))
+            .scalars()
+            .all()
+        )
     db_values = {str(v) for v in rows}
     py_values = {e.value for e in PipelineRunStatus}
     assert db_values == py_values

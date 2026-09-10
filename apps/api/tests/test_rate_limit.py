@@ -123,9 +123,7 @@ def test_shared_app_does_not_attach_rate_limiting_under_test_env():
     """
     from app.main import app as shared_app
 
-    assert not any(
-        m.cls is RateLimitMiddleware for m in shared_app.user_middleware
-    )
+    assert not any(m.cls is RateLimitMiddleware for m in shared_app.user_middleware)
 
 
 async def test_distinct_client_ips_have_independent_budgets():

@@ -141,9 +141,7 @@ async def update_lead(
     db: AsyncSession = Depends(get_current_session),
 ) -> LeadOut:
     try:
-        lead = await operations_dashboard.update_lead(
-            db, workspace_id, lead_id, payload
-        )
+        lead = await operations_dashboard.update_lead(db, workspace_id, lead_id, payload)
     except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc)
@@ -209,9 +207,7 @@ async def system_health(
         "scheduler": {
             "ticks": state.scheduler_ticks,
             "last_ok_at": (
-                state.scheduler_last_ok_at.isoformat()
-                if state.scheduler_last_ok_at
-                else None
+                state.scheduler_last_ok_at.isoformat() if state.scheduler_last_ok_at else None
             ),
             "last_error": state.scheduler_last_error,
         },
@@ -265,9 +261,7 @@ async def action_pause_workers(
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_current_session),
 ) -> QuickActionResult:
-    return await operations_mission.pause_workers(
-        db, workspace_id, actor_id=uuid.UUID(user.id)
-    )
+    return await operations_mission.pause_workers(db, workspace_id, actor_id=uuid.UUID(user.id))
 
 
 @router.post("/actions/resume-workers", response_model=QuickActionResult)
@@ -277,9 +271,7 @@ async def action_resume_workers(
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_current_session),
 ) -> QuickActionResult:
-    return await operations_mission.resume_workers(
-        db, workspace_id, actor_id=uuid.UUID(user.id)
-    )
+    return await operations_mission.resume_workers(db, workspace_id, actor_id=uuid.UUID(user.id))
 
 
 @router.post("/actions/emergency-stop", response_model=QuickActionResult)
@@ -289,9 +281,7 @@ async def action_emergency_stop(
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_current_session),
 ) -> QuickActionResult:
-    return await operations_mission.emergency_stop(
-        db, workspace_id, actor_id=uuid.UUID(user.id)
-    )
+    return await operations_mission.emergency_stop(db, workspace_id, actor_id=uuid.UUID(user.id))
 
 
 @router.post("/actions/retry-failed-jobs", response_model=QuickActionResult)
@@ -301,9 +291,7 @@ async def action_retry_failed_jobs(
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_current_session),
 ) -> QuickActionResult:
-    return await operations_mission.retry_failed_jobs(
-        db, workspace_id, actor_id=uuid.UUID(user.id)
-    )
+    return await operations_mission.retry_failed_jobs(db, workspace_id, actor_id=uuid.UUID(user.id))
 
 
 @router.post("/actions/clear-dead-letter", response_model=QuickActionResult)
@@ -361,9 +349,7 @@ async def live_logs(
     worker_id: uuid.UUID | None = None,
     pipeline_id: uuid.UUID | None = None,
     job_id: uuid.UUID | None = None,
-    severity: str | None = Query(
-        default=None, pattern="^(debug|info|warning|error|critical)$"
-    ),
+    severity: str | None = Query(default=None, pattern="^(debug|info|warning|error|critical)$"),
     limit: int = Query(default=200, ge=1, le=1000),
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     db: AsyncSession = Depends(get_current_session),
@@ -388,9 +374,7 @@ def _automation_payload(request: Request) -> dict:
         "scheduler": {
             "ticks": state.scheduler_ticks,
             "last_ok_at": (
-                state.scheduler_last_ok_at.isoformat()
-                if state.scheduler_last_ok_at
-                else None
+                state.scheduler_last_ok_at.isoformat() if state.scheduler_last_ok_at else None
             ),
             "last_error": state.scheduler_last_error,
         },

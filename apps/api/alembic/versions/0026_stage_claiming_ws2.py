@@ -57,10 +57,7 @@ def upgrade() -> None:
     )
 
     # --- claim audit ledger ---------------------------------------------------
-    op.execute(
-        "CREATE TYPE claim_outcome AS ENUM "
-        "('granted','no_work','capacity','ineligible');"
-    )
+    op.execute("CREATE TYPE claim_outcome AS ENUM ('granted','no_work','capacity','ineligible');")
     op.execute(
         """
         CREATE TABLE stage_claim_audit (
@@ -81,8 +78,7 @@ def upgrade() -> None:
         "ON stage_claim_audit (workspace_id, created_at);"
     )
     op.execute(
-        "CREATE INDEX ix_stage_claim_audit_worker "
-        "ON stage_claim_audit (worker_id, created_at);"
+        "CREATE INDEX ix_stage_claim_audit_worker ON stage_claim_audit (worker_id, created_at);"
     )
     enable_rls("stage_claim_audit")
     # Members may READ their workspace's ledger; writes are service-role only

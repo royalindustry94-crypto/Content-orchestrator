@@ -7,8 +7,13 @@ import sys
 import uuid
 from pathlib import Path
 
-os.environ.setdefault("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test")
-os.environ.setdefault("APP_DATABASE_URL", "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test")
+os.environ.setdefault(
+    "DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/content_orchestrator_test"
+)
+os.environ.setdefault(
+    "APP_DATABASE_URL",
+    "postgresql://app_runtime:app_runtime@localhost:5432/content_orchestrator_test",
+)
 os.environ.setdefault("SUPABASE_JWT_SECRET", "test-supabase-jwt-secret-0123456789abcdef")
 
 # apps/worker isn't installed as a dependency of apps/api; reach it via a
@@ -80,12 +85,23 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
 
         ws, item, admin_user = await _make_workspace_item(session)
         definition = WorkflowDefinition(
-            id=uuid.uuid4(), workspace_id=ws, name="one-stage", version=1,
+            id=uuid.uuid4(),
+            workspace_id=ws,
+            name="one-stage",
+            version=1,
         )
         session.add(definition)
         await session.flush()
-        session.add(WorkflowStage(id=uuid.uuid4(), workspace_id=ws, definition_id=definition.id,
-                                   stage_key="scripting", ordinal=1, is_terminal=True))
+        session.add(
+            WorkflowStage(
+                id=uuid.uuid4(),
+                workspace_id=ws,
+                definition_id=definition.id,
+                stage_key="scripting",
+                ordinal=1,
+                is_terminal=True,
+            )
+        )
         await session.flush()
 
         run = PipelineRun(id=uuid.uuid4(), workspace_id=ws, content_item_id=item)
@@ -94,8 +110,13 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
         await controller.start_run(session, run=run, definition=definition)
 
         dispatched = await dispatcher.dispatch_stage(
-            session, workspace_id=ws, pipeline_run_id=run.id, stage="scripting",
-            attempt_number=1, correlation_id=run.correlation_id, trace_id=run.trace_id,
+            session,
+            workspace_id=ws,
+            pipeline_run_id=run.id,
+            stage="scripting",
+            attempt_number=1,
+            correlation_id=run.correlation_id,
+            trace_id=run.trace_id,
         )
         await session.commit()
         run_id = run.id
@@ -113,8 +134,11 @@ async def test_reference_worker_client_completes_a_stage_end_to_end():
     provisioned = provision.json()
 
     client = ReferenceWorkerClient(
-        name="ref-1", supported_stages=["scripting"], http=http,
-        credential=provisioned["worker_secret"], worker_id=provisioned["worker_id"],
+        name="ref-1",
+        supported_stages=["scripting"],
+        http=http,
+        credential=provisioned["worker_secret"],
+        worker_id=provisioned["worker_id"],
     )
     await client.register()
     await client.heartbeat()
@@ -168,12 +192,23 @@ async def test_reference_worker_client_refuses_to_reexecute_after_crash_recovery
         )
         ws, item, admin_user = await _make_workspace_item(session)
         definition = WorkflowDefinition(
-            id=uuid.uuid4(), workspace_id=ws, name="one-stage-crash", version=1,
+            id=uuid.uuid4(),
+            workspace_id=ws,
+            name="one-stage-crash",
+            version=1,
         )
         session.add(definition)
         await session.flush()
-        session.add(WorkflowStage(id=uuid.uuid4(), workspace_id=ws, definition_id=definition.id,
-                                   stage_key="scripting", ordinal=1, is_terminal=True))
+        session.add(
+            WorkflowStage(
+                id=uuid.uuid4(),
+                workspace_id=ws,
+                definition_id=definition.id,
+                stage_key="scripting",
+                ordinal=1,
+                is_terminal=True,
+            )
+        )
         await session.flush()
 
         run = PipelineRun(id=uuid.uuid4(), workspace_id=ws, content_item_id=item)
@@ -182,8 +217,13 @@ async def test_reference_worker_client_refuses_to_reexecute_after_crash_recovery
         await controller.start_run(session, run=run, definition=definition)
 
         dispatched = await dispatcher.dispatch_stage(
-            session, workspace_id=ws, pipeline_run_id=run.id, stage="scripting",
-            attempt_number=1, correlation_id=run.correlation_id, trace_id=run.trace_id,
+            session,
+            workspace_id=ws,
+            pipeline_run_id=run.id,
+            stage="scripting",
+            attempt_number=1,
+            correlation_id=run.correlation_id,
+            trace_id=run.trace_id,
         )
         await session.commit()
         assert dispatched.assignment is not None
@@ -194,7 +234,10 @@ async def test_reference_worker_client_refuses_to_reexecute_after_crash_recovery
         # provider call, then crashed before submit — recovery.py bumps
         # attempt_number and re-queues the same assignment for a new claim).
         await ensure_provider_effect_key(
-            session, workspace_id=ws, assignment_id=assignment_id, attempt_number=1,
+            session,
+            workspace_id=ws,
+            assignment_id=assignment_id,
+            attempt_number=1,
         )
         await session.commit()
 
@@ -209,8 +252,11 @@ async def test_reference_worker_client_refuses_to_reexecute_after_crash_recovery
     provisioned = provision.json()
 
     client = ReferenceWorkerClient(
-        name="ref-crash-1", supported_stages=["scripting"], http=http,
-        credential=provisioned["worker_secret"], worker_id=provisioned["worker_id"],
+        name="ref-crash-1",
+        supported_stages=["scripting"],
+        http=http,
+        credential=provisioned["worker_secret"],
+        worker_id=provisioned["worker_id"],
     )
     await client.register()
     await client.heartbeat()
@@ -250,12 +296,16 @@ async def test_reference_worker_client_refuses_to_reexecute_after_crash_recovery
         assert a.status == StageAssignmentStatus.FAILED
 
         stage_run = (
-            await session.execute(
-                select(PipelineStageRun)
-                .where(PipelineStageRun.pipeline_run_id == a.pipeline_run_id)
-                .order_by(PipelineStageRun.completed_at.desc())
+            (
+                await session.execute(
+                    select(PipelineStageRun)
+                    .where(PipelineStageRun.pipeline_run_id == a.pipeline_run_id)
+                    .order_by(PipelineStageRun.completed_at.desc())
+                )
             )
-        ).scalars().first()
+            .scalars()
+            .first()
+        )
         assert stage_run is not None
         assert stage_run.status == "failed"
         assert "prior attempt" in (stage_run.error_message or "")

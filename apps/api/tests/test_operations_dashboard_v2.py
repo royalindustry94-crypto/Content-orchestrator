@@ -16,9 +16,7 @@ from app.db.session import AsyncSessionLocal
 @pytest.mark.asyncio
 async def test_founder_control_center_modules(client, new_user, monkeypatch):
     user_id, _token, headers = new_user
-    workspace = await client.post(
-        "/workspaces", headers=headers, json={"name": "Founder Control"}
-    )
+    workspace = await client.post("/workspaces", headers=headers, json={"name": "Founder Control"})
     assert workspace.status_code == 201
     workspace_id = workspace.json()["id"]
 
@@ -170,21 +168,15 @@ async def test_founder_control_center_modules(client, new_user, monkeypatch):
     assert patched.status_code == 200
     assert patched.json()["status"] == "contacted"
 
-    workers = await client.get(
-        f"/workspaces/{workspace_id}/operations/workers", headers=headers
-    )
+    workers = await client.get(f"/workspaces/{workspace_id}/operations/workers", headers=headers)
     assert workers.status_code == 200
-    worker = next(
-        item for item in workers.json()["workers"] if item["name"] == "founder-worker"
-    )
+    worker = next(item for item in workers.json()["workers"] if item["name"] == "founder-worker")
     assert worker["jobs_completed_today"] >= 1
     assert worker["cpu_percent"] == 42.0
     assert worker["memory_percent"] == 61.0
     assert worker["current_task"] is None or isinstance(worker["current_task"], str)
 
-    spend = await client.get(
-        f"/workspaces/{workspace_id}/operations/spend", headers=headers
-    )
+    spend = await client.get(f"/workspaces/{workspace_id}/operations/spend", headers=headers)
     assert spend.status_code == 200
     spend_body = spend.json()
     assert Decimal(spend_body["today_usd"]) >= Decimal("1.25")
@@ -213,9 +205,7 @@ async def test_founder_control_center_modules(client, new_user, monkeypatch):
     monkeypatch.delenv("GITHUB_API_TOKEN", raising=False)
     monkeypatch.delenv("GITHUB_REPOSITORY", raising=False)
     get_settings.cache_clear()
-    github = await client.get(
-        f"/workspaces/{workspace_id}/operations/github", headers=headers
-    )
+    github = await client.get(f"/workspaces/{workspace_id}/operations/github", headers=headers)
     assert github.status_code == 200
     assert github.json()["available"] is False
     assert github.json()["latest_commits"] == []
@@ -241,9 +231,7 @@ async def test_founder_endpoints_require_admin(client, new_user):
         "/auth/signup",
         json={"email": f"{uuid.uuid4()}@example.com", "password": "securepass1-beta"},
     )
-    outsider_headers = {
-        "Authorization": f"Bearer {outsider.json()['access_token']}"
-    }
+    outsider_headers = {"Authorization": f"Bearer {outsider.json()['access_token']}"}
     for endpoint in (
         "leads",
         "customers",

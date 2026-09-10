@@ -62,9 +62,7 @@ def upgrade() -> None:
         "'lease_expired','worker_offline','worker_deregistered',"
         "'worker_revoked','worker_restart','max_lease_exceeded');"
     )
-    op.execute(
-        "CREATE TYPE recovery_outcome AS ENUM ('requeued','dead_lettered','skipped');"
-    )
+    op.execute("CREATE TYPE recovery_outcome AS ENUM ('requeued','dead_lettered','skipped');")
     op.execute(
         """
         CREATE TABLE stage_recovery_audit (

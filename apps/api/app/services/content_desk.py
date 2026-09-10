@@ -210,9 +210,7 @@ async def create_content_job(
         generated_by = "human_draft"
         prompt_used = "review_desk_manual_draft"
     else:
-        generated = generate_script_draft(
-            topic=topic, target_length_seconds=target_length_seconds
-        )
+        generated = generate_script_draft(topic=topic, target_length_seconds=target_length_seconds)
         body = generated.script_body
         hook = script_hook or generated.script_hook
         cta = script_cta or generated.script_cta
@@ -294,17 +292,19 @@ async def create_content_job(
     # that stage synchronously. Cancel the orphan so the scheduler cannot
     # re-dispatch and resurrect a Human Review Gate after publish (C-1).
     orphan_jobs = (
-        await session.execute(
-            select(JobSchedule).where(
-                JobSchedule.ref_id == run.id,
-                JobSchedule.job_type.in_([JobType.STAGE, JobType.RETRY]),
-                JobSchedule.ref_table == ContentStage.SCRIPTING.value,
-                JobSchedule.status.in_(
-                    [JobScheduleStatus.PENDING, JobScheduleStatus.LEASED]
-                ),
+        (
+            await session.execute(
+                select(JobSchedule).where(
+                    JobSchedule.ref_id == run.id,
+                    JobSchedule.job_type.in_([JobType.STAGE, JobType.RETRY]),
+                    JobSchedule.ref_table == ContentStage.SCRIPTING.value,
+                    JobSchedule.status.in_([JobScheduleStatus.PENDING, JobScheduleStatus.LEASED]),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for job in orphan_jobs:
         job.status = JobScheduleStatus.CANCELLED
         job.lease_owner = None

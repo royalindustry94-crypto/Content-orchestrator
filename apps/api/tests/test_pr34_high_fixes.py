@@ -90,8 +90,7 @@ def test_c2_production_rejects_default_app_runtime_password():
             **_base_settings_kwargs(
                 environment="production",
                 app_database_url=(
-                    "postgresql://app_runtime:app_runtime@127.0.0.1:5432/"
-                    "content_orchestrator_test"
+                    "postgresql://app_runtime:app_runtime@127.0.0.1:5432/content_orchestrator_test"
                 ),
             )
         )
@@ -107,8 +106,7 @@ def test_c2_default_password_is_fine_outside_production():
         **_base_settings_kwargs(
             environment="development",
             app_database_url=(
-                "postgresql://app_runtime:app_runtime@127.0.0.1:5432/"
-                "content_orchestrator_test"
+                "postgresql://app_runtime:app_runtime@127.0.0.1:5432/content_orchestrator_test"
             ),
         )
     )
@@ -122,20 +120,13 @@ async def _seed_workspace_item(session):
         {"id": str(user_id), "email": f"{user_id}@example.com"},
     )
     await session.execute(
-        text(
-            "INSERT INTO profiles (id, email) VALUES (:id, :email) "
-            "ON CONFLICT (id) DO NOTHING"
-        ),
+        text("INSERT INTO profiles (id, email) VALUES (:id, :email) ON CONFLICT (id) DO NOTHING"),
         {"id": str(user_id), "email": f"{user_id}@example.com"},
     )
     ws = Workspace(id=uuid.uuid4(), name=f"pr34-{user_id}", created_by=user_id)
     session.add(ws)
     await session.flush()
-    session.add(
-        WorkspaceMembership(
-            workspace_id=ws.id, user_id=user_id, role=WorkspaceRole.ADMIN
-        )
-    )
+    session.add(WorkspaceMembership(workspace_id=ws.id, user_id=user_id, role=WorkspaceRole.ADMIN))
     await ensure_default_spend_cap(session, workspace_id=ws.id, actor_id=user_id)
     item = ContentItem(
         id=uuid.uuid4(),
@@ -182,9 +173,7 @@ async def test_h3_commit_spend_clamps_actual_to_reserved():
         await session.refresh(reservation)
         assert reservation.status == ReservationStatus.COMMITTED
         log = (
-            await session.execute(
-                select(SpendLog).where(SpendLog.workspace_id == ws.id)
-            )
+            await session.execute(select(SpendLog).where(SpendLog.workspace_id == ws.id))
         ).scalar_one()
         assert Decimal(str(log.cost_usd)) == Decimal("0.50")
 
@@ -225,14 +214,18 @@ async def test_h4_reserve_retry_releases_prior_open_reservation():
         assert first.status == ReservationStatus.RELEASED
         assert second.status == ReservationStatus.RESERVED
         open_rows = (
-            await session.execute(
-                select(SpendReservation).where(
-                    SpendReservation.pipeline_run_id == run.id,
-                    SpendReservation.stage == "scripting",
-                    SpendReservation.status == ReservationStatus.RESERVED,
+            (
+                await session.execute(
+                    select(SpendReservation).where(
+                        SpendReservation.pipeline_run_id == run.id,
+                        SpendReservation.stage == "scripting",
+                        SpendReservation.status == ReservationStatus.RESERVED,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(open_rows) == 1
         assert open_rows[0].id == second.id
 
@@ -248,15 +241,12 @@ async def test_h2_checkout_does_not_entitle_without_subscription():
         )
         await session.execute(
             text(
-                "INSERT INTO profiles (id, email) VALUES (:id, :email) "
-                "ON CONFLICT (id) DO NOTHING"
+                "INSERT INTO profiles (id, email) VALUES (:id, :email) ON CONFLICT (id) DO NOTHING"
             ),
             {"id": str(user_id), "email": f"{user_id}@ex.com"},
         )
         await session.execute(
-            text(
-                "INSERT INTO workspaces (id, name, created_by) VALUES (:id, :name, :by)"
-            ),
+            text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, :name, :by)"),
             {"id": str(workspace_id), "name": "H2 WS", "by": str(user_id)},
         )
         await session.commit()
@@ -350,9 +340,7 @@ async def test_m1_spend_hold_parks_job_without_dlq_or_attempt_burn():
         assert job.attempt == 0
         assert run.pause_reason == "spend_hold"
         dlq = (
-            await session.execute(
-                select(DeadLetterJob).where(DeadLetterJob.related_id == job.id)
-            )
+            await session.execute(select(DeadLetterJob).where(DeadLetterJob.related_id == job.id))
         ).scalar_one_or_none()
         assert dlq is None
 
@@ -380,15 +368,19 @@ async def test_c1_content_desk_cancels_orphan_stage_job_and_blocks_resurrection(
         gate_id = result.review_gate_id
 
         orphans = (
-            await session.execute(
-                select(JobSchedule).where(
-                    JobSchedule.ref_id == run_id,
-                    JobSchedule.status.in_(
-                        [JobScheduleStatus.PENDING, JobScheduleStatus.LEASED]
-                    ),
+            (
+                await session.execute(
+                    select(JobSchedule).where(
+                        JobSchedule.ref_id == run_id,
+                        JobSchedule.status.in_(
+                            [JobScheduleStatus.PENDING, JobScheduleStatus.LEASED]
+                        ),
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert orphans == [], "Content Desk must cancel the start_run scripting job"
 
     async with AsyncSessionLocal() as session:
@@ -420,13 +412,17 @@ async def test_c1_content_desk_cancels_orphan_stage_job_and_blocks_resurrection(
         await session.refresh(run)
         assert run.status == PipelineRunStatus.SUCCEEDED
         awaiting = (
-            await session.execute(
-                select(ReviewGate).where(
-                    ReviewGate.pipeline_run_id == run_id,
-                    ReviewGate.status == ReviewGateStatus.AWAITING,
+            (
+                await session.execute(
+                    select(ReviewGate).where(
+                        ReviewGate.pipeline_run_id == run_id,
+                        ReviewGate.status == ReviewGateStatus.AWAITING,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert awaiting == []
 
 
@@ -459,6 +455,8 @@ async def test_h4_commit_spend_is_idempotent():
         )
         await session.commit()
         logs = (
-            await session.execute(select(SpendLog).where(SpendLog.workspace_id == ws.id))
-        ).scalars().all()
+            (await session.execute(select(SpendLog).where(SpendLog.workspace_id == ws.id)))
+            .scalars()
+            .all()
+        )
         assert len(logs) == 1

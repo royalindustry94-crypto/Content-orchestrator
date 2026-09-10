@@ -78,9 +78,7 @@ def require_workspace_role(*allowed_roles: WorkspaceRole):
 
 require_workspace_admin = require_workspace_role(WorkspaceRole.ADMIN)
 # Content authors (Private Beta desk submit).
-require_workspace_content_author = require_workspace_role(
-    WorkspaceRole.ADMIN, WorkspaceRole.EDITOR
-)
+require_workspace_content_author = require_workspace_role(WorkspaceRole.ADMIN, WorkspaceRole.EDITOR)
 # Human Review Gate decision-makers (matches review_decisions RLS insert roles).
 #
 # ADMIN is deliberately in both this set and require_workspace_content_author,
@@ -96,6 +94,4 @@ require_workspace_content_author = require_workspace_role(
 # reviewer_id == content.created_by, or a workspace-level setting) if/when
 # the product moves toward larger teams where that guarantee needs to be
 # structural rather than operational. See docs/TECHNICAL_DEBT_REGISTER.md.
-require_workspace_reviewer = require_workspace_role(
-    WorkspaceRole.ADMIN, WorkspaceRole.REVIEWER
-)
+require_workspace_reviewer = require_workspace_role(WorkspaceRole.ADMIN, WorkspaceRole.REVIEWER)

@@ -4,6 +4,7 @@ Revision ID: 0007
 Revises: 0006
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -32,7 +33,9 @@ _ALL = ["admin", "editor", "reviewer"]
 
 
 def upgrade() -> None:
-    op.execute("CREATE TYPE publish_job_status AS ENUM ('pending','publishing','published','failed','cancelled');")
+    op.execute(
+        "CREATE TYPE publish_job_status AS ENUM ('pending','publishing','published','failed','cancelled');"
+    )
     op.execute(
         """
         CREATE TABLE publish_jobs (
@@ -54,8 +57,12 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_publish_jobs_workspace_time ON publish_jobs (workspace_id, scheduled_time) WHERE deleted_at IS NULL;")
-    op.execute("CREATE INDEX ix_publish_jobs_workspace_status ON publish_jobs (workspace_id, status);")
+    op.execute(
+        "CREATE INDEX ix_publish_jobs_workspace_time ON publish_jobs (workspace_id, scheduled_time) WHERE deleted_at IS NULL;"
+    )
+    op.execute(
+        "CREATE INDEX ix_publish_jobs_workspace_status ON publish_jobs (workspace_id, status);"
+    )
     op.execute("CREATE INDEX ix_publish_jobs_item ON publish_jobs (content_item_id);")
     attach_version_trigger("publish_jobs")
     enable_rls("publish_jobs")

@@ -63,9 +63,7 @@ async def automation_health(request: Request) -> dict:
         "maintenance": {
             "ticks": state.maintenance_ticks,
             "last_ok_at": (
-                state.maintenance_last_ok_at.isoformat()
-                if state.maintenance_last_ok_at
-                else None
+                state.maintenance_last_ok_at.isoformat() if state.maintenance_last_ok_at else None
             ),
             "last_error": state.maintenance_last_error,
         },

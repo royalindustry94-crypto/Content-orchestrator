@@ -4,6 +4,7 @@ Revision ID: 0004
 Revises: 0003
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -33,7 +34,9 @@ _ALL = ["admin", "editor", "reviewer"]
 
 
 def upgrade() -> None:
-    op.execute("CREATE TYPE content_stage AS ENUM ('idea','scripting','voiceover','visuals','rendering','seo','review','scheduled','published');")
+    op.execute(
+        "CREATE TYPE content_stage AS ENUM ('idea','scripting','voiceover','visuals','rendering','seo','review','scheduled','published');"
+    )
     op.execute("CREATE TYPE content_status AS ENUM ('active','failed','archived');")
     op.execute(
         """
@@ -56,9 +59,15 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_content_items_workspace_stage ON content_items (workspace_id, current_stage) WHERE deleted_at IS NULL;")
-    op.execute("CREATE INDEX ix_content_items_workspace_pillar ON content_items (workspace_id, pillar_id) WHERE deleted_at IS NULL;")
-    op.execute("CREATE INDEX ix_content_items_workspace_status ON content_items (workspace_id, status) WHERE deleted_at IS NULL;")
+    op.execute(
+        "CREATE INDEX ix_content_items_workspace_stage ON content_items (workspace_id, current_stage) WHERE deleted_at IS NULL;"
+    )
+    op.execute(
+        "CREATE INDEX ix_content_items_workspace_pillar ON content_items (workspace_id, pillar_id) WHERE deleted_at IS NULL;"
+    )
+    op.execute(
+        "CREATE INDEX ix_content_items_workspace_status ON content_items (workspace_id, status) WHERE deleted_at IS NULL;"
+    )
     attach_version_trigger("content_items")
     enable_rls("content_items")
     grant_runtime("content_items")
@@ -82,7 +91,9 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_content_versions_item ON content_versions (content_item_id, created_at DESC);")
+    op.execute(
+        "CREATE INDEX ix_content_versions_item ON content_versions (content_item_id, created_at DESC);"
+    )
     op.execute("CREATE INDEX ix_content_versions_workspace ON content_versions (workspace_id);")
     attach_immutable_trigger("content_versions")
     enable_rls("content_versions")
@@ -90,11 +101,15 @@ def upgrade() -> None:
     policy_select_members("content_versions", _ALL)
     policy_insert_roles("content_versions", _EDIT)
 
-    op.execute("ALTER TABLE content_items ADD CONSTRAINT fk_content_items_current_version FOREIGN KEY (current_version_id) REFERENCES content_versions(id);")
+    op.execute(
+        "ALTER TABLE content_items ADD CONSTRAINT fk_content_items_current_version FOREIGN KEY (current_version_id) REFERENCES content_versions(id);"
+    )
 
 
 def downgrade() -> None:
-    op.execute("ALTER TABLE content_items DROP CONSTRAINT IF EXISTS fk_content_items_current_version;")
+    op.execute(
+        "ALTER TABLE content_items DROP CONSTRAINT IF EXISTS fk_content_items_current_version;"
+    )
     op.execute("DROP TABLE IF EXISTS content_versions;")
     op.execute("DROP TABLE IF EXISTS content_items;")
     op.execute("DROP TYPE IF EXISTS content_status;")

@@ -4,6 +4,7 @@ Revision ID: 0018
 Revises: 0017
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -29,8 +30,10 @@ _ALL = ["admin", "editor", "reviewer"]
 
 
 def upgrade() -> None:
-    op.execute("CREATE TYPE stage_assignment_status AS ENUM "
-               "('pending','dispatched','acknowledged','completed','failed','cancelled');")
+    op.execute(
+        "CREATE TYPE stage_assignment_status AS ENUM "
+        "('pending','dispatched','acknowledged','completed','failed','cancelled');"
+    )
     op.execute(
         """
         CREATE TABLE stage_assignments (
@@ -55,17 +58,25 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE UNIQUE INDEX uq_stage_assignments_workspace_idem "
-               "ON stage_assignments (workspace_id, idempotency_key) WHERE idempotency_key IS NOT NULL;")
+    op.execute(
+        "CREATE UNIQUE INDEX uq_stage_assignments_workspace_idem "
+        "ON stage_assignments (workspace_id, idempotency_key) WHERE idempotency_key IS NOT NULL;"
+    )
     # Reaper's query: dispatched/acknowledged rows whose lease expired.
-    op.execute("CREATE INDEX ix_stage_assignments_lease ON stage_assignments (lease_expires_at) "
-               "WHERE status IN ('dispatched','acknowledged');")
+    op.execute(
+        "CREATE INDEX ix_stage_assignments_lease ON stage_assignments (lease_expires_at) "
+        "WHERE status IN ('dispatched','acknowledged');"
+    )
     # Dispatcher/worker poll: pending assignments matching a stage.
-    op.execute("CREATE INDEX ix_stage_assignments_pending_stage ON stage_assignments (stage, created_at) "
-               "WHERE status = 'pending';")
+    op.execute(
+        "CREATE INDEX ix_stage_assignments_pending_stage ON stage_assignments (stage, created_at) "
+        "WHERE status = 'pending';"
+    )
     op.execute("CREATE INDEX ix_stage_assignments_run ON stage_assignments (pipeline_run_id);")
-    op.execute("CREATE INDEX ix_stage_assignments_worker ON stage_assignments (worker_id) "
-               "WHERE worker_id IS NOT NULL;")
+    op.execute(
+        "CREATE INDEX ix_stage_assignments_worker ON stage_assignments (worker_id) "
+        "WHERE worker_id IS NOT NULL;"
+    )
     attach_version_trigger("stage_assignments")
     enable_rls("stage_assignments")
     grant_runtime("stage_assignments")

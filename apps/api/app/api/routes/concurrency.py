@@ -67,17 +67,13 @@ async def get_concurrency(
     )
     return ConcurrencyLimitsOut(
         workspace_id=workspace_id,
-        max_concurrent_assignments=(
-            limit.max_concurrent_assignments if limit is not None else 10
-        ),
+        max_concurrent_assignments=(limit.max_concurrent_assignments if limit is not None else 10),
         max_per_scheduler_tick=limit.max_per_scheduler_tick if limit is not None else 5,
         queue_soft_limit=limit.queue_soft_limit if limit is not None else 50,
         queue_hard_limit=limit.queue_hard_limit if limit is not None else 200,
         pending_depth=depth,
         in_flight=inflight,
-        backpressure_state=(
-            bp.state if bp is not None else BackpressureState.NORMAL
-        ),
+        backpressure_state=(bp.state if bp is not None else BackpressureState.NORMAL),
     )
 
 
@@ -123,9 +119,7 @@ async def put_concurrency(
                 else 10
             ),
             max_per_scheduler_tick=(
-                payload.max_per_scheduler_tick
-                if payload.max_per_scheduler_tick is not None
-                else 5
+                payload.max_per_scheduler_tick if payload.max_per_scheduler_tick is not None else 5
             ),
             queue_soft_limit=soft,
             queue_hard_limit=hard,

@@ -58,8 +58,11 @@ async def _get_or_create_checkpoint(
     checkpoint = result.scalar_one_or_none()
     if checkpoint is None:
         checkpoint = ConsumerCheckpoint(
-            id=uuid.uuid4(), consumer_id=consumer_id,
-            aggregate_type=aggregate_type, partition_key=partition_key, last_sequence=0,
+            id=uuid.uuid4(),
+            consumer_id=consumer_id,
+            aggregate_type=aggregate_type,
+            partition_key=partition_key,
+            last_sequence=0,
         )
         session.add(checkpoint)
         await session.flush()
@@ -93,9 +96,12 @@ async def dispatch_one(session: AsyncSession, event: OutboxEvent) -> None:
             logger.warning(
                 "consumer handler failed",
                 extra={
-                    "event_id": str(event.event_id), "event_type": event.event_type,
-                    "consumer": consumer_name, "attempt": event.delivery_attempts,
-                    "error": str(exc), "correlation_id": str(event.correlation_id),
+                    "event_id": str(event.event_id),
+                    "event_type": event.event_type,
+                    "consumer": consumer_name,
+                    "attempt": event.delivery_attempts,
+                    "error": str(exc),
+                    "correlation_id": str(event.correlation_id),
                     "trace_id": event.trace_id,
                 },
             )

@@ -8,6 +8,7 @@ Revision ID: 0014
 Revises: 0013
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -49,8 +50,10 @@ def upgrade() -> None:
         """
     )
 
-    op.execute("CREATE TYPE workflow_transition_trigger AS ENUM "
-               "('on_success','on_failure','on_review_approved','on_review_rejected');")
+    op.execute(
+        "CREATE TYPE workflow_transition_trigger AS ENUM "
+        "('on_success','on_failure','on_review_approved','on_review_rejected');"
+    )
 
     op.execute(
         """
@@ -66,8 +69,10 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_workflow_definitions_active "
-               "ON workflow_definitions (workspace_id, name) WHERE is_active;")
+    op.execute(
+        "CREATE INDEX ix_workflow_definitions_active "
+        "ON workflow_definitions (workspace_id, name) WHERE is_active;"
+    )
     attach_immutable_trigger("workflow_definitions")
     enable_rls("workflow_definitions")
     grant_runtime("workflow_definitions", update=False, delete=False)
@@ -95,7 +100,9 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_workflow_stages_definition ON workflow_stages (definition_id, ordinal);")
+    op.execute(
+        "CREATE INDEX ix_workflow_stages_definition ON workflow_stages (definition_id, ordinal);"
+    )
     attach_immutable_trigger("workflow_stages")
     enable_rls("workflow_stages")
     grant_runtime("workflow_stages", update=False, delete=False)
@@ -117,16 +124,20 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_workflow_transitions_lookup "
-               "ON workflow_transitions (definition_id, from_stage, trigger);")
+    op.execute(
+        "CREATE INDEX ix_workflow_transitions_lookup "
+        "ON workflow_transitions (definition_id, from_stage, trigger);"
+    )
     attach_immutable_trigger("workflow_transitions")
     enable_rls("workflow_transitions")
     grant_runtime("workflow_transitions", update=False, delete=False)
     policy_select_members("workflow_transitions", _ALL)
     policy_insert_roles("workflow_transitions", ["admin"])
 
-    op.execute("ALTER TABLE pipeline_runs ADD CONSTRAINT fk_pipeline_runs_definition "
-               "FOREIGN KEY (definition_id) REFERENCES workflow_definitions(id);")
+    op.execute(
+        "ALTER TABLE pipeline_runs ADD CONSTRAINT fk_pipeline_runs_definition "
+        "FOREIGN KEY (definition_id) REFERENCES workflow_definitions(id);"
+    )
 
 
 def downgrade() -> None:

@@ -4,6 +4,7 @@ Revision ID: 0015
 Revises: 0014
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -55,11 +56,15 @@ def upgrade() -> None:
         """
     )
     # Delivery: the relay scans pending events oldest-first.
-    op.execute("CREATE INDEX ix_outbox_events_status_time ON outbox_events (status, occurred_at) "
-               "WHERE status = 'pending';")
+    op.execute(
+        "CREATE INDEX ix_outbox_events_status_time ON outbox_events (status, occurred_at) "
+        "WHERE status = 'pending';"
+    )
     # Per-aggregate ordering (§3.4 of the design doc).
-    op.execute("CREATE UNIQUE INDEX uq_outbox_events_aggregate_sequence "
-               "ON outbox_events (aggregate_type, aggregate_id, sequence);")
+    op.execute(
+        "CREATE UNIQUE INDEX uq_outbox_events_aggregate_sequence "
+        "ON outbox_events (aggregate_type, aggregate_id, sequence);"
+    )
     op.execute("CREATE INDEX ix_outbox_events_workspace ON outbox_events (workspace_id);")
     # Correlation lookups for tracing/observability.
     op.execute("CREATE INDEX ix_outbox_events_correlation ON outbox_events (correlation_id);")

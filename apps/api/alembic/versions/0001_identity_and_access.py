@@ -72,32 +72,85 @@ def upgrade() -> None:
         sa.Column("id", PG_UUID(as_uuid=True), primary_key=True),
         sa.Column("email", sa.String(), nullable=False),
         sa.Column("full_name", sa.String(), nullable=True),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
     )
 
     # --- workspaces ------------------------------------------------------
     op.create_table(
         "workspaces",
-        sa.Column("id", PG_UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
+        sa.Column(
+            "id",
+            PG_UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
         sa.Column("name", sa.String(), nullable=False),
-        sa.Column("created_by", PG_UUID(as_uuid=True), sa.ForeignKey("profiles.id"), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_by", PG_UUID(as_uuid=True), sa.ForeignKey("profiles.id"), nullable=False
+        ),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
     )
 
     # --- workspace_memberships -------------------------------------------
     op.create_table(
         "workspace_memberships",
-        sa.Column("id", PG_UUID(as_uuid=True), primary_key=True, server_default=sa.text("gen_random_uuid()")),
-        sa.Column("workspace_id", PG_UUID(as_uuid=True), sa.ForeignKey("workspaces.id", ondelete="CASCADE"), nullable=False, index=True),
-        sa.Column("user_id", PG_UUID(as_uuid=True), sa.ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False),
+        sa.Column(
+            "id",
+            PG_UUID(as_uuid=True),
+            primary_key=True,
+            server_default=sa.text("gen_random_uuid()"),
+        ),
+        sa.Column(
+            "workspace_id",
+            PG_UUID(as_uuid=True),
+            sa.ForeignKey("workspaces.id", ondelete="CASCADE"),
+            nullable=False,
+            index=True,
+        ),
+        sa.Column(
+            "user_id",
+            PG_UUID(as_uuid=True),
+            sa.ForeignKey("profiles.id", ondelete="CASCADE"),
+            nullable=False,
+        ),
         # Reference the type created above WITHOUT re-emitting CREATE TYPE.
         # Passing the sa.Enum object itself makes create_table issue a second
         # CREATE TYPE (no checkfirst) -> DuplicateObjectError on fresh DBs.
         sa.Column("role", PG_ENUM(name="workspace_role", create_type=False), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.UniqueConstraint("workspace_id", "user_id", name="uq_workspace_user"),
     )
 

@@ -4,6 +4,7 @@ Revision ID: 0005
 Revises: 0004
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -30,7 +31,9 @@ _ALL = ["admin", "editor", "reviewer"]
 
 
 def upgrade() -> None:
-    op.execute("CREATE TYPE pipeline_run_status AS ENUM ('running','succeeded','failed','cancelled');")
+    op.execute(
+        "CREATE TYPE pipeline_run_status AS ENUM ('running','succeeded','failed','cancelled');"
+    )
     op.execute("CREATE TYPE stage_run_status AS ENUM ('succeeded','failed');")
     op.execute(
         """
@@ -48,8 +51,12 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_pipeline_runs_item ON pipeline_runs (content_item_id, created_at DESC);")
-    op.execute("CREATE INDEX ix_pipeline_runs_workspace_running ON pipeline_runs (workspace_id, status) WHERE status = 'running';")
+    op.execute(
+        "CREATE INDEX ix_pipeline_runs_item ON pipeline_runs (content_item_id, created_at DESC);"
+    )
+    op.execute(
+        "CREATE INDEX ix_pipeline_runs_workspace_running ON pipeline_runs (workspace_id, status) WHERE status = 'running';"
+    )
     attach_version_trigger("pipeline_runs")
     enable_rls("pipeline_runs")
     grant_runtime("pipeline_runs")
@@ -75,14 +82,20 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_stage_runs_run_stage ON pipeline_stage_runs (pipeline_run_id, stage);")
-    op.execute("CREATE INDEX ix_stage_runs_workspace_status ON pipeline_stage_runs (workspace_id, status);")
+    op.execute(
+        "CREATE INDEX ix_stage_runs_run_stage ON pipeline_stage_runs (pipeline_run_id, stage);"
+    )
+    op.execute(
+        "CREATE INDEX ix_stage_runs_workspace_status ON pipeline_stage_runs (workspace_id, status);"
+    )
     attach_immutable_trigger("pipeline_stage_runs")
     enable_rls("pipeline_stage_runs")
     grant_runtime("pipeline_stage_runs", update=False, delete=False)
     policy_select_members("pipeline_stage_runs", _ALL)
 
-    op.execute("ALTER TABLE content_items ADD CONSTRAINT fk_content_items_current_run FOREIGN KEY (current_pipeline_run_id) REFERENCES pipeline_runs(id);")
+    op.execute(
+        "ALTER TABLE content_items ADD CONSTRAINT fk_content_items_current_run FOREIGN KEY (current_pipeline_run_id) REFERENCES pipeline_runs(id);"
+    )
 
 
 def downgrade() -> None:

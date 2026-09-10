@@ -25,13 +25,9 @@ from app.schemas.workspace import ContentProfileInput, ContentProfileOut
 router = APIRouter(prefix="/workspaces/{workspace_id}/content-profile", tags=["workspaces"])
 
 
-async def _get_profile(
-    db: AsyncSession, workspace_id: uuid.UUID
-) -> WorkspaceContentProfile | None:
+async def _get_profile(db: AsyncSession, workspace_id: uuid.UUID) -> WorkspaceContentProfile | None:
     result = await db.execute(
-        select(WorkspaceContentProfile).where(
-            WorkspaceContentProfile.workspace_id == workspace_id
-        )
+        select(WorkspaceContentProfile).where(WorkspaceContentProfile.workspace_id == workspace_id)
     )
     return result.scalar_one_or_none()
 

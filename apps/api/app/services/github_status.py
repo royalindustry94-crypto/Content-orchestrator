@@ -57,9 +57,7 @@ async def github_status() -> GitHubOut:
     )
 
     if not token or not repo:
-        reason = (
-            "GITHUB_TOKEN/GITHUB_API_TOKEN and GITHUB_REPOSITORY are not configured"
-        )
+        reason = "GITHUB_TOKEN/GITHUB_API_TOKEN and GITHUB_REPOSITORY are not configured"
         logger.info("operations_github_unavailable", extra={"reason": reason})
         return GitHubOut(
             available=False,
@@ -114,9 +112,7 @@ async def github_status() -> GitHubOut:
                 params={"state": "open", "per_page": 20, "sort": "updated"},
             )
             if prs_resp.status_code >= 400:
-                raise RuntimeError(
-                    f"pulls HTTP {prs_resp.status_code}: {prs_resp.text[:200]}"
-                )
+                raise RuntimeError(f"pulls HTTP {prs_resp.status_code}: {prs_resp.text[:200]}")
             for item in prs_resp.json():
                 prs.append(
                     GitHubPullRequest(
@@ -187,9 +183,7 @@ async def github_status() -> GitHubOut:
                 if len(failed) >= 10:
                     break
 
-            branch_resp = await client.get(
-                f"{_API}/repos/{repo}/branches/{branch_name}"
-            )
+            branch_resp = await client.get(f"{_API}/repos/{repo}/branches/{branch_name}")
             if branch_resp.status_code == 200:
                 body = branch_resp.json()
                 commit_sha = ((body.get("commit") or {}).get("sha")) or deploy_sha

@@ -25,13 +25,9 @@ async def test_metrics_requires_bearer_when_token_configured(client, monkeypatch
     try:
         denied = await client.get("/metrics")
         assert denied.status_code == 401
-        bad = await client.get(
-            "/metrics", headers={"Authorization": "Bearer wrong-token-xxxxx"}
-        )
+        bad = await client.get("/metrics", headers={"Authorization": "Bearer wrong-token-xxxxx"})
         assert bad.status_code == 401
-        ok = await client.get(
-            "/metrics", headers={"Authorization": "Bearer scrape-secret-token"}
-        )
+        ok = await client.get("/metrics", headers={"Authorization": "Bearer scrape-secret-token"})
         assert ok.status_code == 200
         assert "co_up 1" in ok.text
     finally:

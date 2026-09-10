@@ -33,9 +33,7 @@ async def stripe_webhook(
         )
     payload = await request.body()
     try:
-        event = billing_service.construct_stripe_event(
-            payload=payload, sig_header=stripe_signature
-        )
+        event = billing_service.construct_stripe_event(payload=payload, sig_header=stripe_signature)
         async with AsyncSessionLocal() as session:
             result = await billing_service.process_stripe_event(session, event=event)
             await session.commit()

@@ -60,15 +60,22 @@ async def _make_workspace(session) -> uuid.UUID:
 
 async def _one_stage_definition(session, workspace_id: uuid.UUID) -> WorkflowDefinition:
     definition = WorkflowDefinition(
-        id=uuid.uuid4(), workspace_id=workspace_id, name=f"closure-{uuid.uuid4().hex[:6]}",
+        id=uuid.uuid4(),
+        workspace_id=workspace_id,
+        name=f"closure-{uuid.uuid4().hex[:6]}",
         version=1,
     )
     session.add(definition)
     await session.flush()
     session.add(
         WorkflowStage(
-            id=uuid.uuid4(), workspace_id=workspace_id, definition_id=definition.id,
-            stage_key=STAGE, ordinal=1, is_terminal=True, max_attempts=1,
+            id=uuid.uuid4(),
+            workspace_id=workspace_id,
+            definition_id=definition.id,
+            stage_key=STAGE,
+            ordinal=1,
+            is_terminal=True,
+            max_attempts=1,
         )
     )
     await session.flush()
@@ -83,8 +90,12 @@ async def _make_run(session, workspace_id: uuid.UUID) -> PipelineRun:
     )
     definition = await _one_stage_definition(session, workspace_id)
     run = PipelineRun(
-        id=uuid.uuid4(), workspace_id=workspace_id, content_item_id=uuid.UUID(item_id),
-        definition_id=definition.id, status="running", correlation_id=uuid.uuid4(),
+        id=uuid.uuid4(),
+        workspace_id=workspace_id,
+        content_item_id=uuid.UUID(item_id),
+        definition_id=definition.id,
+        status="running",
+        correlation_id=uuid.uuid4(),
     )
     session.add(run)
     await session.flush()
@@ -348,9 +359,15 @@ async def test_h3_no_worker_never_holds_budget_without_an_owner():
         from app.orchestration.claiming import claim_assignment
 
         worker = WorkerRegistration(
-            id=uuid.uuid4(), workspace_id=ws, name=f"w-{uuid.uuid4().hex[:6]}",
-            supported_stages=[STAGE], status=WorkerStatus.ONLINE, max_concurrency=2,
-            current_load=0, health_score=100, last_heartbeat_at=datetime.now(UTC),
+            id=uuid.uuid4(),
+            workspace_id=ws,
+            name=f"w-{uuid.uuid4().hex[:6]}",
+            supported_stages=[STAGE],
+            status=WorkerStatus.ONLINE,
+            max_concurrency=2,
+            current_load=0,
+            health_score=100,
+            last_heartbeat_at=datetime.now(UTC),
             registered_at=datetime.now(UTC),
         )
         session.add(worker)
@@ -374,7 +391,10 @@ async def test_h3_dlq_recovery_does_not_double_reserve_or_double_commit():
         ws = await _make_workspace(session)
         run = await _make_run(session, ws)
         first = await controller.reserve_spend(
-            session, run=run, stage=STAGE, provider="openai",
+            session,
+            run=run,
+            stage=STAGE,
+            provider="openai",
             estimated_cost_usd=Decimal("0.25"),
         )
         await session.commit()
@@ -382,7 +402,10 @@ async def test_h3_dlq_recovery_does_not_double_reserve_or_double_commit():
 
         # Recovery replays the stage: reserve again for the same (run, stage).
         second = await controller.reserve_spend(
-            session, run=run, stage=STAGE, provider="openai",
+            session,
+            run=run,
+            stage=STAGE,
+            provider="openai",
             estimated_cost_usd=Decimal("0.25"),
         )
         await session.commit()
@@ -404,10 +427,7 @@ async def test_h3_dlq_recovery_does_not_double_reserve_or_double_commit():
 
         ledger = (
             await session.execute(
-                text(
-                    "SELECT count(*) FROM spend_logs WHERE workspace_id = :ws "
-                    "AND stage = :stage"
-                ),
+                text("SELECT count(*) FROM spend_logs WHERE workspace_id = :ws AND stage = :stage"),
                 {"ws": str(ws), "stage": STAGE},
             )
         ).scalar_one()
@@ -425,17 +445,28 @@ async def test_h3_worker_failure_submit_releases_reservation():
         ws = await _make_workspace(session)
         run = await _make_run(session, ws)
         worker = WorkerRegistration(
-            id=uuid.uuid4(), workspace_id=None, name=f"w-{uuid.uuid4().hex[:6]}",
-            supported_stages=[STAGE], status=WorkerStatus.ONLINE, max_concurrency=2,
-            current_load=0, health_score=100, last_heartbeat_at=datetime.now(UTC),
+            id=uuid.uuid4(),
+            workspace_id=None,
+            name=f"w-{uuid.uuid4().hex[:6]}",
+            supported_stages=[STAGE],
+            status=WorkerStatus.ONLINE,
+            max_concurrency=2,
+            current_load=0,
+            health_score=100,
+            last_heartbeat_at=datetime.now(UTC),
             registered_at=datetime.now(UTC),
         )
         session.add(worker)
         await session.commit()
 
         result = await dispatcher.dispatch_stage(
-            session, workspace_id=ws, pipeline_run_id=run.id, stage=STAGE,
-            attempt_number=1, correlation_id=uuid.uuid4(), trace_id=None,
+            session,
+            workspace_id=ws,
+            pipeline_run_id=run.id,
+            stage=STAGE,
+            attempt_number=1,
+            correlation_id=uuid.uuid4(),
+            trace_id=None,
         )
         await session.commit()
         assert result.assignment is not None
@@ -471,16 +502,26 @@ async def test_mc_crashed_attempt_consumes_attempt_and_cannot_exceed_max_attempt
         ws = await _make_workspace(session)
         run = await _make_run(session, ws)  # stage max_attempts = 1
         worker = WorkerRegistration(
-            id=uuid.uuid4(), workspace_id=None, name=f"w-{uuid.uuid4().hex[:6]}",
-            supported_stages=[STAGE], status=WorkerStatus.ONLINE, max_concurrency=2,
-            current_load=1, health_score=100, last_heartbeat_at=datetime.now(UTC),
+            id=uuid.uuid4(),
+            workspace_id=None,
+            name=f"w-{uuid.uuid4().hex[:6]}",
+            supported_stages=[STAGE],
+            status=WorkerStatus.ONLINE,
+            max_concurrency=2,
+            current_load=1,
+            health_score=100,
+            last_heartbeat_at=datetime.now(UTC),
             registered_at=datetime.now(UTC),
         )
         session.add(worker)
         await session.flush()
         assignment = StageAssignment(
-            id=uuid.uuid4(), workspace_id=ws, pipeline_run_id=run.id, stage=STAGE,
-            attempt_number=1, worker_id=worker.id,
+            id=uuid.uuid4(),
+            workspace_id=ws,
+            pipeline_run_id=run.id,
+            stage=STAGE,
+            attempt_number=1,
+            worker_id=worker.id,
             status=StageAssignmentStatus.ACKNOWLEDGED,
             idempotency_key=f"{run.id}:{STAGE}:1",
             lease_expires_at=datetime.now(UTC) - timedelta(seconds=30),
@@ -499,9 +540,7 @@ async def test_mc_crashed_attempt_consumes_attempt_and_cannot_exceed_max_attempt
         assert mine[0].kind == recovery.RecoveryResultKind.DEAD_LETTERED
         await session.refresh(assignment)
         assert assignment.status == StageAssignmentStatus.FAILED
-        assert assignment.attempt_number == 1, (
-            "a consumed attempt is never silently rewound"
-        )
+        assert assignment.attempt_number == 1, "a consumed attempt is never silently rewound"
 
 
 @pytest.mark.asyncio
@@ -519,35 +558,56 @@ async def test_mc_requeued_attempt_bumps_monotonically_and_releases_budget():
             {"id": item_id, "ws": str(ws)},
         )
         definition = WorkflowDefinition(
-            id=uuid.uuid4(), workspace_id=ws, name=f"retry-{uuid.uuid4().hex[:6]}",
+            id=uuid.uuid4(),
+            workspace_id=ws,
+            name=f"retry-{uuid.uuid4().hex[:6]}",
             version=1,
         )
         session.add(definition)
         await session.flush()
         session.add(
             WorkflowStage(
-                id=uuid.uuid4(), workspace_id=ws, definition_id=definition.id,
-                stage_key=STAGE, ordinal=1, is_terminal=True, max_attempts=3,
+                id=uuid.uuid4(),
+                workspace_id=ws,
+                definition_id=definition.id,
+                stage_key=STAGE,
+                ordinal=1,
+                is_terminal=True,
+                max_attempts=3,
             )
         )
         run = PipelineRun(
-            id=uuid.uuid4(), workspace_id=ws, content_item_id=uuid.UUID(item_id),
-            definition_id=definition.id, status="running", correlation_id=uuid.uuid4(),
+            id=uuid.uuid4(),
+            workspace_id=ws,
+            content_item_id=uuid.UUID(item_id),
+            definition_id=definition.id,
+            status="running",
+            correlation_id=uuid.uuid4(),
         )
         session.add(run)
         await session.flush()
 
         worker = WorkerRegistration(
-            id=uuid.uuid4(), workspace_id=None, name=f"w-{uuid.uuid4().hex[:6]}",
-            supported_stages=[STAGE], status=WorkerStatus.ONLINE, max_concurrency=2,
-            current_load=1, health_score=100, last_heartbeat_at=datetime.now(UTC),
+            id=uuid.uuid4(),
+            workspace_id=None,
+            name=f"w-{uuid.uuid4().hex[:6]}",
+            supported_stages=[STAGE],
+            status=WorkerStatus.ONLINE,
+            max_concurrency=2,
+            current_load=1,
+            health_score=100,
+            last_heartbeat_at=datetime.now(UTC),
             registered_at=datetime.now(UTC),
         )
         session.add(worker)
         await session.flush()
         assignment = StageAssignment(
-            id=uuid.uuid4(), workspace_id=ws, pipeline_run_id=run.id, stage=STAGE,
-            attempt_number=1, worker_id=worker.id,
+            id=uuid.uuid4(),
+            workspace_id=ws,
+            pipeline_run_id=run.id,
+            stage=STAGE,
+            attempt_number=1,
+            worker_id=worker.id,
             status=StageAssignmentStatus.ACKNOWLEDGED,
             idempotency_key=f"{run.id}:{STAGE}:1",
             lease_expires_at=datetime.now(UTC) - timedelta(seconds=30),
@@ -557,7 +617,10 @@ async def test_mc_requeued_attempt_bumps_monotonically_and_releases_budget():
         )
         session.add(assignment)
         reservation = await controller.reserve_spend(
-            session, run=run, stage=STAGE, provider="openai",
+            session,
+            run=run,
+            stage=STAGE,
+            provider="openai",
             estimated_cost_usd=Decimal("0.40"),
         )
         await session.commit()

@@ -55,8 +55,9 @@ def _roles_array(roles: list[str]) -> str:
     return f"ARRAY[{joined}]::workspace_role[]"
 
 
-def policy_select_members(table: str, roles: list[str], *, soft_delete: bool = False,
-                          policy_suffix: str = "select_member") -> None:
+def policy_select_members(
+    table: str, roles: list[str], *, soft_delete: bool = False, policy_suffix: str = "select_member"
+) -> None:
     deleted_clause = "deleted_at IS NULL AND " if soft_delete else ""
     op.execute(
         f"CREATE POLICY {table}_{policy_suffix} ON {table} FOR SELECT "

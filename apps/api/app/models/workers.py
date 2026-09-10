@@ -50,8 +50,12 @@ class WorkerRegistration(Base, TimestampMixin, VersionMixin):
     supported_stages: Mapped[list[str]] = mapped_column(PGARRAY(Text), nullable=False, default=list)
     capabilities: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     status: Mapped[WorkerStatus] = mapped_column(
-        SAEnum(WorkerStatus, name="worker_status", native_enum=True,
-            values_callable=lambda obj: [e.value for e in obj]),
+        SAEnum(
+            WorkerStatus,
+            name="worker_status",
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
         default=WorkerStatus.OFFLINE,
     )
@@ -73,9 +77,7 @@ class WorkerRegistration(Base, TimestampMixin, VersionMixin):
     drain: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     # Soft deregistration: rows are never hard-deleted (heartbeat history
     # and audit trails keep valid FKs). Re-registration revives the row.
-    deregistered_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    deregistered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
 class WorkerCredential(Base):
@@ -98,8 +100,12 @@ class WorkerCredential(Base):
     )
     secret_hash: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[WorkerCredentialStatus] = mapped_column(
-        SAEnum(WorkerCredentialStatus, name="worker_credential_status", native_enum=True,
-            values_callable=lambda obj: [e.value for e in obj]),
+        SAEnum(
+            WorkerCredentialStatus,
+            name="worker_credential_status",
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
         default=WorkerCredentialStatus.ACTIVE,
     )
@@ -130,8 +136,13 @@ class WorkerHeartbeat(Base):
         UUID(as_uuid=True), ForeignKey("worker_registry.id", ondelete="CASCADE"), nullable=False
     )
     status: Mapped[WorkerStatus] = mapped_column(
-        SAEnum(WorkerStatus, name="worker_status", native_enum=True,
-            values_callable=lambda obj: [e.value for e in obj]), nullable=False
+        SAEnum(
+            WorkerStatus,
+            name="worker_status",
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
+        nullable=False,
     )
     current_load: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     heartbeat_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
