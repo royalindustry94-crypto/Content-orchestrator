@@ -96,6 +96,7 @@ import {
   type StrategyBriefDetail,
   type StrategySummary,
   type WorkerMonitor,
+  type WorkerMonitorRow,
   type WorkerTimeline,
   type Workspace,
 } from "./api";
@@ -346,6 +347,35 @@ function isMissionAssistant(nav: NavKey, missionTab: MissionTab) {
   return nav === "mission" && missionTab === "assistant";
 }
 
+/**
+ * There is no per-department capability field on the backend yet (TD-041:
+ * provider wiring, tracked separately) — the only real, already-fetched
+ * signal for a department card is whether a worker process is actually
+ * registered under that department's name. Truthfully derive the card state
+ * from that registration + liveness rather than a hardcoded literal, so this
+ * stops being correct by accident once workers are eventually registered
+ * under department names.
+ */
+function departmentCardState(
+  name: string,
+  workers: readonly WorkerMonitorRow[],
+): { label: string; detail: string } {
+  const match = workers.find((worker) => worker.name.trim().toLowerCase() === name.trim().toLowerCase());
+  if (!match) {
+    return {
+      label: "Not configured",
+      detail: "No workspace role binding or executable capability is configured.",
+    };
+  }
+  const isLive = ["online", "busy"].includes(match.status.toLowerCase());
+  return {
+    label: isLive ? "Live" : "Registered",
+    detail: isLive
+      ? `Bound to worker process "${match.name}" (${match.status}).`
+      : `Bound to worker process "${match.name}", currently ${match.status}.`,
+  };
+}
+
 function DashboardHome({
   data,
   token,
@@ -527,14 +557,17 @@ function DashboardHome({
           action={<button className="text-button" onClick={() => navigate("workers")} type="button">Open workforce</button>}
         />
         <div className="department-grid">
-          {departments.map(([name, responsibility]) => (
-            <article className="department-card" key={name}>
-              <span className="department-card__state">Not configured</span>
-              <h4>{name}</h4>
-              <p>{responsibility}</p>
-              <small>No workspace role binding or executable capability is configured.</small>
-            </article>
-          ))}
+          {departments.map(([name, responsibility]) => {
+            const state = departmentCardState(name, realWorkers);
+            return (
+              <article className="department-card" key={name}>
+                <span className="department-card__state">{state.label}</span>
+                <h4>{name}</h4>
+                <p>{responsibility}</p>
+                <small>{state.detail}</small>
+              </article>
+            );
+          })}
         </div>
         <div className="workforce-telemetry">
           <div><span>Registered processes</span><strong>{realWorkers.length}</strong></div>
