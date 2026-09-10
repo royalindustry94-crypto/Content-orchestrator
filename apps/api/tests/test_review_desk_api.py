@@ -114,9 +114,7 @@ async def test_approve_advances_to_published(client, new_user):
 
 
 @pytest.mark.asyncio
-async def test_edit_review_gate_content_creates_new_version_and_stays_publishable(
-    client, new_user
-):
+async def test_edit_review_gate_content_creates_new_version_and_stays_publishable(client, new_user):
     """Editing before approval must move both `item.current_version_id`
     and the gate's frozen `content_version_id` snapshot together, or a
     legitimately edited-then-approved item would be permanently blocked
