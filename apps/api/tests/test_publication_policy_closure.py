@@ -41,25 +41,18 @@ async def _seed_workspace(session, *, role: WorkspaceRole = WorkspaceRole.ADMIN)
         {"id": str(user_id), "email": email},
     )
     await session.execute(
-        text(
-            "INSERT INTO profiles (id, email) VALUES (:id, :email) "
-            "ON CONFLICT (id) DO NOTHING"
-        ),
+        text("INSERT INTO profiles (id, email) VALUES (:id, :email) ON CONFLICT (id) DO NOTHING"),
         {"id": str(user_id), "email": email},
     )
     ws = Workspace(id=uuid.uuid4(), name=f"pub-{user_id}", created_by=user_id)
     session.add(ws)
     await session.flush()
-    session.add(
-        WorkspaceMembership(workspace_id=ws.id, user_id=user_id, role=role)
-    )
+    session.add(WorkspaceMembership(workspace_id=ws.id, user_id=user_id, role=role))
     await session.flush()
     return ws, user_id
 
 
-async def _seed_item_and_gate(
-    session, ws, user_id, *, gate_status: ReviewGateStatus | None
-):
+async def _seed_item_and_gate(session, ws, user_id, *, gate_status: ReviewGateStatus | None):
     item = ContentItem(
         id=uuid.uuid4(),
         workspace_id=ws.id,
@@ -222,9 +215,7 @@ async def test_unsupported_platform_is_refused_not_attempted():
 async def test_publication_requires_an_approved_review_gate(gate_status, expected_code):
     async with AsyncSessionLocal() as session:
         ws, user_id = await _seed_workspace(session)
-        item, gate = await _seed_item_and_gate(
-            session, ws, user_id, gate_status=gate_status
-        )
+        item, gate = await _seed_item_and_gate(session, ws, user_id, gate_status=gate_status)
         session.add(
             PublicationEligibility(
                 id=uuid.uuid4(),
@@ -524,10 +515,7 @@ async def test_reviewer_can_write_and_other_tenant_cannot_read():
         )
         visible = (
             await rt.execute(
-                text(
-                    "SELECT count(*) FROM publication_eligibility "
-                    "WHERE workspace_id = :ws"
-                ),
+                text("SELECT count(*) FROM publication_eligibility WHERE workspace_id = :ws"),
                 {"ws": str(ws.id)},
             )
         ).scalar_one()
@@ -545,9 +533,7 @@ async def test_approved_gate_for_a_different_item_cannot_authorize_publication()
         _approved_item, approved_gate = await _seed_item_and_gate(
             session, ws, user_id, gate_status=ReviewGateStatus.APPROVED
         )
-        target_item, _ = await _seed_item_and_gate(
-            session, ws, user_id, gate_status=None
-        )
+        target_item, _ = await _seed_item_and_gate(session, ws, user_id, gate_status=None)
         session.add(
             PublicationEligibility(
                 id=uuid.uuid4(),

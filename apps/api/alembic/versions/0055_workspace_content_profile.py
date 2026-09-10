@@ -20,6 +20,7 @@ Same RLS shape as `content_pillars` (migration 0003): editor/admin write,
 admin/editor/reviewer read — matches `require_workspace_content_author`
 in `app/core/authorization.py`, the same guard `content_jobs.py` uses.
 """
+
 from __future__ import annotations
 
 import sys

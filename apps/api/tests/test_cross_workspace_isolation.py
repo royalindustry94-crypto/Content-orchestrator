@@ -121,26 +121,38 @@ async def test_rls_blocks_cross_workspace_leads_and_worker_logs():
 
     # The owning admin can see both records through the runtime role.
     async with rls_scoped_session(user_a) as session:
-        assert await session.scalar(
-            text("SELECT count(*) FROM leads WHERE workspace_id = :workspace_id"),
-            {"workspace_id": str(workspace_a)},
-        ) == 1
-        assert await session.scalar(
-            text("SELECT count(*) FROM worker_logs WHERE workspace_id = :workspace_id"),
-            {"workspace_id": str(workspace_a)},
-        ) == 1
+        assert (
+            await session.scalar(
+                text("SELECT count(*) FROM leads WHERE workspace_id = :workspace_id"),
+                {"workspace_id": str(workspace_a)},
+            )
+            == 1
+        )
+        assert (
+            await session.scalar(
+                text("SELECT count(*) FROM worker_logs WHERE workspace_id = :workspace_id"),
+                {"workspace_id": str(workspace_a)},
+            )
+            == 1
+        )
 
     # A different tenant sees no rows even when querying directly without
     # FastAPI authorization guards.
     async with rls_scoped_session(user_b) as session:
-        assert await session.scalar(
-            text("SELECT count(*) FROM leads WHERE workspace_id = :workspace_id"),
-            {"workspace_id": str(workspace_a)},
-        ) == 0
-        assert await session.scalar(
-            text("SELECT count(*) FROM worker_logs WHERE workspace_id = :workspace_id"),
-            {"workspace_id": str(workspace_a)},
-        ) == 0
+        assert (
+            await session.scalar(
+                text("SELECT count(*) FROM leads WHERE workspace_id = :workspace_id"),
+                {"workspace_id": str(workspace_a)},
+            )
+            == 0
+        )
+        assert (
+            await session.scalar(
+                text("SELECT count(*) FROM worker_logs WHERE workspace_id = :workspace_id"),
+                {"workspace_id": str(workspace_a)},
+            )
+            == 0
+        )
 
 
 @pytest.mark.asyncio

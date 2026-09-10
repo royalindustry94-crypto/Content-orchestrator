@@ -52,9 +52,7 @@ async def pending_depth(session: AsyncSession, workspace_id: uuid.UUID) -> int:
     return int(result.scalar_one() or 0)
 
 
-async def _limits(
-    session: AsyncSession, workspace_id: uuid.UUID
-) -> tuple[int, int, int]:
+async def _limits(session: AsyncSession, workspace_id: uuid.UUID) -> tuple[int, int, int]:
     """Return (soft, hard, max_per_tick)."""
     settings = get_settings()
     result = await session.execute(
@@ -112,9 +110,7 @@ async def evaluate_workspace_backpressure(
     if changed:
         trace_id, span_id = child_span(None)
         event_type = (
-            BACKPRESSURE_CLEARED
-            if new_state == BackpressureState.NORMAL
-            else BACKPRESSURE_ENTERED
+            BACKPRESSURE_CLEARED if new_state == BackpressureState.NORMAL else BACKPRESSURE_ENTERED
         )
         await emit(
             session,

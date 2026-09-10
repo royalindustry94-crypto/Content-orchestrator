@@ -19,12 +19,8 @@ def billing_on(monkeypatch):
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_audit")
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", "whsec_audit")
     monkeypatch.setenv("STRIPE_PRICE_ID_PRO", "price_pro_audit")
-    monkeypatch.setenv(
-        "STRIPE_CHECKOUT_SUCCESS_URL", "http://localhost:5173/billing/success"
-    )
-    monkeypatch.setenv(
-        "STRIPE_CHECKOUT_CANCEL_URL", "http://localhost:5173/billing/cancel"
-    )
+    monkeypatch.setenv("STRIPE_CHECKOUT_SUCCESS_URL", "http://localhost:5173/billing/success")
+    monkeypatch.setenv("STRIPE_CHECKOUT_CANCEL_URL", "http://localhost:5173/billing/cancel")
     get_settings.cache_clear()
     yield
     monkeypatch.delenv("BILLING_ENABLED", raising=False)
@@ -108,15 +104,12 @@ async def test_webhook_checkout_completed_and_idempotent(billing_on):
         )
         await session.execute(
             text(
-                "INSERT INTO profiles (id, email) VALUES (:id, :email) "
-                "ON CONFLICT (id) DO NOTHING"
+                "INSERT INTO profiles (id, email) VALUES (:id, :email) ON CONFLICT (id) DO NOTHING"
             ),
             {"id": str(user_id), "email": f"{user_id}@ex.com"},
         )
         await session.execute(
-            text(
-                "INSERT INTO workspaces (id, name, created_by) VALUES (:id, :name, :by)"
-            ),
+            text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, :name, :by)"),
             {"id": str(workspace_id), "name": "Bill WS", "by": str(user_id)},
         )
         await session.commit()
@@ -179,9 +172,7 @@ async def test_webhook_checkout_completed_and_idempotent(billing_on):
 
 
 @pytest.mark.asyncio
-async def test_content_job_requires_entitlement_when_billing_on(
-    client, new_user, billing_on
-):
+async def test_content_job_requires_entitlement_when_billing_on(client, new_user, billing_on):
     _uid, _tok, headers = new_user
     ws = await client.post("/workspaces", headers=headers, json={"name": "Paywall"})
     ws_id = ws.json()["id"]
@@ -193,9 +184,7 @@ async def test_content_job_requires_entitlement_when_billing_on(
     assert blocked.status_code == 402
 
     async with AsyncSessionLocal() as session:
-        await billing_service.ensure_workspace_billing(
-            session, workspace_id=uuid.UUID(ws_id)
-        )
+        await billing_service.ensure_workspace_billing(session, workspace_id=uuid.UUID(ws_id))
         row = await session.get(WorkspaceBilling, uuid.UUID(ws_id))
         assert row is not None
         row.plan = "pro"
@@ -238,15 +227,12 @@ async def _seed_workspace() -> uuid.UUID:
         )
         await session.execute(
             text(
-                "INSERT INTO profiles (id, email) VALUES (:id, :email) "
-                "ON CONFLICT (id) DO NOTHING"
+                "INSERT INTO profiles (id, email) VALUES (:id, :email) ON CONFLICT (id) DO NOTHING"
             ),
             {"id": str(user_id), "email": f"{user_id}@ex.com"},
         )
         await session.execute(
-            text(
-                "INSERT INTO workspaces (id, name, created_by) VALUES (:id, :name, :by)"
-            ),
+            text("INSERT INTO workspaces (id, name, created_by) VALUES (:id, :name, :by)"),
             {"id": str(workspace_id), "name": "Bill WS", "by": str(user_id)},
         )
         await session.commit()
@@ -261,9 +247,7 @@ async def test_webhook_subscription_updated_and_canceled(billing_on):
     period_end = 1_900_000_000
 
     async with AsyncSessionLocal() as session:
-        await billing_service.ensure_workspace_billing(
-            session, workspace_id=workspace_id
-        )
+        await billing_service.ensure_workspace_billing(session, workspace_id=workspace_id)
         row = await session.get(WorkspaceBilling, workspace_id)
         assert row is not None
         row.stripe_customer_id = cust_id
@@ -326,9 +310,7 @@ async def test_webhook_invoice_payment_failed(billing_on):
     workspace_id = await _seed_workspace()
     sub_id = f"sub_fail_{uuid.uuid4().hex[:8]}"
     async with AsyncSessionLocal() as session:
-        await billing_service.ensure_workspace_billing(
-            session, workspace_id=workspace_id
-        )
+        await billing_service.ensure_workspace_billing(session, workspace_id=workspace_id)
         row = await session.get(WorkspaceBilling, workspace_id)
         assert row is not None
         row.stripe_subscription_id = sub_id
@@ -389,9 +371,7 @@ async def test_checkout_already_entitled(client, new_user, billing_on):
     ws = await client.post("/workspaces", headers=headers, json={"name": "Already Pro"})
     ws_id = ws.json()["id"]
     async with AsyncSessionLocal() as session:
-        await billing_service.ensure_workspace_billing(
-            session, workspace_id=uuid.UUID(ws_id)
-        )
+        await billing_service.ensure_workspace_billing(session, workspace_id=uuid.UUID(ws_id))
         row = await session.get(WorkspaceBilling, uuid.UUID(ws_id))
         assert row is not None
         row.plan = "pro"
@@ -496,9 +476,7 @@ async def test_checkout_reuses_existing_stripe_customer_id(client, new_user, bil
     existing_customer_id = f"cus_existing_{uuid.uuid4().hex[:8]}"
 
     async with AsyncSessionLocal() as session:
-        row = await billing_service.ensure_workspace_billing(
-            session, workspace_id=uuid.UUID(ws_id)
-        )
+        row = await billing_service.ensure_workspace_billing(session, workspace_id=uuid.UUID(ws_id))
         row.stripe_customer_id = existing_customer_id
         await session.commit()
 

@@ -68,25 +68,29 @@ async def global_search(
     # the executive-mode/insights revenue and most-active-customer fixes
     # above).
     customers = (
-        await session.execute(
-            select(Workspace)
-            .join(
-                WorkspaceMembership,
-                WorkspaceMembership.workspace_id == Workspace.id,
+        (
+            await session.execute(
+                select(Workspace)
+                .join(
+                    WorkspaceMembership,
+                    WorkspaceMembership.workspace_id == Workspace.id,
+                )
+                .where(
+                    Workspace.id == workspace_id,
+                    WorkspaceMembership.user_id == admin_user_id,
+                    WorkspaceMembership.role == WorkspaceRole.ADMIN,
+                    or_(
+                        Workspace.name.ilike(pattern),
+                        cast(Workspace.id, Text).ilike(pattern),
+                    ),
+                )
+                .order_by(Workspace.updated_at.desc())
+                .limit(10)
             )
-            .where(
-                Workspace.id == workspace_id,
-                WorkspaceMembership.user_id == admin_user_id,
-                WorkspaceMembership.role == WorkspaceRole.ADMIN,
-                or_(
-                    Workspace.name.ilike(pattern),
-                    cast(Workspace.id, Text).ilike(pattern),
-                ),
-            )
-            .order_by(Workspace.updated_at.desc())
-            .limit(10)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     results.extend(
         SearchResult(
             type="customer",
@@ -100,21 +104,25 @@ async def global_search(
     )
 
     leads = (
-        await session.execute(
-            select(Lead)
-            .where(
-                Lead.workspace_id == workspace_id,
-                or_(
-                    Lead.name.ilike(pattern),
-                    Lead.company.ilike(pattern),
-                    Lead.email.ilike(pattern),
-                    Lead.notes.ilike(pattern),
-                ),
+        (
+            await session.execute(
+                select(Lead)
+                .where(
+                    Lead.workspace_id == workspace_id,
+                    or_(
+                        Lead.name.ilike(pattern),
+                        Lead.company.ilike(pattern),
+                        Lead.email.ilike(pattern),
+                        Lead.notes.ilike(pattern),
+                    ),
+                )
+                .order_by(Lead.updated_at.desc())
+                .limit(10)
             )
-            .order_by(Lead.updated_at.desc())
-            .limit(10)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     results.extend(
         SearchResult(
             type="lead",
@@ -157,24 +165,28 @@ async def global_search(
     )
 
     workers = (
-        await session.execute(
-            select(WorkerRegistration)
-            .where(
-                WorkerRegistration.deregistered_at.is_(None),
-                or_(
-                    WorkerRegistration.workspace_id == workspace_id,
-                    WorkerRegistration.workspace_id.is_(None),
-                ),
-                or_(
-                    WorkerRegistration.name.ilike(pattern),
-                    cast(WorkerRegistration.id, Text).ilike(pattern),
-                    cast(WorkerRegistration.status, Text).ilike(pattern),
-                ),
+        (
+            await session.execute(
+                select(WorkerRegistration)
+                .where(
+                    WorkerRegistration.deregistered_at.is_(None),
+                    or_(
+                        WorkerRegistration.workspace_id == workspace_id,
+                        WorkerRegistration.workspace_id.is_(None),
+                    ),
+                    or_(
+                        WorkerRegistration.name.ilike(pattern),
+                        cast(WorkerRegistration.id, Text).ilike(pattern),
+                        cast(WorkerRegistration.status, Text).ilike(pattern),
+                    ),
+                )
+                .order_by(WorkerRegistration.name)
+                .limit(10)
             )
-            .order_by(WorkerRegistration.name)
-            .limit(10)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     results.extend(
         SearchResult(
             type="worker",
@@ -188,22 +200,26 @@ async def global_search(
     )
 
     jobs = (
-        await session.execute(
-            select(StageAssignment)
-            .where(
-                StageAssignment.workspace_id == workspace_id,
-                or_(
-                    cast(StageAssignment.id, Text).ilike(pattern),
-                    cast(StageAssignment.pipeline_run_id, Text).ilike(pattern),
-                    cast(StageAssignment.stage, Text).ilike(pattern),
-                    cast(StageAssignment.status, Text).ilike(pattern),
-                    StageAssignment.provider.ilike(pattern),
-                ),
+        (
+            await session.execute(
+                select(StageAssignment)
+                .where(
+                    StageAssignment.workspace_id == workspace_id,
+                    or_(
+                        cast(StageAssignment.id, Text).ilike(pattern),
+                        cast(StageAssignment.pipeline_run_id, Text).ilike(pattern),
+                        cast(StageAssignment.stage, Text).ilike(pattern),
+                        cast(StageAssignment.status, Text).ilike(pattern),
+                        StageAssignment.provider.ilike(pattern),
+                    ),
+                )
+                .order_by(StageAssignment.updated_at.desc())
+                .limit(10)
             )
-            .order_by(StageAssignment.updated_at.desc())
-            .limit(10)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     results.extend(
         SearchResult(
             type="job",
@@ -217,22 +233,26 @@ async def global_search(
     )
 
     content = (
-        await session.execute(
-            select(ContentItem)
-            .where(
-                ContentItem.workspace_id == workspace_id,
-                ContentItem.deleted_at.is_(None),
-                or_(
-                    ContentItem.topic.ilike(pattern),
-                    cast(ContentItem.id, Text).ilike(pattern),
-                    cast(ContentItem.current_stage, Text).ilike(pattern),
-                    cast(ContentItem.status, Text).ilike(pattern),
-                ),
+        (
+            await session.execute(
+                select(ContentItem)
+                .where(
+                    ContentItem.workspace_id == workspace_id,
+                    ContentItem.deleted_at.is_(None),
+                    or_(
+                        ContentItem.topic.ilike(pattern),
+                        cast(ContentItem.id, Text).ilike(pattern),
+                        cast(ContentItem.current_stage, Text).ilike(pattern),
+                        cast(ContentItem.status, Text).ilike(pattern),
+                    ),
+                )
+                .order_by(ContentItem.updated_at.desc())
+                .limit(10)
             )
-            .order_by(ContentItem.updated_at.desc())
-            .limit(10)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     results.extend(
         SearchResult(
             type="content",
@@ -405,11 +425,7 @@ async def live_logs(
         stmt = stmt.where(WorkerLog.assignment_id == job_id)
     if severity:
         stmt = stmt.where(WorkerLog.severity == severity)
-    rows = (
-        await session.execute(
-            stmt.order_by(WorkerLog.occurred_at.desc()).limit(limit)
-        )
-    ).all()
+    rows = (await session.execute(stmt.order_by(WorkerLog.occurred_at.desc()).limit(limit))).all()
     return LiveLogsOut(
         logs=[
             WorkerLogOut(
@@ -435,16 +451,12 @@ async def universal_timeline(
     session: AsyncSession, workspace_id: uuid.UUID, *, limit: int = 100
 ) -> UniversalTimelineOut:
     now = datetime.now(UTC)
-    base = await operations_mission.activity_feed(
-        session, workspace_id, limit=limit
-    )
+    base = await operations_mission.activity_feed(session, workspace_id, limit=limit)
     items = list(base.items)
 
     logs = await live_logs(session, workspace_id, limit=min(limit, 50))
     for log in logs.logs:
-        severity = (
-            "critical" if log.severity in {"error", "critical"} else "info"
-        )
+        severity = "critical" if log.severity in {"error", "critical"} else "info"
         items.append(
             ActivityItem(
                 id=f"worker-log:{log.id}",
@@ -485,26 +497,27 @@ async def universal_timeline(
                 kind=f"asset.{_value(asset.type)}.{_value(asset.status)}",
                 title=title,
                 detail=topic,
-                severity=(
-                    "critical" if asset.status == AssetStatus.FAILED else "info"
-                ),
+                severity=("critical" if asset.status == AssetStatus.FAILED else "info"),
                 occurred_at=asset.updated_at,
                 source="assets",
             )
         )
 
     upgrades = (
-        await session.execute(
-            select(BillingWebhookEvent)
-            .where(
-                BillingWebhookEvent.workspace_id == workspace_id,
-                BillingWebhookEvent.event_type
-                == "customer.subscription.updated",
+        (
+            await session.execute(
+                select(BillingWebhookEvent)
+                .where(
+                    BillingWebhookEvent.workspace_id == workspace_id,
+                    BillingWebhookEvent.event_type == "customer.subscription.updated",
+                )
+                .order_by(BillingWebhookEvent.processed_at.desc())
+                .limit(20)
             )
-            .order_by(BillingWebhookEvent.processed_at.desc())
-            .limit(20)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for event in upgrades:
         items.append(
             ActivityItem(
@@ -531,9 +544,7 @@ async def executive_mode(
 ) -> ExecutiveModeOut:
     now = datetime.now(UTC)
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    health = await operations_mission.system_health(
-        session, workspace_id, automation=automation
-    )
+    health = await operations_mission.system_health(session, workspace_id, automation=automation)
     customers = await operations_dashboard.customers(
         session, admin_user_id=admin_user_id, workspace_id=workspace_id
     )
@@ -566,7 +577,8 @@ async def executive_mode(
         workers_online=sum(
             1
             for worker in workers.workers
-            if worker.status in {
+            if worker.status
+            in {
                 WorkerStatus.ONLINE.value,
                 WorkerStatus.BUSY.value,
             }
@@ -576,9 +588,7 @@ async def executive_mode(
         jobs_waiting=pipelines.jobs_waiting,
         jobs_failed_today=int(failed_today.scalar_one() or 0),
         critical_alerts=sum(
-            alert.count
-            for alert in alerts.notifications
-            if alert.severity == "critical"
+            alert.count for alert in alerts.notifications if alert.severity == "critical"
         ),
         reviews_waiting=pipelines.human_reviews_waiting,
         new_customers_today=int(new_customers.scalar_one() or 0),
@@ -645,9 +655,7 @@ async def assistant_answer(
             for gate, topic in rows
         ]
         answer = f"{len(rows)} review gate(s) are waiting for a human decision."
-    elif "failed pipeline" in lowered or (
-        "pipeline" in lowered and "fail" in lowered
-    ):
+    elif "failed pipeline" in lowered or ("pipeline" in lowered and "fail" in lowered):
         rows = (
             await session.execute(
                 select(PipelineRun, ContentItem.topic)
@@ -673,9 +681,7 @@ async def assistant_answer(
         answer = f"{len(rows)} failed pipeline(s) are currently recorded."
     elif "idle" in lowered and "worker" in lowered:
         timelines = await operations_mission.worker_timeline(session, workspace_id)
-        token = re.search(
-            r"worker\s+([a-zA-Z0-9_-]+)", lowered, flags=re.IGNORECASE
-        )
+        token = re.search(r"worker\s+([a-zA-Z0-9_-]+)", lowered, flags=re.IGNORECASE)
         needle = token.group(1) if token else ""
         intent = "worker_idle"
         if needle:
@@ -684,8 +690,7 @@ async def assistant_answer(
                 (
                     row
                     for row in timelines.workers
-                    if needle in row.name.lower()
-                    or str(row.worker_id).lower().startswith(needle)
+                    if needle in row.name.lower() or str(row.worker_id).lower().startswith(needle)
                 ),
                 None,
             )
@@ -721,8 +726,7 @@ async def assistant_answer(
             idle = [row for row in timelines.workers if row.current_task is None]
             if not idle:
                 answer = (
-                    "No idle workers right now — every registered worker "
-                    "has an active assignment."
+                    "No idle workers right now — every registered worker has an active assignment."
                 )
             else:
                 shown = [row.name for row in idle[:10]]
@@ -768,9 +772,7 @@ async def assistant_answer(
             ).scalar_one()
             or 0
         )
-        error_logs = await live_logs(
-            session, workspace_id, severity="error", limit=10
-        )
+        error_logs = await live_logs(session, workspace_id, severity="error", limit=10)
         intent = "failures_today"
         facts = [
             {"label": "failed_jobs", "value": assignments},

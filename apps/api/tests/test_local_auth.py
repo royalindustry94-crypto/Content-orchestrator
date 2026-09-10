@@ -21,18 +21,14 @@ async def test_signup_login_and_create_workspace(client):
     assert signup.status_code == 201, signup.text
     assert signup.json()["email"] == email
 
-    login = await client.post(
-        "/auth/login", json={"email": email, "password": password}
-    )
+    login = await client.post("/auth/login", json={"email": email, "password": password})
     assert login.status_code == 200, login.text
     token = login.json()["access_token"]
 
     headers = {"Authorization": f"Bearer {token}"}
     me = await client.get("/me", headers=headers)
     assert me.status_code == 200
-    ws = await client.post(
-        "/workspaces", headers=headers, json={"name": "Auth Workspace"}
-    )
+    ws = await client.post("/workspaces", headers=headers, json={"name": "Auth Workspace"})
     assert ws.status_code == 201
 
 
@@ -47,9 +43,7 @@ async def test_login_rejects_bad_password(client):
         "/auth/signup", json={"email": email, "password": "securepass1-beta"}
     )
     assert signup.status_code == 201
-    bad = await client.post(
-        "/auth/login", json={"email": email, "password": "wrong-password"}
-    )
+    bad = await client.post("/auth/login", json={"email": email, "password": "wrong-password"})
     assert bad.status_code == 401
 
 

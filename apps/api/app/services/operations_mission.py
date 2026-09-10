@@ -102,13 +102,17 @@ async def activity_feed(
     items: list[ActivityItem] = []
 
     events = (
-        await session.execute(
-            select(OutboxEvent)
-            .where(OutboxEvent.workspace_id == workspace_id)
-            .order_by(OutboxEvent.occurred_at.desc())
-            .limit(limit)
+        (
+            await session.execute(
+                select(OutboxEvent)
+                .where(OutboxEvent.workspace_id == workspace_id)
+                .order_by(OutboxEvent.occurred_at.desc())
+                .limit(limit)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for event in events:
         label, severity = _EVENT_LABELS.get(
             event.event_type, (event.event_type.replace(".", " ").title(), "info")
@@ -137,13 +141,17 @@ async def activity_feed(
         )
 
     for lead in (
-        await session.execute(
-            select(Lead)
-            .where(Lead.workspace_id == workspace_id)
-            .order_by(Lead.created_at.desc())
-            .limit(20)
+        (
+            await session.execute(
+                select(Lead)
+                .where(Lead.workspace_id == workspace_id)
+                .order_by(Lead.created_at.desc())
+                .limit(20)
+            )
         )
-    ).scalars().all():
+        .scalars()
+        .all()
+    ):
         items.append(
             ActivityItem(
                 id=f"lead:{lead.id}",
@@ -157,13 +165,17 @@ async def activity_feed(
         )
 
     for membership in (
-        await session.execute(
-            select(WorkspaceMembership)
-            .where(WorkspaceMembership.workspace_id == workspace_id)
-            .order_by(WorkspaceMembership.created_at.desc())
-            .limit(20)
+        (
+            await session.execute(
+                select(WorkspaceMembership)
+                .where(WorkspaceMembership.workspace_id == workspace_id)
+                .order_by(WorkspaceMembership.created_at.desc())
+                .limit(20)
+            )
         )
-    ).scalars().all():
+        .scalars()
+        .all()
+    ):
         items.append(
             ActivityItem(
                 id=f"signup:{membership.id}",
@@ -177,18 +189,22 @@ async def activity_feed(
         )
 
     for payment in (
-        await session.execute(
-            select(BillingWebhookEvent)
-            .where(
-                BillingWebhookEvent.workspace_id == workspace_id,
-                BillingWebhookEvent.event_type.in_(
-                    ["invoice.paid", "invoice.payment_succeeded"]
-                ),
+        (
+            await session.execute(
+                select(BillingWebhookEvent)
+                .where(
+                    BillingWebhookEvent.workspace_id == workspace_id,
+                    BillingWebhookEvent.event_type.in_(
+                        ["invoice.paid", "invoice.payment_succeeded"]
+                    ),
+                )
+                .order_by(BillingWebhookEvent.processed_at.desc())
+                .limit(20)
             )
-            .order_by(BillingWebhookEvent.processed_at.desc())
-            .limit(20)
         )
-    ).scalars().all():
+        .scalars()
+        .all()
+    ):
         amount = operations_dashboard._revenue_from_payload(payment.payload or {})
         items.append(
             ActivityItem(
@@ -279,16 +295,20 @@ async def system_health(
         )
 
     workers = (
-        await session.execute(
-            select(WorkerRegistration).where(
-                WorkerRegistration.deregistered_at.is_(None),
-                or_(
-                    WorkerRegistration.workspace_id == workspace_id,
-                    WorkerRegistration.workspace_id.is_(None),
-                ),
+        (
+            await session.execute(
+                select(WorkerRegistration).where(
+                    WorkerRegistration.deregistered_at.is_(None),
+                    or_(
+                        WorkerRegistration.workspace_id == workspace_id,
+                        WorkerRegistration.workspace_id.is_(None),
+                    ),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     if not workers:
         indicators.append(
             HealthIndicator(
@@ -524,37 +544,43 @@ async def cost_control(session: AsyncSession, workspace_id: uuid.UUID) -> CostCo
     )
 
 
-async def worker_timeline(
-    session: AsyncSession, workspace_id: uuid.UUID
-) -> WorkerTimelineOut:
+async def worker_timeline(session: AsyncSession, workspace_id: uuid.UUID) -> WorkerTimelineOut:
     settings = get_settings()
     now = datetime.now(UTC)
     workers = (
-        await session.execute(
-            select(WorkerRegistration)
-            .where(
-                WorkerRegistration.deregistered_at.is_(None),
-                or_(
-                    WorkerRegistration.workspace_id == workspace_id,
-                    WorkerRegistration.workspace_id.is_(None),
-                ),
+        (
+            await session.execute(
+                select(WorkerRegistration)
+                .where(
+                    WorkerRegistration.deregistered_at.is_(None),
+                    or_(
+                        WorkerRegistration.workspace_id == workspace_id,
+                        WorkerRegistration.workspace_id.is_(None),
+                    ),
+                )
+                .order_by(WorkerRegistration.name)
             )
-            .order_by(WorkerRegistration.name)
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     rows: list[WorkerTimelineRow] = []
     for worker in workers:
         assignments = (
-            await session.execute(
-                select(StageAssignment)
-                .where(
-                    StageAssignment.workspace_id == workspace_id,
-                    StageAssignment.worker_id == worker.id,
+            (
+                await session.execute(
+                    select(StageAssignment)
+                    .where(
+                        StageAssignment.workspace_id == workspace_id,
+                        StageAssignment.worker_id == worker.id,
+                    )
+                    .order_by(StageAssignment.updated_at.desc())
+                    .limit(20)
                 )
-                .order_by(StageAssignment.updated_at.desc())
-                .limit(20)
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         durations: list[float] = []
         failed = 0
         retried = 0
@@ -562,9 +588,7 @@ async def worker_timeline(
         for assignment in assignments:
             duration = None
             if assignment.completed_at and assignment.dispatched_at:
-                duration = (
-                    assignment.completed_at - assignment.dispatched_at
-                ).total_seconds()
+                duration = (assignment.completed_at - assignment.dispatched_at).total_seconds()
                 if duration >= 0:
                     durations.append(duration)
             if assignment.status == StageAssignmentStatus.FAILED:
@@ -612,9 +636,7 @@ async def worker_timeline(
                 name=worker.name,
                 status=display,
                 current_task=(
-                    f"{_enum_value(active.stage)} · {active.pipeline_run_id}"
-                    if active
-                    else None
+                    f"{_enum_value(active.stage)} · {active.pipeline_run_id}" if active else None
                 ),
                 last_heartbeat_at=worker.last_heartbeat_at,
                 average_execution_seconds=(
@@ -661,9 +683,7 @@ async def content_command_center(
         select(func.count(PublishJob.id)).where(
             PublishJob.workspace_id == workspace_id,
             PublishJob.deleted_at.is_(None),
-            PublishJob.status.in_(
-                [PublishJobStatus.PENDING, PublishJobStatus.PUBLISHING]
-            ),
+            PublishJob.status.in_([PublishJobStatus.PENDING, PublishJobStatus.PUBLISHING]),
         ),
     )
     published = await stage_count(ContentStage.PUBLISHED, ContentStage.SCHEDULED)
@@ -749,7 +769,9 @@ async def _workspace_workers(
                     WorkerRegistration.workspace_id == workspace_id,
                 )
             )
-        ).scalars().all()
+        )
+        .scalars()
+        .all()
     )
 
 
@@ -819,9 +841,7 @@ async def emergency_stop(
             .values(status=WorkerCredentialStatus.REVOKED)
         )
         revoked += result.rowcount or 0
-        await reap_worker_assignments(
-            session, worker.id, reason=RecoveryReason.WORKER_REVOKED
-        )
+        await reap_worker_assignments(session, worker.id, reason=RecoveryReason.WORKER_REVOKED)
         worker.status = WorkerStatus.OFFLINE
         worker.current_load = 0
         worker.drain = True
@@ -848,13 +868,17 @@ async def retry_failed_jobs(
 ) -> QuickActionResult:
     now = datetime.now(UTC)
     dlq = (
-        await session.execute(
-            select(DeadLetterJob).where(
-                DeadLetterJob.workspace_id == workspace_id,
-                DeadLetterJob.status == DeadLetterStatus.PENDING,
+        (
+            await session.execute(
+                select(DeadLetterJob).where(
+                    DeadLetterJob.workspace_id == workspace_id,
+                    DeadLetterJob.status == DeadLetterStatus.PENDING,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     enqueued = 0
     for entry in dlq:
         run = await session.get(PipelineRun, entry.related_id)
@@ -892,14 +916,20 @@ async def retry_failed_jobs(
 
     # Also re-queue failed assignments that never reached DLQ.
     failed_assignments = (
-        await session.execute(
-            select(StageAssignment).where(
-                StageAssignment.workspace_id == workspace_id,
-                StageAssignment.status == StageAssignmentStatus.FAILED,
-                StageAssignment.updated_at >= now - timedelta(days=7),
-            ).limit(50)
+        (
+            await session.execute(
+                select(StageAssignment)
+                .where(
+                    StageAssignment.workspace_id == workspace_id,
+                    StageAssignment.status == StageAssignmentStatus.FAILED,
+                    StageAssignment.updated_at >= now - timedelta(days=7),
+                )
+                .limit(50)
+            )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for assignment in failed_assignments:
         existing = await _count(
             session,
@@ -958,13 +988,17 @@ async def clear_dead_letter_queue(
     session: AsyncSession, workspace_id: uuid.UUID, *, actor_id: uuid.UUID
 ) -> QuickActionResult:
     pending = (
-        await session.execute(
-            select(DeadLetterJob).where(
-                DeadLetterJob.workspace_id == workspace_id,
-                DeadLetterJob.status == DeadLetterStatus.PENDING,
+        (
+            await session.execute(
+                select(DeadLetterJob).where(
+                    DeadLetterJob.workspace_id == workspace_id,
+                    DeadLetterJob.status == DeadLetterStatus.PENDING,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for entry in pending:
         entry.status = DeadLetterStatus.DISCARDED
     await _record_quick_action(
@@ -1161,9 +1195,7 @@ async def executive_insights(
     )
     most_active_customer = None
     if customers.customers:
-        most_active_customer = max(
-            customers.customers, key=lambda row: row.member_count
-        ).name
+        most_active_customer = max(customers.customers, key=lambda row: row.member_count).name
 
     if not achievements:
         achievements.append("No completed achievements recorded yet today")

@@ -225,9 +225,7 @@ async def create_manual_run(
     await _require_research_pass(
         session, workspace_id=workspace_id, opportunity_ids=opportunity_ids
     )
-    business_context_state = await get_business_context_state(
-        session, workspace_id=workspace_id
-    )
+    business_context_state = await get_business_context_state(session, workspace_id=workspace_id)
     last_error = "STRATEGY PROVIDER NOT CONFIGURED"
     if business_context_state != "complete":
         last_error += "; BUSINESS CONTEXT INCOMPLETE"
@@ -588,9 +586,7 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
         )
     ).scalar_one()
     cost = sum((Decimal(str(run.actual_cost_usd)) for run in runs), Decimal("0"))
-    business_context_state = await get_business_context_state(
-        session, workspace_id=workspace_id
-    )
+    business_context_state = await get_business_context_state(session, workspace_id=workspace_id)
     if current or last:
         last_error = (current or last).last_error
     else:

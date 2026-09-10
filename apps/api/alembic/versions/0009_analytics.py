@@ -4,6 +4,7 @@ Revision ID: 0009
 Revises: 0008
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -43,8 +44,12 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_analytics_item_metric_time ON analytics_snapshots (content_item_id, metric, captured_at DESC);")
-    op.execute("CREATE INDEX ix_analytics_workspace_time ON analytics_snapshots (workspace_id, captured_at DESC);")
+    op.execute(
+        "CREATE INDEX ix_analytics_item_metric_time ON analytics_snapshots (content_item_id, metric, captured_at DESC);"
+    )
+    op.execute(
+        "CREATE INDEX ix_analytics_workspace_time ON analytics_snapshots (workspace_id, captured_at DESC);"
+    )
     attach_immutable_trigger("analytics_snapshots")
     enable_rls("analytics_snapshots")
     grant_runtime("analytics_snapshots", update=False, delete=False)

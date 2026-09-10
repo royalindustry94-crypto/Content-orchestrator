@@ -70,16 +70,25 @@ class StageAssignment(Base, WorkspaceScopedMixin, TimestampMixin, VersionMixin):
         UUID(as_uuid=True), ForeignKey("pipeline_runs.id", ondelete="CASCADE"), nullable=False
     )
     stage: Mapped[ContentStage] = mapped_column(
-        SAEnum(ContentStage, name="content_stage", native_enum=True,
-            values_callable=lambda obj: [e.value for e in obj]), nullable=False
+        SAEnum(
+            ContentStage,
+            name="content_stage",
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
+        nullable=False,
     )
     attempt_number: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
     worker_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("worker_registry.id"), nullable=True
     )
     status: Mapped[StageAssignmentStatus] = mapped_column(
-        SAEnum(StageAssignmentStatus, name="stage_assignment_status", native_enum=True,
-            values_callable=lambda obj: [e.value for e in obj]),
+        SAEnum(
+            StageAssignmentStatus,
+            name="stage_assignment_status",
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
         default=StageAssignmentStatus.PENDING,
     )

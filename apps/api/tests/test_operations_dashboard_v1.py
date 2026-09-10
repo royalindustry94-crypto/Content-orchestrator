@@ -127,9 +127,7 @@ async def test_operations_dashboard_real_data(client, new_user, monkeypatch):
         )
         assert workers.status_code == 200
         worker = next(
-            item
-            for item in workers.json()["workers"]
-            if item["name"] == "lumora-worker-1"
+            item for item in workers.json()["workers"] if item["name"] == "lumora-worker-1"
         )
         assert worker["name"] == "lumora-worker-1"
         assert worker["current_job"].startswith("scripting")
@@ -146,9 +144,7 @@ async def test_operations_dashboard_real_data(client, new_user, monkeypatch):
         assert pipeline_data["review_gates"] == 1
         assert pipeline_data["pipelines"][0]["id"] == run_id
 
-        alerts = await client.get(
-            f"/workspaces/{workspace_id}/operations/alerts", headers=headers
-        )
+        alerts = await client.get(f"/workspaces/{workspace_id}/operations/alerts", headers=headers)
         assert alerts.status_code == 200
         keys = {item["key"] for item in alerts.json()["alerts"]}
         assert "review_waiting" in keys
@@ -176,9 +172,7 @@ async def test_operations_dashboard_requires_admin(client, new_user):
     outsider = await client.post(
         "/auth/signup", json={"email": email, "password": "securepass1-beta"}
     )
-    outsider_headers = {
-        "Authorization": f"Bearer {outsider.json()['access_token']}"
-    }
+    outsider_headers = {"Authorization": f"Bearer {outsider.json()['access_token']}"}
     for endpoint in ("executive", "workers", "pipelines", "alerts"):
         response = await client.get(
             f"/workspaces/{workspace_id}/operations/{endpoint}",
@@ -188,9 +182,7 @@ async def test_operations_dashboard_requires_admin(client, new_user):
 
 
 @pytest.mark.asyncio
-async def test_operations_dashboard_empty_state_is_real_zeroes(
-    client, new_user, monkeypatch
-):
+async def test_operations_dashboard_empty_state_is_real_zeroes(client, new_user, monkeypatch):
     for variable in (
         "DEPLOYMENT_CI_STATUS",
         "DEPLOYMENT_CI_URL",
@@ -201,9 +193,7 @@ async def test_operations_dashboard_empty_state_is_real_zeroes(
         monkeypatch.delenv(variable, raising=False)
     get_settings.cache_clear()
     _user_id, _token, headers = new_user
-    workspace = await client.post(
-        "/workspaces", headers=headers, json={"name": "Empty Operations"}
-    )
+    workspace = await client.post("/workspaces", headers=headers, json={"name": "Empty Operations"})
     workspace_id = workspace.json()["id"]
     executive = await client.get(
         f"/workspaces/{workspace_id}/operations/executive", headers=headers

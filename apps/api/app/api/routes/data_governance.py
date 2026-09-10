@@ -75,9 +75,7 @@ async def request_workspace_deletion(
             confirm_workspace_id=payload.confirm_workspace_id,
         )
     except data_governance.DataGovernanceError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message
-        ) from exc
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=exc.message) from exc
     await db.commit()
     audit(
         request,
@@ -93,9 +91,7 @@ async def request_workspace_deletion(
         "executed_at": outcome.executed_at.isoformat(),
         "withdrawn_counts": outcome.soft_deleted_counts,
         "erased_counts": outcome.hard_deleted_counts,
-        "retained_content_history_tables": list(
-            outcome.retained_content_history_tables
-        ),
+        "retained_content_history_tables": list(outcome.retained_content_history_tables),
         "retained_tables": list(outcome.retained_tables),
         "retention_reason": outcome.retention_reason,
     }

@@ -99,14 +99,18 @@ async def _seed_assignment(workspace_id, *, stage=STAGE, attempt=1) -> uuid.UUID
         from app.models.pipeline import PipelineRun
 
         run = PipelineRun(
-            id=uuid.uuid4(), workspace_id=uuid.UUID(workspace_id),
+            id=uuid.uuid4(),
+            workspace_id=uuid.UUID(workspace_id),
             content_item_id=uuid.UUID(item_id),
         )
         session.add(run)
         await session.flush()
         a = StageAssignment(
-            id=uuid.uuid4(), workspace_id=uuid.UUID(workspace_id),
-            pipeline_run_id=run.id, stage=stage, attempt_number=attempt,
+            id=uuid.uuid4(),
+            workspace_id=uuid.UUID(workspace_id),
+            pipeline_run_id=run.id,
+            stage=stage,
+            attempt_number=attempt,
             status=StageAssignmentStatus.PENDING,
             idempotency_key=f"{run.id}:{stage}:{attempt}",
             correlation_id=uuid.uuid4(),
@@ -142,6 +146,7 @@ async def ctx(client):
 
 
 # ---- ack / renew / submit ------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_ack_transitions_and_extends_lease(ctx):
@@ -311,6 +316,7 @@ async def test_duplicate_renew_after_reap(ctx):
 
 # ---- recovery ------------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_lease_expiry_requeues_with_attempt_bump(ctx):
     prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
@@ -335,10 +341,14 @@ async def test_lease_expiry_requeues_with_attempt_bump(ctx):
         assert a.idempotency_key.endswith(":2")
         assert a.lease_expires_at is None and a.lease_started_at is None
         audits = (
-            await s.execute(
-                select(StageRecoveryAudit).where(StageRecoveryAudit.assignment_id == aid)
+            (
+                await s.execute(
+                    select(StageRecoveryAudit).where(StageRecoveryAudit.assignment_id == aid)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(audits) == 1
         assert audits[0].reason == RecoveryReason.LEASE_EXPIRED
         assert audits[0].outcome == RecoveryOutcome.REQUEUED
@@ -387,10 +397,14 @@ async def test_effect_key_survives_crash_recovery_attempt_bump(ctx):
 
     async with AsyncSessionLocal() as s:
         keys = (
-            await s.execute(
-                select(ProviderEffectKey).where(ProviderEffectKey.assignment_id == aid)
+            (
+                await s.execute(
+                    select(ProviderEffectKey).where(ProviderEffectKey.assignment_id == aid)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         # Only the first attempt's key was actually persisted — the second
         # ack's insert hit the unique constraint and was rolled back via
         # savepoint (created=False), proving the same logical unit of work
@@ -404,9 +418,7 @@ async def test_effect_key_survives_crash_recovery_attempt_bump(ctx):
 @pytest.mark.asyncio
 async def test_lease_recovery_under_contention(ctx):
     """Two concurrent reapers partition via SKIP LOCKED — no double bump."""
-    prov = await _provision(
-        ctx["client"], ctx["headers"], ctx["ws"], max_concurrency=4
-    )
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"], max_concurrency=4)
     wh = await _bring_online(ctx["client"], prov, max_concurrency=4)
     claimed = []
     for _ in range(4):
@@ -495,9 +507,7 @@ async def test_worker_crash_heartbeat_timeout_reaps(ctx):
         )
         flipped = await mark_stale_workers_offline(s, offline_after_seconds=90)
         assert worker_id in flipped
-        outcomes = await reap_worker_assignments(
-            s, worker_id, reason=RecoveryReason.WORKER_OFFLINE
-        )
+        outcomes = await reap_worker_assignments(s, worker_id, reason=RecoveryReason.WORKER_OFFLINE)
         assert any(o.assignment.id == aid for o in outcomes)
         await s.commit()
 
@@ -559,13 +569,17 @@ async def test_worker_restart_reaps_stale_holdings(ctx):
         assert a.status == StageAssignmentStatus.PENDING
         assert a.attempt_number == 2
         audits = (
-            await s.execute(
-                select(StageRecoveryAudit).where(
-                    StageRecoveryAudit.assignment_id == aid,
-                    StageRecoveryAudit.reason == RecoveryReason.WORKER_RESTART,
+            (
+                await s.execute(
+                    select(StageRecoveryAudit).where(
+                        StageRecoveryAudit.assignment_id == aid,
+                        StageRecoveryAudit.reason == RecoveryReason.WORKER_RESTART,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(audits) == 1
 
 
@@ -584,13 +598,17 @@ async def test_shutdown_deregister_reaps(ctx):
         a = await s.get(StageAssignment, aid)
         assert a.status == StageAssignmentStatus.PENDING
         audits = (
-            await s.execute(
-                select(StageRecoveryAudit).where(
-                    StageRecoveryAudit.assignment_id == aid,
-                    StageRecoveryAudit.reason == RecoveryReason.WORKER_DEREGISTERED,
+            (
+                await s.execute(
+                    select(StageRecoveryAudit).where(
+                        StageRecoveryAudit.assignment_id == aid,
+                        StageRecoveryAudit.reason == RecoveryReason.WORKER_DEREGISTERED,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(audits) == 1
 
 
@@ -641,13 +659,17 @@ async def test_recovery_exhaustion_routes_dlq(ctx):
         a = await s.get(StageAssignment, aid)
         assert a.status == StageAssignmentStatus.FAILED
         dlq = (
-            await s.execute(
-                select(DeadLetterJob).where(
-                    DeadLetterJob.related_table == "stage_assignments",
-                    DeadLetterJob.related_id == aid,
+            (
+                await s.execute(
+                    select(DeadLetterJob).where(
+                        DeadLetterJob.related_table == "stage_assignments",
+                        DeadLetterJob.related_id == aid,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(dlq) == 1
 
 
@@ -713,26 +735,39 @@ async def test_submit_success_path(ctx):
             {"id": item_id, "ws": ctx["ws"]},
         )
         definition = WorkflowDefinition(
-            id=uuid.uuid4(), workspace_id=uuid.UUID(ctx["ws"]), name="ws3-one", version=1,
+            id=uuid.uuid4(),
+            workspace_id=uuid.UUID(ctx["ws"]),
+            name="ws3-one",
+            version=1,
         )
         session.add(definition)
         await session.flush()
         session.add(
             WorkflowStage(
-                id=uuid.uuid4(), workspace_id=uuid.UUID(ctx["ws"]),
-                definition_id=definition.id, stage_key=STAGE, ordinal=1, is_terminal=True,
+                id=uuid.uuid4(),
+                workspace_id=uuid.UUID(ctx["ws"]),
+                definition_id=definition.id,
+                stage_key=STAGE,
+                ordinal=1,
+                is_terminal=True,
             )
         )
         run = PipelineRun(
-            id=uuid.uuid4(), workspace_id=uuid.UUID(ctx["ws"]),
-            content_item_id=uuid.UUID(item_id), definition_id=definition.id,
-            status="running", correlation_id=uuid.uuid4(),
+            id=uuid.uuid4(),
+            workspace_id=uuid.UUID(ctx["ws"]),
+            content_item_id=uuid.UUID(item_id),
+            definition_id=definition.id,
+            status="running",
+            correlation_id=uuid.uuid4(),
         )
         session.add(run)
         await session.flush()
         a = StageAssignment(
-            id=uuid.uuid4(), workspace_id=uuid.UUID(ctx["ws"]),
-            pipeline_run_id=run.id, stage=STAGE, attempt_number=1,
+            id=uuid.uuid4(),
+            workspace_id=uuid.UUID(ctx["ws"]),
+            pipeline_run_id=run.id,
+            stage=STAGE,
+            attempt_number=1,
             status=StageAssignmentStatus.PENDING,
             idempotency_key=f"{run.id}:{STAGE}:1",
             correlation_id=run.correlation_id,
@@ -759,10 +794,14 @@ async def test_submit_success_path(ctx):
         a = await s.get(StageAssignment, uuid.UUID(aid))
         assert a.status == StageAssignmentStatus.COMPLETED
         keys = (
-            await s.execute(
-                select(ProviderEffectKey).where(ProviderEffectKey.assignment_id == a.id)
+            (
+                await s.execute(
+                    select(ProviderEffectKey).where(ProviderEffectKey.assignment_id == a.id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(keys) == 1
 
 
@@ -799,6 +838,7 @@ async def test_rollback_behaviour_failed_renew(ctx):
 
 # ---- RLS adversarial -----------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_recovery_audit_rls_adversarial(ctx):
     prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
@@ -824,10 +864,14 @@ async def test_recovery_audit_rls_adversarial(ctx):
             {"u": other["user_id"]},
         )
         rows = (
-            await s.execute(
-                select(StageRecoveryAudit).where(StageRecoveryAudit.assignment_id == aid)
+            (
+                await s.execute(
+                    select(StageRecoveryAudit).where(StageRecoveryAudit.assignment_id == aid)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert rows == []
 
         with pytest.raises((ProgrammingError, DBAPIError)):
@@ -868,10 +912,14 @@ async def test_provider_effect_keys_rls_adversarial(ctx):
             {"u": other["user_id"]},
         )
         rows = (
-            await s.execute(
-                select(ProviderEffectKey).where(ProviderEffectKey.workspace_id == ws_id)
+            (
+                await s.execute(
+                    select(ProviderEffectKey).where(ProviderEffectKey.workspace_id == ws_id)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert rows == []
 
         with pytest.raises((ProgrammingError, DBAPIError)):
@@ -910,10 +958,14 @@ async def test_member_can_read_own_recovery_audit(ctx):
             {"u": ctx["user_id"]},
         )
         rows = (
-            await s.execute(
-                select(StageRecoveryAudit).where(StageRecoveryAudit.assignment_id == aid)
+            (
+                await s.execute(
+                    select(StageRecoveryAudit).where(StageRecoveryAudit.assignment_id == aid)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(rows) == 1
 
 
@@ -981,10 +1033,14 @@ async def test_ack_reserves_provider_effect_key(ctx):
 
     async with AsyncSessionLocal() as s:
         keys = (
-            await s.execute(
-                select(ProviderEffectKey).where(ProviderEffectKey.assignment_id == aid)
+            (
+                await s.execute(
+                    select(ProviderEffectKey).where(ProviderEffectKey.assignment_id == aid)
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(keys) == 1
         assert keys[0].effect_key == str(aid)
         # Duplicate reserve is a no-op (created=False), not an error.
@@ -1015,13 +1071,17 @@ async def test_renew_rechecks_revoked_credential_in_handler(ctx):
     # revoke (same end state as admin revoke) then renew must 401.
     async with AsyncSessionLocal() as s:
         creds = (
-            await s.execute(
-                select(WorkerCredential).where(
-                    WorkerCredential.worker_id == uuid.UUID(prov["worker_id"]),
-                    WorkerCredential.status == WorkerCredentialStatus.ACTIVE,
+            (
+                await s.execute(
+                    select(WorkerCredential).where(
+                        WorkerCredential.worker_id == uuid.UUID(prov["worker_id"]),
+                        WorkerCredential.status == WorkerCredentialStatus.ACTIVE,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for c in creds:
             c.status = WorkerCredentialStatus.REVOKED
         await s.commit()
@@ -1097,7 +1157,9 @@ async def test_emergency_stop_over_rls_session_actually_persists_all_writes(ctx)
                         WorkerCredential.status == WorkerCredentialStatus.ACTIVE,
                     )
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         }
         assert credential_ids, "provisioning must have created an active credential"
 
@@ -1135,10 +1197,14 @@ async def test_emergency_stop_over_rls_session_actually_persists_all_writes(ctx)
         # worker_credentials: revocation actually persisted (0054's
         # GRANT + admin SELECT/UPDATE policies — previously zero access).
         revoked = (
-            await s.execute(
-                select(WorkerCredential).where(WorkerCredential.id.in_(credential_ids))
+            (
+                await s.execute(
+                    select(WorkerCredential).where(WorkerCredential.id.in_(credential_ids))
+                )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert revoked and all(c.status == WorkerCredentialStatus.REVOKED for c in revoked)
 
         # stage_assignments: the in-flight assignment was actually reaped

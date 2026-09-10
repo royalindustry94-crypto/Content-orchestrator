@@ -42,6 +42,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP TRIGGER IF EXISTS trg_stage_recovery_audit_immutable_delete ON stage_recovery_audit;")
-    op.execute("DROP TRIGGER IF EXISTS trg_provider_effect_keys_immutable_delete ON provider_effect_keys;")
+    op.execute(
+        "DROP TRIGGER IF EXISTS trg_stage_recovery_audit_immutable_delete ON stage_recovery_audit;"
+    )
+    op.execute(
+        "DROP TRIGGER IF EXISTS trg_provider_effect_keys_immutable_delete ON provider_effect_keys;"
+    )
     op.execute("DROP FUNCTION IF EXISTS prevent_delete();")

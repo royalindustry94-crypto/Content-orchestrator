@@ -23,11 +23,26 @@ depends_on: str | Sequence[str] | None = None
 def upgrade() -> None:
     op.create_table(
         "local_auth_credentials",
-        sa.Column("user_id", PG_UUID(as_uuid=True), sa.ForeignKey("profiles.id", ondelete="CASCADE"), primary_key=True),
+        sa.Column(
+            "user_id",
+            PG_UUID(as_uuid=True),
+            sa.ForeignKey("profiles.id", ondelete="CASCADE"),
+            primary_key=True,
+        ),
         sa.Column("email", sa.String(), nullable=False),
         sa.Column("password_hash", sa.Text(), nullable=False),
-        sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
-        sa.Column("updated_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
+        sa.Column(
+            "created_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
+        sa.Column(
+            "updated_at",
+            sa.DateTime(timezone=True),
+            nullable=False,
+            server_default=sa.text("now()"),
+        ),
         sa.UniqueConstraint("email", name="uq_local_auth_credentials_email"),
     )
     # Owner-only table for auth; runtime role needs SELECT/INSERT/UPDATE for login/signup.

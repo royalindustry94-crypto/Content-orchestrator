@@ -4,6 +4,7 @@ Revision ID: 0006
 Revises: 0005
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -56,7 +57,9 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_assets_item_type ON assets (content_item_id, type) WHERE deleted_at IS NULL;")
+    op.execute(
+        "CREATE INDEX ix_assets_item_type ON assets (content_item_id, type) WHERE deleted_at IS NULL;"
+    )
     op.execute("CREATE INDEX ix_assets_workspace ON assets (workspace_id);")
     attach_version_trigger("assets")
     enable_rls("assets")

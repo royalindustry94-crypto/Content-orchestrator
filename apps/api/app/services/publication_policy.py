@@ -60,9 +60,7 @@ def fingerprint_script(*parts: str | None) -> str:
     Normalised (case, whitespace) so trivial edits do not defeat the
     anti-repetition control.
     """
-    normalized = " ".join(
-        " ".join((part or "").lower().split()) for part in parts
-    ).strip()
+    normalized = " ".join(" ".join((part or "").lower().split()) for part in parts).strip()
     if not normalized:
         raise PublicationBlocked(
             "originality_fingerprint_missing",
@@ -173,8 +171,7 @@ async def assert_publishable(
             select(PublicationEligibility.content_item_id).where(
                 PublicationEligibility.workspace_id == workspace_id,
                 PublicationEligibility.platform == normalized_platform,
-                PublicationEligibility.originality_fingerprint
-                == row.originality_fingerprint,
+                PublicationEligibility.originality_fingerprint == row.originality_fingerprint,
                 PublicationEligibility.content_item_id != content_item_id,
             )
         )

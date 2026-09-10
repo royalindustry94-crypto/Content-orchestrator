@@ -58,8 +58,13 @@ async def _workspace(session) -> uuid.UUID:
 
 
 def _subscription_event(
-    *, event_id: str, workspace_id: uuid.UUID, status: str, sub_id: str,
-    event_type: str = "customer.subscription.updated", period_end: datetime | None = None,
+    *,
+    event_id: str,
+    workspace_id: uuid.UUID,
+    status: str,
+    sub_id: str,
+    event_type: str = "customer.subscription.updated",
+    period_end: datetime | None = None,
     created: int | None = None,
 ) -> dict:
     end = period_end or (datetime.now(UTC) + timedelta(days=30))
@@ -97,8 +102,10 @@ async def test_duplicate_and_replayed_event_is_idempotent(billing_on):
         ws = await _workspace(session)
         sub = f"sub_{uuid.uuid4().hex[:10]}"
         event = _subscription_event(
-            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
-            status="active", sub_id=sub,
+            event_id=f"evt_{uuid.uuid4().hex[:12]}",
+            workspace_id=ws,
+            status="active",
+            sub_id=sub,
         )
 
         first = await billing_service.process_stripe_event(session, event=event)
@@ -141,12 +148,18 @@ async def test_out_of_order_events_converge_on_latest_delivered_state(billing_on
         ws = await _workspace(session)
         sub = f"sub_{uuid.uuid4().hex[:10]}"
         created = _subscription_event(
-            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
-            status="active", sub_id=sub, event_type="customer.subscription.created",
+            event_id=f"evt_{uuid.uuid4().hex[:12]}",
+            workspace_id=ws,
+            status="active",
+            sub_id=sub,
+            event_type="customer.subscription.created",
         )
         deleted = _subscription_event(
-            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
-            status="canceled", sub_id=sub, event_type="customer.subscription.deleted",
+            event_id=f"evt_{uuid.uuid4().hex[:12]}",
+            workspace_id=ws,
+            status="canceled",
+            sub_id=sub,
+            event_type="customer.subscription.deleted",
         )
 
         await billing_service.process_stripe_event(session, event=created)
@@ -182,13 +195,19 @@ async def test_delayed_older_event_does_not_resurrect_a_newer_cancellation(billi
         sub = f"sub_{uuid.uuid4().hex[:10]}"
         base = int(datetime.now(UTC).timestamp())
         older_active = _subscription_event(
-            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
-            status="active", sub_id=sub, event_type="customer.subscription.updated",
+            event_id=f"evt_{uuid.uuid4().hex[:12]}",
+            workspace_id=ws,
+            status="active",
+            sub_id=sub,
+            event_type="customer.subscription.updated",
             created=base,
         )
         newer_canceled = _subscription_event(
-            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
-            status="canceled", sub_id=sub, event_type="customer.subscription.deleted",
+            event_id=f"evt_{uuid.uuid4().hex[:12]}",
+            workspace_id=ws,
+            status="canceled",
+            sub_id=sub,
+            event_type="customer.subscription.deleted",
             created=base + 3600,
         )
 
@@ -228,13 +247,19 @@ async def test_equal_timestamp_active_event_does_not_win_over_a_cancellation(bil
         sub = f"sub_{uuid.uuid4().hex[:10]}"
         tie = int(datetime.now(UTC).timestamp())
         canceled = _subscription_event(
-            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
-            status="canceled", sub_id=sub, event_type="customer.subscription.deleted",
+            event_id=f"evt_{uuid.uuid4().hex[:12]}",
+            workspace_id=ws,
+            status="canceled",
+            sub_id=sub,
+            event_type="customer.subscription.deleted",
             created=tie,
         )
         active_same_instant = _subscription_event(
-            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
-            status="active", sub_id=sub, event_type="customer.subscription.updated",
+            event_id=f"evt_{uuid.uuid4().hex[:12]}",
+            workspace_id=ws,
+            status="active",
+            sub_id=sub,
+            event_type="customer.subscription.updated",
             created=tie,
         )
 
@@ -281,8 +306,11 @@ async def test_delayed_older_subscription_downgrade_does_not_overwrite_a_newer_a
         await billing_service.process_stripe_event(
             session,
             event=_subscription_event(
-                event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
-                status="active", sub_id=sub, created=base + 3600,
+                event_id=f"evt_{uuid.uuid4().hex[:12]}",
+                workspace_id=ws,
+                status="active",
+                sub_id=sub,
+                created=base + 3600,
             ),
         )
         await session.commit()
@@ -295,8 +323,11 @@ async def test_delayed_older_subscription_downgrade_does_not_overwrite_a_newer_a
         # retry of an earlier failed-payment update that has since been
         # resolved — arrives late.
         stale_past_due = _subscription_event(
-            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
-            status="past_due", sub_id=sub, created=base,
+            event_id=f"evt_{uuid.uuid4().hex[:12]}",
+            workspace_id=ws,
+            status="past_due",
+            sub_id=sub,
+            created=base,
         )
         result = await billing_service.process_stripe_event(session, event=stale_past_due)
         await session.commit()
@@ -327,8 +358,11 @@ async def test_delayed_older_active_event_does_not_resurrect_a_payment_failure(b
         await billing_service.process_stripe_event(
             session,
             event=_subscription_event(
-                event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
-                status="active", sub_id=sub, created=base,
+                event_id=f"evt_{uuid.uuid4().hex[:12]}",
+                workspace_id=ws,
+                status="active",
+                sub_id=sub,
+                created=base,
             ),
         )
         await session.commit()
@@ -350,8 +384,11 @@ async def test_delayed_older_active_event_does_not_resurrect_a_payment_failure(b
         # arrives late. It must be recorded as a receipt but must not
         # resurrect entitlement.
         stale_active = _subscription_event(
-            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
-            status="active", sub_id=sub, created=base + 1800,
+            event_id=f"evt_{uuid.uuid4().hex[:12]}",
+            workspace_id=ws,
+            status="active",
+            sub_id=sub,
+            created=base + 1800,
         )
         second = await billing_service.process_stripe_event(session, event=stale_active)
         await session.commit()
@@ -392,8 +429,11 @@ async def test_delayed_older_payment_failure_does_not_revoke_a_newer_active_stat
         await billing_service.process_stripe_event(
             session,
             event=_subscription_event(
-                event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
-                status="active", sub_id=sub, created=base + 3600,
+                event_id=f"evt_{uuid.uuid4().hex[:12]}",
+                workspace_id=ws,
+                status="active",
+                sub_id=sub,
+                created=base + 3600,
             ),
         )
         await session.commit()
@@ -455,7 +495,9 @@ async def test_failed_handler_rolls_back_receipt_and_state(billing_on):
 
         # The retry, now mappable, is processed exactly once.
         retry = _subscription_event(
-            event_id=event_id, workspace_id=ws, status="active",
+            event_id=event_id,
+            workspace_id=ws,
+            status="active",
             sub_id=f"sub_{uuid.uuid4().hex[:10]}",
         )
         result = await billing_service.process_stripe_event(session, event=retry)
@@ -507,8 +549,10 @@ async def test_payment_failure_revokes_entitlement_without_losing_plan_marker(bi
         await billing_service.process_stripe_event(
             session,
             event=_subscription_event(
-                event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
-                status="active", sub_id=sub,
+                event_id=f"evt_{uuid.uuid4().hex[:12]}",
+                workspace_id=ws,
+                status="active",
+                sub_id=sub,
             ),
         )
         await session.commit()
@@ -560,8 +604,7 @@ async def test_ensure_workspace_billing_for_update_locks_concurrent_readers(bill
         )
         await asyncio.sleep(0.2)
         assert not waiter_task.done(), (
-            "a concurrent for_update=True read must block on the held row "
-            "lock, not proceed past it"
+            "a concurrent for_update=True read must block on the held row lock, not proceed past it"
         )
 
         await holder.commit()
@@ -610,8 +653,11 @@ async def test_concurrent_stale_payment_failure_does_not_overwrite_a_committed_a
     failed_session = AsyncSessionLocal()
     try:
         active_event = _subscription_event(
-            event_id=f"evt_{uuid.uuid4().hex[:12]}", workspace_id=ws,
-            status="active", sub_id=sub, created=base + 3600,
+            event_id=f"evt_{uuid.uuid4().hex[:12]}",
+            workspace_id=ws,
+            status="active",
+            sub_id=sub,
+            created=base + 3600,
         )
         # active_session processes the newer event and holds its row lock
         # open (uncommitted) — exactly the window the race needs.

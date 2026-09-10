@@ -148,12 +148,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "DROP POLICY IF EXISTS worker_credentials_admin_update ON worker_credentials;"
-    )
-    op.execute(
-        "DROP POLICY IF EXISTS worker_credentials_admin_select ON worker_credentials;"
-    )
+    op.execute("DROP POLICY IF EXISTS worker_credentials_admin_update ON worker_credentials;")
+    op.execute("DROP POLICY IF EXISTS worker_credentials_admin_select ON worker_credentials;")
     op.execute("REVOKE SELECT, UPDATE ON worker_credentials FROM app_runtime;")
 
     op.execute("DROP POLICY IF EXISTS worker_registry_update_admin ON worker_registry;")
@@ -166,5 +162,7 @@ def downgrade() -> None:
     op.execute("DROP POLICY IF EXISTS dead_letter_jobs_update_roles ON dead_letter_jobs;")
     op.execute("REVOKE UPDATE ON dead_letter_jobs FROM app_runtime;")
 
-    op.execute("DROP POLICY IF EXISTS billing_webhook_events_select_member ON billing_webhook_events;")
+    op.execute(
+        "DROP POLICY IF EXISTS billing_webhook_events_select_member ON billing_webhook_events;"
+    )
     op.execute("REVOKE SELECT ON billing_webhook_events FROM app_runtime;")

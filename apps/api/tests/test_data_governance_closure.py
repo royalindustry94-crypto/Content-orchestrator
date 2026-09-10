@@ -175,10 +175,7 @@ async def test_deletion_removes_content_but_retains_financial_evidence(client):
     async with AsyncSessionLocal() as session:
         live_items = (
             await session.execute(
-                text(
-                    "SELECT count(*) FROM content_items "
-                    "WHERE id = :i AND deleted_at IS NULL"
-                ),
+                text("SELECT count(*) FROM content_items WHERE id = :i AND deleted_at IS NULL"),
                 {"i": str(item_id)},
             )
         ).scalar_one()
@@ -186,10 +183,7 @@ async def test_deletion_removes_content_but_retains_financial_evidence(client):
 
         tombstoned = (
             await session.execute(
-                text(
-                    "SELECT count(*) FROM content_items "
-                    "WHERE id = :i AND deleted_at IS NOT NULL"
-                ),
+                text("SELECT count(*) FROM content_items WHERE id = :i AND deleted_at IS NOT NULL"),
                 {"i": str(item_id)},
             )
         ).scalar_one()
@@ -248,9 +242,7 @@ async def test_deletion_actually_removes_hard_deletable_job_schedule_rows(client
                 {"id": str(job_id)},
             )
         ).scalar_one()
-        assert remaining == 0, (
-            "job_schedule row must actually be gone, not just reported as erased"
-        )
+        assert remaining == 0, "job_schedule row must actually be gone, not just reported as erased"
 
 
 @pytest.mark.asyncio
@@ -268,10 +260,7 @@ async def test_deletion_requires_matching_confirmation(client):
     async with AsyncSessionLocal() as session:
         still_live = (
             await session.execute(
-                text(
-                    "SELECT count(*) FROM content_items "
-                    "WHERE id = :i AND deleted_at IS NULL"
-                ),
+                text("SELECT count(*) FROM content_items WHERE id = :i AND deleted_at IS NULL"),
                 {"i": str(item_id)},
             )
         ).scalar_one()
@@ -282,9 +271,7 @@ async def test_deletion_requires_matching_confirmation(client):
 async def test_deletion_cannot_be_aimed_at_another_workspace(client):
     victim = await _tenant(client)
     attacker = await _tenant(client)
-    victim_item = await _seed_content_and_spend(
-        victim["workspace_id"], victim["user_id"]
-    )
+    victim_item = await _seed_content_and_spend(victim["workspace_id"], victim["user_id"])
 
     res = await client.post(
         f"/workspaces/{victim['workspace_id']}/data/deletion-requests",
@@ -296,10 +283,7 @@ async def test_deletion_cannot_be_aimed_at_another_workspace(client):
     async with AsyncSessionLocal() as session:
         intact = (
             await session.execute(
-                text(
-                    "SELECT count(*) FROM content_items "
-                    "WHERE id = :i AND deleted_at IS NULL"
-                ),
+                text("SELECT count(*) FROM content_items WHERE id = :i AND deleted_at IS NULL"),
                 {"i": str(victim_item)},
             )
         ).scalar_one()
@@ -322,9 +306,7 @@ def test_denylist_and_export_list_are_disjoint():
 
 
 def test_deletable_and_retained_lists_are_disjoint():
-    overlap = set(data_governance.DELETABLE_TABLES) & set(
-        data_governance.RETAINED_ON_DELETE
-    )
+    overlap = set(data_governance.DELETABLE_TABLES) & set(data_governance.RETAINED_ON_DELETE)
     assert overlap == set(), f"tables both deleted and retained: {sorted(overlap)}"
     soft_hard = set(data_governance.SOFT_DELETABLE_TABLES) & set(
         data_governance.HARD_DELETABLE_TABLES
@@ -353,15 +335,10 @@ async def test_tombstoned_content_is_writable_and_correctly_scoped():
             {"i": str(uid), "e": f"{uid}@example.com"},
         )
         await session.execute(
-            text(
-                "INSERT INTO profiles (id, email) VALUES (:i, :e) "
-                "ON CONFLICT (id) DO NOTHING"
-            ),
+            text("INSERT INTO profiles (id, email) VALUES (:i, :e) ON CONFLICT (id) DO NOTHING"),
             {"i": str(uid), "e": f"{uid}@example.com"},
         )
-        session.add(
-            WorkspaceMembership(workspace_id=ws_id, user_id=uid, role=role)
-        )
+        session.add(WorkspaceMembership(workspace_id=ws_id, user_id=uid, role=role))
         await session.flush()
         return uid
 
@@ -372,19 +349,14 @@ async def test_tombstoned_content_is_writable_and_correctly_scoped():
             {"i": str(owner), "e": f"{owner}@example.com"},
         )
         await session.execute(
-            text(
-                "INSERT INTO profiles (id, email) VALUES (:i, :e) "
-                "ON CONFLICT (id) DO NOTHING"
-            ),
+            text("INSERT INTO profiles (id, email) VALUES (:i, :e) ON CONFLICT (id) DO NOTHING"),
             {"i": str(owner), "e": f"{owner}@example.com"},
         )
         ws = Workspace(id=uuid.uuid4(), name=f"sd-{owner}", created_by=owner)
         session.add(ws)
         await session.flush()
         session.add(
-            WorkspaceMembership(
-                workspace_id=ws.id, user_id=owner, role=WorkspaceRole.ADMIN
-            )
+            WorkspaceMembership(workspace_id=ws.id, user_id=owner, role=WorkspaceRole.ADMIN)
         )
         reviewer = await _member(session, ws.id, WorkspaceRole.REVIEWER)
         item = ContentItem(
@@ -432,8 +404,7 @@ async def test_tombstoned_content_is_writable_and_correctly_scoped():
         )
         res = await rt.execute(
             text(
-                "UPDATE content_items SET deleted_at = now() "
-                "WHERE id = :i AND deleted_at IS NULL"
+                "UPDATE content_items SET deleted_at = now() WHERE id = :i AND deleted_at IS NULL"
             ),
             {"i": str(item.id)},
         )

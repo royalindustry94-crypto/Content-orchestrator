@@ -37,7 +37,4 @@ SPEND_BUDGET_EXCEEDED = "spend.budget_exceeded"
 BACKPRESSURE_ENTERED = "backpressure.entered"
 BACKPRESSURE_CLEARED = "backpressure.cleared"
 
-ALL_EVENT_TYPES = {
-    v for k, v in list(vars().items())
-    if k.isupper() and isinstance(v, str)
-}
+ALL_EVENT_TYPES = {v for k, v in list(vars().items()) if k.isupper() and isinstance(v, str)}

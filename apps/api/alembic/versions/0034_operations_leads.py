@@ -56,15 +56,9 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute(
-        "CREATE INDEX ix_leads_workspace_status ON leads (workspace_id, status);"
-    )
-    op.execute(
-        "CREATE INDEX ix_leads_workspace_follow_up ON leads (workspace_id, follow_up_date);"
-    )
-    op.execute(
-        "CREATE INDEX ix_leads_workspace_email ON leads (workspace_id, email);"
-    )
+    op.execute("CREATE INDEX ix_leads_workspace_status ON leads (workspace_id, status);")
+    op.execute("CREATE INDEX ix_leads_workspace_follow_up ON leads (workspace_id, follow_up_date);")
+    op.execute("CREATE INDEX ix_leads_workspace_email ON leads (workspace_id, email);")
     attach_version_trigger("leads")
     enable_rls("leads")
     grant_runtime("leads")

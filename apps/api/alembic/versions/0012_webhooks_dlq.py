@@ -4,6 +4,7 @@ Revision ID: 0012
 Revises: 0011
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -49,7 +50,9 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_webhook_events_status ON webhook_events (status) WHERE status IN ('received','failed');")
+    op.execute(
+        "CREATE INDEX ix_webhook_events_status ON webhook_events (status) WHERE status IN ('received','failed');"
+    )
     op.execute("CREATE INDEX ix_webhook_events_workspace ON webhook_events (workspace_id);")
     attach_version_trigger("webhook_events")
     enable_rls("webhook_events")
@@ -78,8 +81,12 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_dead_letter_workspace_status ON dead_letter_jobs (workspace_id, status) WHERE status = 'pending';")
-    op.execute("CREATE INDEX ix_dead_letter_related ON dead_letter_jobs (related_table, related_id);")
+    op.execute(
+        "CREATE INDEX ix_dead_letter_workspace_status ON dead_letter_jobs (workspace_id, status) WHERE status = 'pending';"
+    )
+    op.execute(
+        "CREATE INDEX ix_dead_letter_related ON dead_letter_jobs (related_table, related_id);"
+    )
     attach_version_trigger("dead_letter_jobs")
     enable_rls("dead_letter_jobs")
     grant_runtime("dead_letter_jobs", insert=False, update=False, delete=False)

@@ -77,9 +77,7 @@ def _deployment_info() -> DeploymentInfo:
     deployed_at = None
     if settings.deployment_at:
         try:
-            deployed_at = datetime.fromisoformat(
-                settings.deployment_at.replace("Z", "+00:00")
-            )
+            deployed_at = datetime.fromisoformat(settings.deployment_at.replace("Z", "+00:00"))
         except ValueError:
             logger.warning(
                 "operations_invalid_deployment_at",
@@ -117,9 +115,7 @@ def _resource_percent(capabilities: dict | None, *keys: str) -> float | None:
     return None
 
 
-async def _spend_totals(
-    session: AsyncSession, workspace_id: uuid.UUID
-) -> tuple[Decimal, Decimal]:
+async def _spend_totals(session: AsyncSession, workspace_id: uuid.UUID) -> tuple[Decimal, Decimal]:
     now = datetime.now(UTC)
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     month_start = day_start.replace(day=1)
@@ -130,9 +126,7 @@ async def _spend_totals(
                     func.sum(SpendLog.cost_usd).filter(SpendLog.occurred_at >= day_start), 0
                 ),
                 func.coalesce(
-                    func.sum(SpendLog.cost_usd).filter(
-                        SpendLog.occurred_at >= month_start
-                    ),
+                    func.sum(SpendLog.cost_usd).filter(SpendLog.occurred_at >= month_start),
                     0,
                 ),
             ).where(SpendLog.workspace_id == workspace_id)
@@ -141,9 +135,7 @@ async def _spend_totals(
     return Decimal(str(row[0])), Decimal(str(row[1]))
 
 
-async def executive(
-    session: AsyncSession, workspace_id: uuid.UUID
-) -> ExecutiveDashboardOut:
+async def executive(session: AsyncSession, workspace_id: uuid.UUID) -> ExecutiveDashboardOut:
     active_assignments = [
         StageAssignmentStatus.DISPATCHED,
         StageAssignmentStatus.ACKNOWLEDGED,
@@ -208,9 +200,7 @@ async def executive(
     )
 
 
-async def workers(
-    session: AsyncSession, workspace_id: uuid.UUID
-) -> WorkerMonitorOut:
+async def workers(session: AsyncSession, workspace_id: uuid.UUID) -> WorkerMonitorOut:
     settings = get_settings()
     result = await session.execute(
         select(WorkerRegistration)
@@ -252,9 +242,7 @@ async def workers(
             )
             .group_by(StageAssignment.status)
         )
-        status_counts = {
-            _enum_value(status): int(count) for status, count in counts.all()
-        }
+        status_counts = {_enum_value(status): int(count) for status, count in counts.all()}
         retry_count = await _count(
             session,
             select(func.count(StageAssignment.id)).where(
@@ -322,9 +310,7 @@ async def workers(
                 queue=queue,
                 last_heartbeat_at=worker.last_heartbeat_at,
                 retry_count=retry_count,
-                jobs_completed=status_counts.get(
-                    StageAssignmentStatus.COMPLETED.value, 0
-                ),
+                jobs_completed=status_counts.get(StageAssignmentStatus.COMPLETED.value, 0),
                 jobs_failed=status_counts.get(StageAssignmentStatus.FAILED.value, 0),
                 jobs_completed_today=completed_today,
                 jobs_failed_today=failed_today,
@@ -340,9 +326,7 @@ async def workers(
     return WorkerMonitorOut(workers=rows, generated_at=datetime.now(UTC))
 
 
-async def pipelines(
-    session: AsyncSession, workspace_id: uuid.UUID
-) -> PipelineMonitorOut:
+async def pipelines(session: AsyncSession, workspace_id: uuid.UUID) -> PipelineMonitorOut:
     active_statuses = [
         PipelineRunStatus.CREATED,
         PipelineRunStatus.RUNNING,
@@ -375,9 +359,7 @@ async def pipelines(
         select(func.count(func.distinct(JobSchedule.ref_id))).where(
             JobSchedule.workspace_id == workspace_id,
             JobSchedule.job_type == JobType.RETRY,
-            JobSchedule.status.in_(
-                [JobScheduleStatus.PENDING, JobScheduleStatus.LEASED]
-            ),
+            JobSchedule.status.in_([JobScheduleStatus.PENDING, JobScheduleStatus.LEASED]),
         ),
     )
     dlq = await _count(
@@ -399,9 +381,7 @@ async def pipelines(
         select(func.count(PublishJob.id)).where(
             PublishJob.workspace_id == workspace_id,
             PublishJob.deleted_at.is_(None),
-            PublishJob.status.in_(
-                [PublishJobStatus.PENDING, PublishJobStatus.PUBLISHING]
-            ),
+            PublishJob.status.in_([PublishJobStatus.PENDING, PublishJobStatus.PUBLISHING]),
         ),
     )
     jobs_completed = await _count(
@@ -422,9 +402,7 @@ async def pipelines(
         select(PipelineRun)
         .where(
             PipelineRun.workspace_id == workspace_id,
-            PipelineRun.status.in_(
-                [*active_statuses, PipelineRunStatus.FAILED]
-            ),
+            PipelineRun.status.in_([*active_statuses, PipelineRunStatus.FAILED]),
         )
         .order_by(PipelineRun.updated_at.desc())
         .limit(100)
@@ -610,16 +588,20 @@ async def customers(
     if workspace_id is not None:
         admin_ws_conditions.append(Workspace.id == workspace_id)
     admin_ws = (
-        await session.execute(
-            select(Workspace)
-            .join(
-                WorkspaceMembership,
-                WorkspaceMembership.workspace_id == Workspace.id,
+        (
+            await session.execute(
+                select(Workspace)
+                .join(
+                    WorkspaceMembership,
+                    WorkspaceMembership.workspace_id == Workspace.id,
+                )
+                .where(*admin_ws_conditions)
+                .order_by(Workspace.created_at.desc())
             )
-            .where(*admin_ws_conditions)
-            .order_by(Workspace.created_at.desc())
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     workspace_ids = [ws.id for ws in admin_ws]
     rows: list[CustomerRow] = []
     beta_users = active_users = paying_users = trial_users = 0
@@ -630,11 +612,11 @@ async def customers(
             row.workspace_id: row
             for row in (
                 await session.execute(
-                    select(WorkspaceBilling).where(
-                        WorkspaceBilling.workspace_id.in_(workspace_ids)
-                    )
+                    select(WorkspaceBilling).where(WorkspaceBilling.workspace_id.in_(workspace_ids))
                 )
-            ).scalars().all()
+            )
+            .scalars()
+            .all()
         }
         member_counts = {
             wid: int(count)
@@ -671,23 +653,25 @@ async def customers(
                     member_count=members,
                     stripe_customer_id=billing.stripe_customer_id if billing else None,
                     current_period_end=billing.current_period_end if billing else None,
-                    cancel_at_period_end=(
-                        billing.cancel_at_period_end if billing else False
-                    ),
+                    cancel_at_period_end=(billing.cancel_at_period_end if billing else False),
                     created_at=ws.created_at,
                 )
             )
         events = (
-            await session.execute(
-                select(BillingWebhookEvent).where(
-                    BillingWebhookEvent.workspace_id.in_(workspace_ids),
-                    BillingWebhookEvent.event_type.in_(
-                        ["invoice.paid", "invoice.payment_succeeded"]
-                    ),
-                    BillingWebhookEvent.processed_at >= month_start,
+            (
+                await session.execute(
+                    select(BillingWebhookEvent).where(
+                        BillingWebhookEvent.workspace_id.in_(workspace_ids),
+                        BillingWebhookEvent.event_type.in_(
+                            ["invoice.paid", "invoice.payment_succeeded"]
+                        ),
+                        BillingWebhookEvent.processed_at >= month_start,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         for event in events:
             revenue += _revenue_from_payload(event.payload or {})
 
@@ -720,9 +704,7 @@ async def spend(session: AsyncSession, workspace_id: uuid.UUID) -> SpendOut:
                     0,
                 ),
                 func.coalesce(
-                    func.sum(SpendLog.cost_usd).filter(
-                        SpendLog.occurred_at >= month_start
-                    ),
+                    func.sum(SpendLog.cost_usd).filter(SpendLog.occurred_at >= month_start),
                     0,
                 ),
             ).where(SpendLog.workspace_id == workspace_id)
@@ -744,9 +726,7 @@ async def spend(session: AsyncSession, workspace_id: uuid.UUID) -> SpendOut:
                     0,
                 ),
                 func.coalesce(
-                    func.sum(SpendLog.cost_usd).filter(
-                        SpendLog.occurred_at >= month_start
-                    ),
+                    func.sum(SpendLog.cost_usd).filter(SpendLog.occurred_at >= month_start),
                     0,
                 ),
             )
@@ -791,9 +771,7 @@ async def spend(session: AsyncSession, workspace_id: uuid.UUID) -> SpendOut:
     )
 
 
-async def _build_alerts(
-    session: AsyncSession, workspace_id: uuid.UUID
-) -> list[OperationsAlert]:
+async def _build_alerts(session: AsyncSession, workspace_id: uuid.UUID) -> list[OperationsAlert]:
     now = datetime.now(UTC)
     since = now - timedelta(days=1)
     items: list[OperationsAlert] = []
@@ -899,9 +877,8 @@ async def _build_alerts(
     if cap is not None:
         daily_cap = Decimal(str(cap.daily_cap_usd))
         monthly_cap = Decimal(str(cap.monthly_cap_usd))
-        spend_warning = (
-            (daily_cap > 0 and spend_today >= daily_cap * Decimal("0.8"))
-            or (monthly_cap > 0 and spend_month >= monthly_cap * Decimal("0.8"))
+        spend_warning = (daily_cap > 0 and spend_today >= daily_cap * Decimal("0.8")) or (
+            monthly_cap > 0 and spend_month >= monthly_cap * Decimal("0.8")
         )
         spend_message = (
             f"${spend_today:.4f} today / ${daily_cap:.4f} cap; "
@@ -1030,9 +1007,7 @@ async def alerts(session: AsyncSession, workspace_id: uuid.UUID) -> AlertsOut:
     )
 
 
-async def notifications(
-    session: AsyncSession, workspace_id: uuid.UUID
-) -> NotificationsOut:
+async def notifications(session: AsyncSession, workspace_id: uuid.UUID) -> NotificationsOut:
     now = datetime.now(UTC)
     items = await _build_alerts(session, workspace_id)
     # Prefer the V2 review key in the notification center.

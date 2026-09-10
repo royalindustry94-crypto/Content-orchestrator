@@ -141,16 +141,24 @@ async def claim_assignment(
     if worker.drain:
         reason = "worker is draining"
         await _record(
-            session, worker=worker, outcome=ClaimOutcome.INELIGIBLE,
-            reason=reason, assignment=None, stage=None,
+            session,
+            worker=worker,
+            outcome=ClaimOutcome.INELIGIBLE,
+            reason=reason,
+            assignment=None,
+            stage=None,
         )
         return ClaimResult(None, ClaimOutcome.INELIGIBLE, reason)
 
     if worker.deregistered_at is not None or worker.status != WorkerStatus.ONLINE:
         reason = f"worker status is {worker.status.value}, not online"
         await _record(
-            session, worker=worker, outcome=ClaimOutcome.INELIGIBLE,
-            reason=reason, assignment=None, stage=None,
+            session,
+            worker=worker,
+            outcome=ClaimOutcome.INELIGIBLE,
+            reason=reason,
+            assignment=None,
+            stage=None,
         )
         return ClaimResult(None, ClaimOutcome.INELIGIBLE, reason)
 
@@ -159,16 +167,24 @@ async def claim_assignment(
     ):
         reason = "heartbeat is stale"
         await _record(
-            session, worker=worker, outcome=ClaimOutcome.INELIGIBLE,
-            reason=reason, assignment=None, stage=None,
+            session,
+            worker=worker,
+            outcome=ClaimOutcome.INELIGIBLE,
+            reason=reason,
+            assignment=None,
+            stage=None,
         )
         return ClaimResult(None, ClaimOutcome.INELIGIBLE, reason)
 
     if worker.current_load >= worker.max_concurrency:
         reason = "worker at maximum concurrency"
         await _record(
-            session, worker=worker, outcome=ClaimOutcome.CAPACITY,
-            reason=reason, assignment=None, stage=None,
+            session,
+            worker=worker,
+            outcome=ClaimOutcome.CAPACITY,
+            reason=reason,
+            assignment=None,
+            stage=None,
         )
         return ClaimResult(None, ClaimOutcome.CAPACITY, reason)
 
@@ -180,8 +196,12 @@ async def claim_assignment(
     if not worker.supported_stages:
         reason = "worker supports no stages"
         await _record(
-            session, worker=worker, outcome=ClaimOutcome.NO_WORK,
-            reason=reason, assignment=None, stage=None,
+            session,
+            worker=worker,
+            outcome=ClaimOutcome.NO_WORK,
+            reason=reason,
+            assignment=None,
+            stage=None,
         )
         return ClaimResult(None, ClaimOutcome.NO_WORK, reason)
 
@@ -231,14 +251,16 @@ async def claim_assignment(
 
     if assignment is None:
         reason = (
-            "provider budget exhausted"
-            if saw_provider_budget_block
-            else "no eligible assignment"
+            "provider budget exhausted" if saw_provider_budget_block else "no eligible assignment"
         )
         outcome = ClaimOutcome.CAPACITY if saw_provider_budget_block else ClaimOutcome.NO_WORK
         await _record(
-            session, worker=worker, outcome=outcome,
-            reason=reason, assignment=None, stage=None,
+            session,
+            worker=worker,
+            outcome=outcome,
+            reason=reason,
+            assignment=None,
+            stage=None,
         )
         return ClaimResult(None, outcome, reason)
 
@@ -267,15 +289,17 @@ async def claim_assignment(
                 run=run_for_spend,
                 stage=assignment.stage,
                 provider=assignment.provider or "draft_desk",
-                estimated_cost_usd=Decimal(
-                    str(get_settings().default_stage_estimate_usd)
-                ),
+                estimated_cost_usd=Decimal(str(get_settings().default_stage_estimate_usd)),
             )
             if reservation is None:
                 reason = "workspace spend cap reached"
                 await _record(
-                    session, worker=worker, outcome=ClaimOutcome.CAPACITY,
-                    reason=reason, assignment=assignment, stage=assignment.stage,
+                    session,
+                    worker=worker,
+                    outcome=ClaimOutcome.CAPACITY,
+                    reason=reason,
+                    assignment=assignment,
+                    stage=assignment.stage,
                 )
                 return ClaimResult(None, ClaimOutcome.CAPACITY, reason)
 
@@ -299,8 +323,12 @@ async def claim_assignment(
         worker.status = WorkerStatus.BUSY
 
     await _record(
-        session, worker=worker, outcome=ClaimOutcome.GRANTED,
-        reason="claimed", assignment=assignment, stage=assignment.stage,
+        session,
+        worker=worker,
+        outcome=ClaimOutcome.GRANTED,
+        reason="claimed",
+        assignment=assignment,
+        stage=assignment.stage,
     )
     await emit(
         session,

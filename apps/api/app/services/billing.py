@@ -109,9 +109,7 @@ def is_entitled(row: WorkspaceBilling | None, *, billing_enabled: bool) -> bool:
     return row.plan == PRO_PLAN and row.status in ACTIVE_STATUSES
 
 
-async def get_entitlement(
-    session: AsyncSession, *, workspace_id: uuid.UUID
-) -> Entitlement:
+async def get_entitlement(session: AsyncSession, *, workspace_id: uuid.UUID) -> Entitlement:
     settings = get_settings()
     row = await ensure_workspace_billing(session, workspace_id=workspace_id)
     return Entitlement(
@@ -227,21 +225,25 @@ async def _latest_applied_event_created(
     so without it here a delayed-but-actually-older "active" subscription
     event could appear newest and overwrite a payment failure's "past_due"."""
     rows = (
-        await session.execute(
-            select(BillingWebhookEvent.payload).where(
-                BillingWebhookEvent.workspace_id == workspace_id,
-                BillingWebhookEvent.stripe_event_id != exclude_event_id,
-                BillingWebhookEvent.event_type.in_(
-                    (
-                        "customer.subscription.created",
-                        "customer.subscription.updated",
-                        "customer.subscription.deleted",
-                        "invoice.payment_failed",
-                    )
-                ),
+        (
+            await session.execute(
+                select(BillingWebhookEvent.payload).where(
+                    BillingWebhookEvent.workspace_id == workspace_id,
+                    BillingWebhookEvent.stripe_event_id != exclude_event_id,
+                    BillingWebhookEvent.event_type.in_(
+                        (
+                            "customer.subscription.created",
+                            "customer.subscription.updated",
+                            "customer.subscription.deleted",
+                            "invoice.payment_failed",
+                        )
+                    ),
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     created_values = [
         row.get("created")
         for row in rows
@@ -258,9 +260,7 @@ async def _apply_subscription(
     event_id: str,
     event_created: int | None = None,
 ) -> None:
-    billing = await ensure_workspace_billing(
-        session, workspace_id=workspace_id, for_update=True
-    )
+    billing = await ensure_workspace_billing(session, workspace_id=workspace_id, for_update=True)
     status = str(subscription.get("status") or "inactive")
     if event_created is not None:
         latest = await _latest_applied_event_created(
@@ -333,9 +333,7 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
 
     existing = (
         await session.execute(
-            select(BillingWebhookEvent).where(
-                BillingWebhookEvent.stripe_event_id == event_id
-            )
+            select(BillingWebhookEvent).where(BillingWebhookEvent.stripe_event_id == event_id)
         )
     ).scalar_one_or_none()
     if existing is not None:
@@ -367,14 +365,10 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
             if event_type == "checkout.session.completed":
                 # Linkage only — never grant entitlement here.
                 if workspace_id is None:
-                    raise BillingError(
-                        "missing_workspace", "checkout session missing workspace_id"
-                    )
+                    raise BillingError("missing_workspace", "checkout session missing workspace_id")
                 sub_id = data_object.get("subscription")
                 customer_id = data_object.get("customer")
-                billing = await ensure_workspace_billing(
-                    session, workspace_id=workspace_id
-                )
+                billing = await ensure_workspace_billing(session, workspace_id=workspace_id)
                 if isinstance(customer_id, str):
                     billing.stripe_customer_id = customer_id
                 if isinstance(sub_id, str):
@@ -536,9 +530,7 @@ def construct_stripe_event(*, payload: bytes, sig_header: str) -> dict:
     _configure_stripe(settings)
     assert settings.stripe_webhook_secret is not None
     try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, settings.stripe_webhook_secret
-        )
+        event = stripe.Webhook.construct_event(payload, sig_header, settings.stripe_webhook_secret)
     except stripe.SignatureVerificationError as exc:
         raise BillingError("invalid_signature", "invalid Stripe webhook signature") from exc
     except Exception as exc:  # noqa: BLE001

@@ -40,9 +40,7 @@ async def create_workspace(
     db.add(membership)
     # Membership must be visible to RLS helpers before seeding spend_caps.
     await db.flush()
-    await ensure_default_spend_cap(
-        db, workspace_id=workspace.id, actor_id=uuid.UUID(user.id)
-    )
+    await ensure_default_spend_cap(db, workspace_id=workspace.id, actor_id=uuid.UUID(user.id))
     await db.flush()
     audit(
         request,

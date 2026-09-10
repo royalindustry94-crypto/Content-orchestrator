@@ -26,13 +26,16 @@ class WorkspaceMembership(Base, TimestampMixin, WorkspaceScopedMixin):
         Index("ix_workspace_memberships_workspace_id", "workspace_id"),
     )
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
     )
     role: Mapped[WorkspaceRole] = mapped_column(
-        Enum(WorkspaceRole, name="workspace_role", native_enum=True,
-            values_callable=lambda obj: [e.value for e in obj]), nullable=False
+        Enum(
+            WorkspaceRole,
+            name="workspace_role",
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
+        nullable=False,
     )

@@ -182,9 +182,8 @@ async def login(session: AsyncSession, *, email: str, password: str) -> AuthToke
         )
 
     if not verify_password(password, row.password_hash):
-        stale = (
-            row.last_failed_at is None
-            or (now - row.last_failed_at) > timedelta(seconds=FAILURE_WINDOW_SECONDS)
+        stale = row.last_failed_at is None or (now - row.last_failed_at) > timedelta(
+            seconds=FAILURE_WINDOW_SECONDS
         )
         row.failed_attempts = 1 if stale else (row.failed_attempts or 0) + 1
         row.last_failed_at = now

@@ -9,6 +9,7 @@ Revision ID: 0020
 Revises: 0019
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 from collections.abc import Sequence
@@ -26,8 +27,10 @@ def upgrade() -> None:
         "ALTER TABLE spend_reservations ADD COLUMN pipeline_run_id uuid "
         "REFERENCES pipeline_runs(id) ON DELETE CASCADE;"
     )
-    op.execute("CREATE INDEX ix_spend_reservations_run ON spend_reservations (pipeline_run_id) "
-               "WHERE pipeline_run_id IS NOT NULL;")
+    op.execute(
+        "CREATE INDEX ix_spend_reservations_run ON spend_reservations (pipeline_run_id) "
+        "WHERE pipeline_run_id IS NOT NULL;"
+    )
 
 
 def downgrade() -> None:

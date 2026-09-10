@@ -94,18 +94,14 @@ def upgrade() -> None:
     policy_update_roles("outbox_events", _ALL)
 
     # --- workflow_definitions/_stages/_transitions: INSERT was admin-only --
-    op.execute(
-        "DROP POLICY IF EXISTS workflow_definitions_insert_roles ON workflow_definitions;"
-    )
+    op.execute("DROP POLICY IF EXISTS workflow_definitions_insert_roles ON workflow_definitions;")
     policy_insert_roles("workflow_definitions", _EDIT)
     policy_update_roles("workflow_definitions", _EDIT)  # new capability; grant added above
 
     op.execute("DROP POLICY IF EXISTS workflow_stages_insert_roles ON workflow_stages;")
     policy_insert_roles("workflow_stages", _EDIT)
 
-    op.execute(
-        "DROP POLICY IF EXISTS workflow_transitions_insert_roles ON workflow_transitions;"
-    )
+    op.execute("DROP POLICY IF EXISTS workflow_transitions_insert_roles ON workflow_transitions;")
     policy_insert_roles("workflow_transitions", _EDIT)
 
     # --- dead_letter_jobs: grant added above; policy was entirely absent ---
@@ -126,18 +122,14 @@ def downgrade() -> None:
     op.execute("DROP POLICY IF EXISTS dead_letter_jobs_insert_roles ON dead_letter_jobs;")
 
     # --- workflow_transitions / _stages / _definitions ----------------------
-    op.execute(
-        "DROP POLICY IF EXISTS workflow_transitions_insert_roles ON workflow_transitions;"
-    )
+    op.execute("DROP POLICY IF EXISTS workflow_transitions_insert_roles ON workflow_transitions;")
     policy_insert_roles("workflow_transitions", ["admin"])
 
     op.execute("DROP POLICY IF EXISTS workflow_stages_insert_roles ON workflow_stages;")
     policy_insert_roles("workflow_stages", ["admin"])
 
     op.execute("DROP POLICY IF EXISTS workflow_definitions_update_roles ON workflow_definitions;")
-    op.execute(
-        "DROP POLICY IF EXISTS workflow_definitions_insert_roles ON workflow_definitions;"
-    )
+    op.execute("DROP POLICY IF EXISTS workflow_definitions_insert_roles ON workflow_definitions;")
     policy_insert_roles("workflow_definitions", ["admin"])
 
     # --- outbox_events -------------------------------------------------------

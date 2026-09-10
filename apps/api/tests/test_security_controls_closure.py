@@ -33,9 +33,7 @@ STRONG_PASSWORD = "Correct-Horse-Battery-9!"
     "environment",
     ["staging", "preview", "demo", "beta", "unknown-env", ""],
 )
-def test_mg_metrics_requires_token_in_every_deployed_environment(
-    monkeypatch, environment
-):
+def test_mg_metrics_requires_token_in_every_deployed_environment(monkeypatch, environment):
     """Non-production deployed environments were previously fail-open.
 
     ``production``/``prod`` are covered separately because the Settings model
@@ -128,9 +126,7 @@ def local_auth_on(monkeypatch):
 @pytest.mark.asyncio
 async def test_mf_repeated_bad_passwords_lock_the_account(client, local_auth_on):
     email = f"lockout-{uuid.uuid4().hex[:10]}@example.com"
-    signup = await client.post(
-        "/auth/signup", json={"email": email, "password": STRONG_PASSWORD}
-    )
+    signup = await client.post("/auth/signup", json={"email": email, "password": STRONG_PASSWORD})
     assert signup.status_code == 201, signup.text
 
     for attempt in range(local_auth.MAX_FAILED_ATTEMPTS):
@@ -151,27 +147,19 @@ async def test_mf_repeated_bad_passwords_lock_the_account(client, local_auth_on)
     # The correct password is now refused while the lock holds — an attacker
     # cannot keep guessing, and the response is indistinguishable from a
     # normal failure.
-    locked = await client.post(
-        "/auth/login", json={"email": email, "password": STRONG_PASSWORD}
-    )
+    locked = await client.post("/auth/login", json={"email": email, "password": STRONG_PASSWORD})
     assert locked.status_code == 401
     assert locked.json()["detail"] == "invalid email or password"
 
 
 @pytest.mark.asyncio
-async def test_mf_login_responses_do_not_disclose_account_existence(
-    client, local_auth_on
-):
+async def test_mf_login_responses_do_not_disclose_account_existence(client, local_auth_on):
     known = f"known-{uuid.uuid4().hex[:10]}@example.com"
     unknown = f"missing-{uuid.uuid4().hex[:10]}@example.com"
-    created = await client.post(
-        "/auth/signup", json={"email": known, "password": STRONG_PASSWORD}
-    )
+    created = await client.post("/auth/signup", json={"email": known, "password": STRONG_PASSWORD})
     assert created.status_code == 201
 
-    a = await client.post(
-        "/auth/login", json={"email": known, "password": "wrong-password-value"}
-    )
+    a = await client.post("/auth/login", json={"email": known, "password": "wrong-password-value"})
     b = await client.post(
         "/auth/login", json={"email": unknown, "password": "wrong-password-value"}
     )
@@ -183,16 +171,12 @@ async def test_mf_login_responses_do_not_disclose_account_existence(
 async def test_mf_successful_login_clears_the_failure_counter(client, local_auth_on):
     email = f"reset-{uuid.uuid4().hex[:10]}@example.com"
     assert (
-        await client.post(
-            "/auth/signup", json={"email": email, "password": STRONG_PASSWORD}
-        )
+        await client.post("/auth/signup", json={"email": email, "password": STRONG_PASSWORD})
     ).status_code == 201
 
     for _ in range(3):
         assert (
-            await client.post(
-                "/auth/login", json={"email": email, "password": "nope-nope-nope"}
-            )
+            await client.post("/auth/login", json={"email": email, "password": "nope-nope-nope"})
         ).status_code == 401
 
     ok = await client.post("/auth/login", json={"email": email, "password": STRONG_PASSWORD})
@@ -352,20 +336,12 @@ async def test_mh_review_gate_decision_cannot_cross_workspaces(client):
     victim = await _bootstrap_tenant(client)
     attacker = await _bootstrap_tenant(client)
 
-    foreign_path = (
-        f"/workspaces/{victim['workspace_id']}/review-gates/{uuid.uuid4()}/decision"
-    )
-    res = await client.post(
-        foreign_path, headers=attacker["headers"], json={"approved": True}
-    )
+    foreign_path = f"/workspaces/{victim['workspace_id']}/review-gates/{uuid.uuid4()}/decision"
+    res = await client.post(foreign_path, headers=attacker["headers"], json={"approved": True})
     assert res.status_code in (403, 404), res.text
 
-    own_path = (
-        f"/workspaces/{attacker['workspace_id']}/review-gates/{uuid.uuid4()}/decision"
-    )
-    res2 = await client.post(
-        own_path, headers=attacker["headers"], json={"approved": True}
-    )
+    own_path = f"/workspaces/{attacker['workspace_id']}/review-gates/{uuid.uuid4()}/decision"
+    res2 = await client.post(own_path, headers=attacker["headers"], json={"approved": True})
     assert res2.status_code == 404, res2.text
 
 
@@ -382,18 +358,14 @@ async def test_mh_content_job_creation_requires_membership(client):
 
 
 @pytest.mark.asyncio
-async def test_mf_locked_account_keeps_password_work_timing_equalized(
-    local_auth_on, monkeypatch
-):
+async def test_mf_locked_account_keeps_password_work_timing_equalized(local_auth_on, monkeypatch):
     """A locked known account must not return before the PBKDF work that an
     unknown account performs; otherwise lockout status becomes an account
     existence timing oracle.
     """
     email = f"locked-timing-{uuid.uuid4().hex[:10]}@example.com"
     async with AsyncSessionLocal() as session:
-        token = await local_auth.signup(
-            session, email=email, password=STRONG_PASSWORD
-        )
+        token = await local_auth.signup(session, email=email, password=STRONG_PASSWORD)
         row = await session.get(LocalAuthCredential, token.user_id)
         assert row is not None
         row.locked_until = datetime.now(UTC) + timedelta(minutes=5)
@@ -408,9 +380,7 @@ async def test_mf_locked_account_keeps_password_work_timing_equalized(
     monkeypatch.setattr(local_auth, "verify_password", _verify)
     async with AsyncSessionLocal() as session:
         with pytest.raises(local_auth.AuthError) as exc:
-            await local_auth.login(
-                session, email=email, password="wrong-password-value"
-            )
+            await local_auth.login(session, email=email, password="wrong-password-value")
         assert exc.value.code == "invalid_credentials"
 
     assert checked_hashes, "locked account must perform password work before failing"

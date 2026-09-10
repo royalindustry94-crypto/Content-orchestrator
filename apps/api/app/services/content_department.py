@@ -194,9 +194,7 @@ async def create_manual_run(
     await _require_strategy_pass(
         session, workspace_id=workspace_id, strategy_brief_id=payload.strategy_brief_id
     )
-    business_context_state = await get_business_context_state(
-        session, workspace_id=workspace_id
-    )
+    business_context_state = await get_business_context_state(session, workspace_id=workspace_id)
     last_error = "CONTENT PROVIDER NOT CONFIGURED"
     if business_context_state != "complete":
         last_error += "; BUSINESS CONTEXT INCOMPLETE"
@@ -751,9 +749,7 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
             )
         )
     ).scalar_one()
-    business_context_state = await get_business_context_state(
-        session, workspace_id=workspace_id
-    )
+    business_context_state = await get_business_context_state(session, workspace_id=workspace_id)
     if last:
         last_error = last.last_error
     else:

@@ -146,18 +146,20 @@ async def ctx(client):
 
 # ---- priority helpers ----------------------------------------------------
 
+
 def test_age_boost_math():
     now = datetime(2026, 7, 27, 12, 0, 0, tzinfo=UTC)
     created = now - timedelta(seconds=185)
-    assert compute_age_boost(
-        created, now=now, interval_seconds=60, per_interval=1, boost_max=100
-    ) == 3
+    assert (
+        compute_age_boost(created, now=now, interval_seconds=60, per_interval=1, boost_max=100) == 3
+    )
     assert compute_effective_priority(10, created, now=now) == 10 + compute_age_boost(
         created, now=now
     )
 
 
 # ---- claim priority ------------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_claim_respects_priority_order(ctx):
@@ -183,9 +185,7 @@ async def test_age_boost_prevents_starvation(ctx):
     wh = await _bring_online(ctx["client"], prov)
     now = datetime.now(UTC)
     # 101 minutes old at priority 0 → boost capped at 100 → effective 100
-    old_low = await _seed_assignment(
-        ctx["ws"], priority=0, created_at=now - timedelta(minutes=101)
-    )
+    old_low = await _seed_assignment(ctx["ws"], priority=0, created_at=now - timedelta(minutes=101))
     # brand-new priority 99 → effective 99
     await _seed_assignment(ctx["ws"], priority=99, created_at=now)
 
@@ -217,6 +217,7 @@ async def test_concurrent_claims_priority_skip_locked(ctx):
 
 
 # ---- provider budgets ----------------------------------------------------
+
 
 @pytest.mark.asyncio
 async def test_provider_budget_blocks_excess(ctx):
@@ -277,6 +278,7 @@ async def test_provider_budget_does_not_block_other_provider(ctx):
 
 # ---- back-pressure -------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_backpressure_entered_and_cleared(ctx):
     async with AsyncSessionLocal() as s:
@@ -304,13 +306,17 @@ async def test_backpressure_entered_and_cleared(ctx):
 
     async with AsyncSessionLocal() as s:
         events = (
-            await s.execute(
-                select(OutboxEvent).where(
-                    OutboxEvent.workspace_id == uuid.UUID(ctx["ws"]),
-                    OutboxEvent.event_type == BACKPRESSURE_ENTERED,
+            (
+                await s.execute(
+                    select(OutboxEvent).where(
+                        OutboxEvent.workspace_id == uuid.UUID(ctx["ws"]),
+                        OutboxEvent.event_type == BACKPRESSURE_ENTERED,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(events) == 1
         assert events[0].payload["state"] == "pressured"
 
@@ -329,13 +335,17 @@ async def test_backpressure_entered_and_cleared(ctx):
 
     async with AsyncSessionLocal() as s:
         cleared = (
-            await s.execute(
-                select(OutboxEvent).where(
-                    OutboxEvent.workspace_id == uuid.UUID(ctx["ws"]),
-                    OutboxEvent.event_type == BACKPRESSURE_CLEARED,
+            (
+                await s.execute(
+                    select(OutboxEvent).where(
+                        OutboxEvent.workspace_id == uuid.UUID(ctx["ws"]),
+                        OutboxEvent.event_type == BACKPRESSURE_CLEARED,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(cleared) == 1
 
 
@@ -417,6 +427,7 @@ async def test_backpressure_never_drops_pending(ctx):
 
 # ---- spend cap race ------------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_spend_cap_concurrent_reservations(ctx):
     """Two concurrent reserve_spend calls for the last dollar → exactly one wins."""
@@ -463,23 +474,26 @@ async def test_spend_cap_concurrent_reservations(ctx):
 
     async with AsyncSessionLocal() as s:
         reserved = (
-            await s.execute(
-                select(SpendReservation).where(
-                    SpendReservation.pipeline_run_id == run_id,
-                    SpendReservation.status == ReservationStatus.RESERVED,
+            (
+                await s.execute(
+                    select(SpendReservation).where(
+                        SpendReservation.pipeline_run_id == run_id,
+                        SpendReservation.status == ReservationStatus.RESERVED,
+                    )
                 )
             )
-        ).scalars().all()
+            .scalars()
+            .all()
+        )
         assert len(reserved) == 1
 
 
 # ---- admin API authz -----------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_admin_concurrency_api_authz(ctx):
-    r = await ctx["client"].get(
-        f"/workspaces/{ctx['ws']}/concurrency", headers=ctx["headers"]
-    )
+    r = await ctx["client"].get(f"/workspaces/{ctx['ws']}/concurrency", headers=ctx["headers"])
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["backpressure_state"] == "normal"
@@ -545,6 +559,7 @@ async def test_workspace_priority_tier_patch(ctx):
 
 # ---- RLS adversarial -----------------------------------------------------
 
+
 @pytest.mark.asyncio
 async def test_provider_budgets_rls_adversarial(ctx):
     await ctx["client"].put(
@@ -558,9 +573,7 @@ async def test_provider_budgets_rls_adversarial(ctx):
             text("SELECT set_config('request.jwt.claim.sub', :sub, true)"),
             {"sub": outsider["user_id"]},
         )
-        rows = (
-            await s.execute(select(ProviderConcurrencyBudget))
-        ).scalars().all()
+        rows = (await s.execute(select(ProviderConcurrencyBudget))).scalars().all()
         assert rows == []
         # Direct INSERT must fail (no grant / no policy)
         try:
@@ -674,15 +687,11 @@ async def test_direct_claim_priority_ordering(ctx):
     prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"])
     await _bring_online(ctx["client"], prov)
     now = datetime.now(UTC)
-    old = await _seed_assignment(
-        ctx["ws"], priority=0, created_at=now - timedelta(minutes=101)
-    )
+    old = await _seed_assignment(ctx["ws"], priority=0, created_at=now - timedelta(minutes=101))
     await _seed_assignment(ctx["ws"], priority=99, created_at=now)
 
     async with AsyncSessionLocal() as s:
-        result = await claiming.claim_assignment(
-            s, worker_id=uuid.UUID(prov["worker_id"]), now=now
-        )
+        result = await claiming.claim_assignment(s, worker_id=uuid.UUID(prov["worker_id"]), now=now)
         await s.commit()
         assert result.outcome == ClaimOutcome.GRANTED
         assert result.assignment is not None

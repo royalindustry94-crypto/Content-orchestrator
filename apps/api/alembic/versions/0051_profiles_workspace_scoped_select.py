@@ -53,9 +53,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "DROP POLICY IF EXISTS profiles_select_self_or_shared_workspace ON profiles;"
-    )
+    op.execute("DROP POLICY IF EXISTS profiles_select_self_or_shared_workspace ON profiles;")
     op.execute(
         "CREATE POLICY profiles_select_authenticated ON profiles "
         "FOR SELECT USING (app_current_user_id() IS NOT NULL);"

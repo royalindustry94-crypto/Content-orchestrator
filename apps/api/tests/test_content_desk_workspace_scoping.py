@@ -34,18 +34,13 @@ async def _create_user_workspace_and_gate(session, topic: str):
         {"id": str(user_id), "email": f"{user_id}@example.com"},
     )
     await session.execute(
-        text(
-            "INSERT INTO profiles (id, email) VALUES (:id, :email) "
-            "ON CONFLICT (id) DO NOTHING"
-        ),
+        text("INSERT INTO profiles (id, email) VALUES (:id, :email) ON CONFLICT (id) DO NOTHING"),
         {"id": str(user_id), "email": f"{user_id}@example.com"},
     )
     ws = Workspace(id=uuid.uuid4(), name=f"scope-{user_id}", created_by=user_id)
     session.add(ws)
     await session.flush()
-    session.add(
-        WorkspaceMembership(workspace_id=ws.id, user_id=user_id, role=WorkspaceRole.ADMIN)
-    )
+    session.add(WorkspaceMembership(workspace_id=ws.id, user_id=user_id, role=WorkspaceRole.ADMIN))
     await ensure_default_spend_cap(session, workspace_id=ws.id, actor_id=user_id)
     result = await content_desk.create_content_job(
         session,
@@ -61,13 +56,9 @@ async def _create_user_workspace_and_gate(session, topic: str):
 @pytest.mark.asyncio
 async def test_content_desk_service_never_returns_another_workspaces_gate():
     async with AsyncSessionLocal() as session:
-        workspace_a, result_a = await _create_user_workspace_and_gate(
-            session, "Workspace A topic"
-        )
+        workspace_a, result_a = await _create_user_workspace_and_gate(session, "Workspace A topic")
     async with AsyncSessionLocal() as session:
-        workspace_b, _result_b = await _create_user_workspace_and_gate(
-            session, "Workspace B topic"
-        )
+        workspace_b, _result_b = await _create_user_workspace_and_gate(session, "Workspace B topic")
 
     async with AsyncSessionLocal() as session:
         # No FastAPI guard in the loop — as if the membership check were
@@ -91,9 +82,7 @@ async def test_content_desk_service_never_returns_another_workspaces_gate():
 @pytest.mark.asyncio
 async def test_content_desk_decide_review_gate_rejects_mismatched_workspace():
     async with AsyncSessionLocal() as session:
-        workspace_a, result_a = await _create_user_workspace_and_gate(
-            session, "Decide isolation A"
-        )
+        workspace_a, result_a = await _create_user_workspace_and_gate(session, "Decide isolation A")
     async with AsyncSessionLocal() as session:
         workspace_b, _result_b = await _create_user_workspace_and_gate(
             session, "Decide isolation B"

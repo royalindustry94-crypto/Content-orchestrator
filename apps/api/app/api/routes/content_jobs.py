@@ -49,9 +49,7 @@ async def create_content_job(
     """
     try:
         if get_settings().billing_enabled:
-            await billing_service.require_entitlement_for_workspace(
-                db, workspace_id=workspace_id
-            )
+            await billing_service.require_entitlement_for_workspace(db, workspace_id=workspace_id)
         result = await content_desk.create_content_job(
             db,
             workspace_id=workspace_id,

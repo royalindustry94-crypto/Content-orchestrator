@@ -4,6 +4,7 @@ Revision ID: 0003
 Revises: 0002
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -48,7 +49,9 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE UNIQUE INDEX uq_content_pillars_workspace_name ON content_pillars (workspace_id, name) WHERE deleted_at IS NULL;")
+    op.execute(
+        "CREATE UNIQUE INDEX uq_content_pillars_workspace_name ON content_pillars (workspace_id, name) WHERE deleted_at IS NULL;"
+    )
     op.execute("CREATE INDEX ix_content_pillars_workspace ON content_pillars (workspace_id);")
     attach_version_trigger("content_pillars")
     enable_rls("content_pillars")
@@ -73,7 +76,9 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE UNIQUE INDEX uq_spend_caps_workspace_provider ON spend_caps (workspace_id, COALESCE(provider, ''));")
+    op.execute(
+        "CREATE UNIQUE INDEX uq_spend_caps_workspace_provider ON spend_caps (workspace_id, COALESCE(provider, ''));"
+    )
     attach_version_trigger("spend_caps")
     enable_rls("spend_caps")
     grant_runtime("spend_caps")
@@ -101,8 +106,12 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE UNIQUE INDEX uq_provider_credentials_workspace_provider_label ON provider_credentials (workspace_id, provider, label) WHERE deleted_at IS NULL;")
-    op.execute("CREATE INDEX ix_provider_credentials_workspace ON provider_credentials (workspace_id);")
+    op.execute(
+        "CREATE UNIQUE INDEX uq_provider_credentials_workspace_provider_label ON provider_credentials (workspace_id, provider, label) WHERE deleted_at IS NULL;"
+    )
+    op.execute(
+        "CREATE INDEX ix_provider_credentials_workspace ON provider_credentials (workspace_id);"
+    )
     attach_version_trigger("provider_credentials")
     enable_rls("provider_credentials")
     grant_runtime("provider_credentials")

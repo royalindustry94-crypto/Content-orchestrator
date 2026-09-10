@@ -10,9 +10,7 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.db.base import ActorMixin, Base, TimestampMixin, VersionMixin, WorkspaceScopedMixin
 
 
-class WorkspaceContentProfile(
-    Base, WorkspaceScopedMixin, TimestampMixin, ActorMixin, VersionMixin
-):
+class WorkspaceContentProfile(Base, WorkspaceScopedMixin, TimestampMixin, ActorMixin, VersionMixin):
     """One row per workspace: business/audience/brand-voice defaults
     collected via the guided setup wizard or edited directly in Settings.
     All fields optional — a partially-filled profile is still useful as
@@ -22,9 +20,7 @@ class WorkspaceContentProfile(
 
     __tablename__ = "workspace_content_profiles"
     __table_args__ = (
-        Index(
-            "uq_workspace_content_profiles_workspace", "workspace_id", unique=True
-        ),
+        Index("uq_workspace_content_profiles_workspace", "workspace_id", unique=True),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
@@ -58,9 +54,7 @@ def is_content_profile_complete(profile: WorkspaceContentProfile | None) -> bool
     )
 
 
-async def get_business_context_state(
-    session: AsyncSession, *, workspace_id: uuid.UUID
-) -> str:
+async def get_business_context_state(session: AsyncSession, *, workspace_id: uuid.UUID) -> str:
     """Returns "complete" or "incomplete" — the truthful state of the workspace's
     saved `WorkspaceContentProfile`, for services (Strategy, Content
     Department) that report `business_context_state` on their runs and

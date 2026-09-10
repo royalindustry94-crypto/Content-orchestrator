@@ -34,8 +34,9 @@ def _scheduler_owner_id() -> str:
     return f"{socket.gethostname()}:{uuid.uuid4().hex[:8]}"
 
 
-async def _fairness_limits(session: AsyncSession,
-    workspace_ids: set[uuid.UUID]) -> dict[uuid.UUID, int]:
+async def _fairness_limits(
+    session: AsyncSession, workspace_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, int]:
     if not workspace_ids:
         return {}
     result = await session.execute(
@@ -176,10 +177,7 @@ async def process_leased_job(session: AsyncSession, job: JobSchedule) -> None:
         }:
             job.status = JobScheduleStatus.DONE
             return
-        if (
-            result.outcome == dispatcher.DispatchOutcome.NO_WORKER
-            and assignment is not None
-        ):
+        if result.outcome == dispatcher.DispatchOutcome.NO_WORKER and assignment is not None:
             # PENDING assignment is claimable by workers — do not mint
             # duplicate attempt rows on reschedule (H-2).
             job.status = JobScheduleStatus.DONE
@@ -210,33 +208,43 @@ async def process_leased_job(session: AsyncSession, job: JobSchedule) -> None:
                 if run is not None:
                     await controller.release_all_reservations(session, run=run)
                     open_assignments = (
-                        await session.execute(
-                            select(StageAssignment).where(
-                                StageAssignment.pipeline_run_id == run.id,
-                                StageAssignment.stage == job.ref_table,
-                                StageAssignment.status.in_(
-                                    [
-                                        StageAssignmentStatus.PENDING,
-                                        StageAssignmentStatus.DISPATCHED,
-                                        StageAssignmentStatus.ACKNOWLEDGED,
-                                    ]
-                                ),
+                        (
+                            await session.execute(
+                                select(StageAssignment).where(
+                                    StageAssignment.pipeline_run_id == run.id,
+                                    StageAssignment.stage == job.ref_table,
+                                    StageAssignment.status.in_(
+                                        [
+                                            StageAssignmentStatus.PENDING,
+                                            StageAssignmentStatus.DISPATCHED,
+                                            StageAssignmentStatus.ACKNOWLEDGED,
+                                        ]
+                                    ),
+                                )
                             )
                         )
-                    ).scalars().all()
+                        .scalars()
+                        .all()
+                    )
                     for asn in open_assignments:
                         asn.status = StageAssignmentStatus.CANCELLED
                 await route_to_dead_letter(
-                    session, workspace_id=job.workspace_id, related_table="job_schedule",
-                    related_id=job.id, job_type=f"stage_dispatch:{job.ref_table}",
+                    session,
+                    workspace_id=job.workspace_id,
+                    related_table="job_schedule",
+                    related_id=job.id,
+                    job_type=f"stage_dispatch:{job.ref_table}",
                     payload={"stage": job.ref_table, "pipeline_run_id": str(job.ref_id)},
                     failure_reason="no eligible worker available after repeated attempts",
-                    attempt_count=job.attempt, first_failed_at=job.created_at,
+                    attempt_count=job.attempt,
+                    first_failed_at=job.created_at,
                 )
                 return
             delay = compute_backoff_seconds(
-                job.attempt, base_seconds=NO_WORKER_RETRY_BASE_SECONDS,
-                multiplier=2, max_seconds=NO_WORKER_RETRY_MAX_SECONDS,
+                job.attempt,
+                base_seconds=NO_WORKER_RETRY_BASE_SECONDS,
+                multiplier=2,
+                max_seconds=NO_WORKER_RETRY_MAX_SECONDS,
             )
             job.status = JobScheduleStatus.PENDING
             job.run_after = datetime.now(UTC) + timedelta(seconds=delay)
@@ -248,16 +256,18 @@ async def process_leased_job(session: AsyncSession, job: JobSchedule) -> None:
         from app.orchestration import controller  # local import: avoids a cycle at module load
 
         if job.job_type == JobType.STAGE_TIMEOUT:
-            await controller.handle_stage_timeout(session, pipeline_run_id=job.ref_id,
-                stage=job.ref_table)
+            await controller.handle_stage_timeout(
+                session, pipeline_run_id=job.ref_id, stage=job.ref_table
+            )
         else:
             await controller.handle_review_timeout(session, review_gate_id=job.ref_id)
         job.status = JobScheduleStatus.DONE
     elif job.job_type == JobType.COMPENSATION:
         from app.orchestration import controller
 
-        await controller.run_compensation_stage(session, pipeline_run_id=job.ref_id,
-            stage=job.ref_table)
+        await controller.run_compensation_stage(
+            session, pipeline_run_id=job.ref_id, stage=job.ref_table
+        )
         job.status = JobScheduleStatus.DONE
     elif job.job_type == JobType.RECURRING:
         raise NotImplementedError(

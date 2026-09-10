@@ -117,12 +117,8 @@ class ReferenceWorkerClient:
             json={
                 "severity": severity,
                 "message": message,
-                "pipeline_run_id": (
-                    str(pipeline_run_id) if pipeline_run_id is not None else None
-                ),
-                "assignment_id": (
-                    str(assignment_id) if assignment_id is not None else None
-                ),
+                "pipeline_run_id": (str(pipeline_run_id) if pipeline_run_id is not None else None),
+                "assignment_id": (str(assignment_id) if assignment_id is not None else None),
                 "context": context or {},
             },
         )

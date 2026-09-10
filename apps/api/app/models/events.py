@@ -75,8 +75,12 @@ class OutboxEvent(Base, WorkspaceScopedMixin, VersionMixin):
     sequence: Mapped[int] = mapped_column(BigInteger, nullable=False)
     payload: Mapped[dict] = mapped_column(JSONB, nullable=False)
     status: Mapped[OutboxEventStatus] = mapped_column(
-        SAEnum(OutboxEventStatus, name="outbox_event_status", native_enum=True,
-            values_callable=lambda obj: [e.value for e in obj]),
+        SAEnum(
+            OutboxEventStatus,
+            name="outbox_event_status",
+            native_enum=True,
+            values_callable=lambda obj: [e.value for e in obj],
+        ),
         nullable=False,
         default=OutboxEventStatus.PENDING,
     )

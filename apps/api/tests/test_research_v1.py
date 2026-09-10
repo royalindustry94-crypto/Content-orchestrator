@@ -44,9 +44,7 @@ def _fixture_opportunity(topic: str = "Evidence backed topic") -> dict:
 
 @pytest.mark.asyncio
 async def test_manual_run_is_truthful_when_provider_not_configured(client, new_user):
-    _user_id, headers, workspace_id = await _tenant(
-        client, new_user, "Scout not configured"
-    )
+    _user_id, headers, workspace_id = await _tenant(client, new_user, "Scout not configured")
     response = await client.post(
         f"/workspaces/{workspace_id}/research/runs",
         headers=headers,
@@ -58,9 +56,7 @@ async def test_manual_run_is_truthful_when_provider_not_configured(client, new_u
     assert body["provider_state"] == "not_configured"
     assert body["actual_cost_usd"] in (0, 0.0, "0", "0.0000")
     assert "RESEARCH PROVIDER NOT CONFIGURED" in body["last_error"]
-    summary = await client.get(
-        f"/workspaces/{workspace_id}/research/summary", headers=headers
-    )
+    summary = await client.get(f"/workspaces/{workspace_id}/research/summary", headers=headers)
     assert summary.status_code == 200
     assert summary.json()["research_data_state"] == "not_connected"
     assert summary.json()["opportunities_found"] == 0
@@ -223,12 +219,8 @@ async def test_prompt_injection_rejected_and_secret_redacted(client, new_user):
 
 
 @pytest.mark.asyncio
-async def test_auditor_blocks_duplicate_evidence_and_denies_strategist(
-    client, new_user
-):
-    user_id, _headers, workspace_id = await _tenant(
-        client, new_user, "Scout audit block"
-    )
+async def test_auditor_blocks_duplicate_evidence_and_denies_strategist(client, new_user):
+    user_id, _headers, workspace_id = await _tenant(client, new_user, "Scout audit block")
     duplicate_excerpt = "Same fixture evidence body used by two different URLs."
     async with rls_scoped_session(str(user_id)) as session:
         _run, opportunity = await research.record_fixture_run(

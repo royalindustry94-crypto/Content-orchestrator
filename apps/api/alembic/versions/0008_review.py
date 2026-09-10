@@ -4,6 +4,7 @@ Revision ID: 0008
 Revises: 0007
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -30,7 +31,9 @@ _ALL = ["admin", "editor", "reviewer"]
 
 
 def upgrade() -> None:
-    op.execute("CREATE TYPE review_decision_value AS ENUM ('approved','changes_requested','rejected');")
+    op.execute(
+        "CREATE TYPE review_decision_value AS ENUM ('approved','changes_requested','rejected');"
+    )
     op.execute(
         """
         CREATE TABLE review_decisions (
@@ -45,7 +48,9 @@ def upgrade() -> None:
         );
         """
     )
-    op.execute("CREATE INDEX ix_review_decisions_item ON review_decisions (content_item_id, created_at DESC);")
+    op.execute(
+        "CREATE INDEX ix_review_decisions_item ON review_decisions (content_item_id, created_at DESC);"
+    )
     op.execute("CREATE INDEX ix_review_decisions_workspace ON review_decisions (workspace_id);")
     attach_immutable_trigger("review_decisions")
     enable_rls("review_decisions")

@@ -741,14 +741,18 @@ async def reserve_spend(
     # check so retry/recovery does not double-count the same stage against
     # the budget, and so submit never sees MultipleResultsFound (H-4).
     prior = (
-        await session.execute(
-            select(SpendReservation).where(
-                SpendReservation.pipeline_run_id == run.id,
-                SpendReservation.stage == stage,
-                SpendReservation.status == ReservationStatus.RESERVED,
+        (
+            await session.execute(
+                select(SpendReservation).where(
+                    SpendReservation.pipeline_run_id == run.id,
+                    SpendReservation.stage == stage,
+                    SpendReservation.status == ReservationStatus.RESERVED,
+                )
             )
         )
-    ).scalars().all()
+        .scalars()
+        .all()
+    )
     for old in prior:
         await release_spend(session, run=run, reservation=old)
 
@@ -874,8 +878,7 @@ async def commit_spend(
         return
     if reservation.status != ReservationStatus.RESERVED:
         raise ValueError(
-            f"cannot commit reservation in status {reservation.status!r}; "
-            "expected reserved"
+            f"cannot commit reservation in status {reservation.status!r}; expected reserved"
         )
     reserved = Decimal(str(reservation.estimated_cost_usd))
     actual = Decimal(str(actual_cost_usd))

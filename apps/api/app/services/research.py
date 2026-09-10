@@ -60,9 +60,7 @@ def _canonical_url(value: str) -> str:
         or parsed.username
         or parsed.password
     ):
-        raise ValueError(
-            "source URL must be a public http(s) URL without embedded credentials"
-        )
+        raise ValueError("source URL must be a public http(s) URL without embedded credentials")
     host = parsed.hostname.lower().rstrip(".")
     if host in {"localhost", "localhost.localdomain"}:
         raise ValueError("private or localhost source URL is not permitted")
@@ -226,9 +224,7 @@ async def list_opportunities(
 ) -> list[Opportunity]:
     result = await session.execute(
         select(Opportunity)
-        .where(
-            Opportunity.workspace_id == workspace_id, Opportunity.deleted_at.is_(None)
-        )
+        .where(Opportunity.workspace_id == workspace_id, Opportunity.deleted_at.is_(None))
         .order_by(Opportunity.discovered_at.desc())
         .limit(limit)
     )
@@ -289,12 +285,8 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
         await session.execute(
             select(
                 func.count(Opportunity.id),
-                func.count(Opportunity.id).filter(
-                    Opportunity.audit_gate_status != "not_run"
-                ),
-                func.count(Opportunity.id).filter(
-                    Opportunity.audit_gate_status == "blocked"
-                ),
+                func.count(Opportunity.id).filter(Opportunity.audit_gate_status != "not_run"),
+                func.count(Opportunity.id).filter(Opportunity.audit_gate_status == "blocked"),
             ).where(
                 Opportunity.workspace_id == workspace_id,
                 Opportunity.deleted_at.is_(None),
@@ -303,9 +295,7 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
     ).one()
     schedule = (
         await session.execute(
-            select(ResearchSchedule).where(
-                ResearchSchedule.workspace_id == workspace_id
-            )
+            select(ResearchSchedule).where(ResearchSchedule.workspace_id == workspace_id)
         )
     ).scalar_one_or_none()
     cost = sum((Decimal(str(run.actual_cost_usd)) for run in runs), Decimal("0"))
@@ -544,10 +534,7 @@ async def audit_opportunity(
         blocked.append("Duplicate source content detected.")
     if len(accepted) == 1 and not blocked:
         warnings.append("Only one independent accepted source is available.")
-    if (
-        any(source.freshness in {"stale", "unknown"} for source in accepted)
-        and not blocked
-    ):
+    if any(source.freshness in {"stale", "unknown"} for source in accepted) and not blocked:
         warnings.append("At least one accepted source has stale or unknown freshness.")
     for source in accepted:
         findings.append(
@@ -582,9 +569,7 @@ async def audit_opportunity(
     opportunity.audit_gate_status = state
     if state == "blocked":
         opportunity.status = "blocked"
-    run = await get_run(
-        session, workspace_id=workspace_id, run_id=opportunity.research_run_id
-    )
+    run = await get_run(session, workspace_id=workspace_id, run_id=opportunity.research_run_id)
     if run is not None:
         run.audited_opportunity_count += 1
         if state == "blocked":
@@ -612,14 +597,10 @@ async def strategist_gate(
     )
     if opportunity is None:
         raise LookupError("opportunity not found")
-    audit = await latest_audit(
-        session, workspace_id=workspace_id, opportunity_id=opportunity_id
-    )
+    audit = await latest_audit(session, workspace_id=workspace_id, opportunity_id=opportunity_id)
     if audit is None or audit.state != "pass":
         detail = "Independent Research Auditor PASS is required before Strategist eligibility."
-        run = await get_run(
-            session, workspace_id=workspace_id, run_id=opportunity.research_run_id
-        )
+        run = await get_run(session, workspace_id=workspace_id, run_id=opportunity.research_run_id)
         if run is not None:
             await _emit_run(
                 session,
@@ -632,9 +613,7 @@ async def strategist_gate(
             )
         raise ResearchGateError(detail)
     opportunity.strategist_state = "eligible"
-    run = await get_run(
-        session, workspace_id=workspace_id, run_id=opportunity.research_run_id
-    )
+    run = await get_run(session, workspace_id=workspace_id, run_id=opportunity.research_run_id)
     if run is not None:
         await _emit_run(
             session,

@@ -71,11 +71,27 @@ None currently open. TD-070 (below) closed 2026-09-09.
 
 | ID | Item | Severity / state |
 |---|---|---|
-| TD-050 | Ruff format is not a distinct CI gate | LOW |
 | TD-060 | FORCE RLS remains a positive architectural control | INFO — exact current table count should be derived from live/current migration evidence when needed |
 | TD-061 | Migration round-trip through current head `0054` | INFO — PASS (branch `claude/project-builder-handover-k95wpm`; not yet on `main`) |
 | TD-062 | API baseline | INFO — **333 passed / 81% coverage** on the pre-merge branch (was 299/81.09% on `main`); **339 passed / 80.82% coverage** independently reproduced on merged `main` @ `2ca92f8` (2026-09-09 recovery audit, fresh install/venv, full pytest+coverage run) |
 | TD-063 | Exact-head browser smoke | INFO — retained desktop + exact-390px CI evidence now exists on `main`; not re-run for this unmerged branch |
+
+---
+
+## Closed — 2026-09-10 ruff format CI gate
+
+### TD-050 — Ruff format is not a distinct CI gate — **CLOSED (2026-09-10)**
+
+| Field | Value |
+|---|---|
+| Severity | LOW |
+| Evidence | `.github/workflows/ci.yml` ran `ruff check .` (lint) in both the `api` and `worker` jobs but never `ruff format --check .` — formatting could drift indefinitely with nothing in CI catching it. Confirmed drift before fixing: `ruff format --check .` reported **127 files would be reformatted (103 already compliant)** in `apps/api` and **4 files would be reformatted (8 already compliant)** in `apps/worker`, using the pinned `python -m ruff` from a fresh Python 3.12 venv. |
+| Fix | Applied `ruff format .` (not `--check`) to both directories — 127 files reformatted in `apps/api`, 4 in `apps/worker` (131 total), matching the pre-fix drift count exactly. Then added `ruff format --check .` as a new step in `.github/workflows/ci.yml`, directly after the existing `ruff check .` step, in both the `api` and `worker` jobs (existing lint step left untouched, not replaced). |
+| Semantic-equivalence verification | (1) `ruff check .` still reports "All checks passed!" in both directories after reformatting — no new lint errors introduced. (2) Full test suites re-run after reformatting produced the exact same pass counts as the pre-format baseline (see below) — nothing broken or silently skipped. (3) Objective AST-equality check: for all 131 reformatted files, `ast.dump(ast.parse(pre-format source))` was compared to `ast.dump(ast.parse(post-format source))` — **131/131 files AST-identical**, including the two non-test source files that changed (`apps/worker/worker/client.py`, `apps/worker/worker/core/logging.py`) and all 33 touched Alembic migration files. (4) Manual diff review of a spread of files across both apps (routes, models, services, migrations, tests, the two non-test worker files) confirmed every changed line was whitespace, line-wrapping, or trailing-comma style only — no reordered statements, no changed literals, no added/removed code. No file changed anything meaningful; none were excluded from the reformat. |
+| Test baseline (before formatting) | Measured on the Builder's isolated worktree, which branched before TD-031 (PR #102) raised the CI coverage floor from 75% to 79%: `apps/api`: **359 passed**, 81.06% coverage (`pytest --cov=app --cov-fail-under=75`, floor 75% *at that time*, env matching CI's `api` job otherwise: local Postgres 16, `content_orchestrator_test` DB, `app_runtime` role, `AUTH_MODE=local`). `apps/worker`: **7 passed** (`pytest`). |
+| Test baseline (after formatting, final) | Re-measured a third time after cherry-picking onto the actual merge target (`claude/project-recovery-gated-delivery-bpshxw`, which already carries the 79% floor from PR #102) — this is the number that applies at merge time, not the 75%-floor baseline above: `apps/api`: **358 passed / 1 failed**, coverage 81.00% (`pytest --cov=app --cov-fail-under=79`). The 1 failure (`test_lifespan_automation.py::test_lifespan_starts_and_stops_automation_loops`) is a pre-existing timing-race flake, independently reproduced on unmodified pre-TD-050 code three separate times (Builder, Auditor, and this final re-verification pass) — not caused by this change; tracked separately (issue #105 / PR #106). `apps/worker`: **7 passed** — identical throughout. `ruff format --check .` reports **0 files would be reformatted** (fully clean) in both directories. `ruff check .` clean in both. Coverage (81.00%) stays well clear of the actual 79% floor. |
+| CI change | `.github/workflows/ci.yml`: added a `- name: Format check` / `run: ruff format --check .` step immediately after the existing `- name: Lint` / `run: ruff check .` step, in both the `api` job (before "Test with coverage gate") and the `worker` job (before "Test") — additive only, no existing step removed or modified. |
+| Status | **CLOSED.** Formatting is now gated in CI going forward; the repo is fully `ruff format`-clean as of this close. |
 
 ---
 

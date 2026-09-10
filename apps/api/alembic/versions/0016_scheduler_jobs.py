@@ -4,6 +4,7 @@ Revision ID: 0016
 Revises: 0015
 Create Date: 2026-07-21
 """
+
 from __future__ import annotations
 
 import sys
@@ -31,8 +32,10 @@ _ADMIN_EDITOR = ["admin", "editor"]
 
 
 def upgrade() -> None:
-    op.execute("CREATE TYPE job_type AS ENUM "
-               "('stage','retry','stage_timeout','review_timeout','recurring','compensation');")
+    op.execute(
+        "CREATE TYPE job_type AS ENUM "
+        "('stage','retry','stage_timeout','review_timeout','recurring','compensation');"
+    )
     op.execute("CREATE TYPE job_schedule_status AS ENUM ('pending','leased','done','cancelled');")
 
     op.execute(
@@ -58,14 +61,20 @@ def upgrade() -> None:
         """
     )
     # The scheduler's core query: due, pending, ordered.
-    op.execute("CREATE INDEX ix_job_schedule_due ON job_schedule (status, run_after) "
-               "WHERE status = 'pending';")
+    op.execute(
+        "CREATE INDEX ix_job_schedule_due ON job_schedule (status, run_after) "
+        "WHERE status = 'pending';"
+    )
     # Reaper's query: leased rows whose lease has expired.
-    op.execute("CREATE INDEX ix_job_schedule_lease_expiry ON job_schedule (lease_expires_at) "
-               "WHERE status = 'leased';")
+    op.execute(
+        "CREATE INDEX ix_job_schedule_lease_expiry ON job_schedule (lease_expires_at) "
+        "WHERE status = 'leased';"
+    )
     # Fairness: per-workspace due-work lookup for weighted round-robin.
-    op.execute("CREATE INDEX ix_job_schedule_workspace_due ON job_schedule (workspace_id, run_after) "
-               "WHERE status = 'pending';")
+    op.execute(
+        "CREATE INDEX ix_job_schedule_workspace_due ON job_schedule (workspace_id, run_after) "
+        "WHERE status = 'pending';"
+    )
     attach_version_trigger("job_schedule")
     enable_rls("job_schedule")
     grant_runtime("job_schedule")

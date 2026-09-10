@@ -9,9 +9,7 @@ from worker.executors.draft_desk import draft_desk_executor
 
 @pytest.mark.asyncio
 async def test_scripting_generates_non_empty_draft():
-    ok, result, err = await draft_desk_executor(
-        {"stage": "scripting", "topic": "agency retention"}
-    )
+    ok, result, err = await draft_desk_executor({"stage": "scripting", "topic": "agency retention"})
     assert ok is True
     assert err == ""
     assert result is not None
@@ -30,8 +28,6 @@ async def test_scripting_requires_topic():
 
 @pytest.mark.asyncio
 async def test_review_stage_rejected():
-    ok, _result, err = await draft_desk_executor(
-        {"stage": "review", "topic": "x"}
-    )
+    ok, _result, err = await draft_desk_executor({"stage": "review", "topic": "x"})
     assert ok is False
     assert "human" in err.lower() or "review" in err.lower()

@@ -85,12 +85,7 @@ MIGRATION_MANAGED_INDEXES = frozenset(
 
 def include_object(obj, name, type_, reflected, compare_to) -> bool:
     del obj
-    if (
-        type_ == "index"
-        and reflected
-        and compare_to is None
-        and name in MIGRATION_MANAGED_INDEXES
-    ):
+    if type_ == "index" and reflected and compare_to is None and name in MIGRATION_MANAGED_INDEXES:
         return False
     return True
 
