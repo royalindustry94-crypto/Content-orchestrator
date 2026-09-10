@@ -25,3 +25,6 @@ validation-logs/
 apps/api/.coverage
 *.tsbuildinfo
 backups/
+
+# Claude Code agent tooling (local scratch state, never project content)
+.claude/
