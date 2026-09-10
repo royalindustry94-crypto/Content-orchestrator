@@ -24,8 +24,13 @@ async def test_lifespan_starts_and_stops_automation_loops():
                 "outbox_relay",
                 "scheduler",
             }
-            # Intervals default to 2s for scheduler/outbox.
-            await asyncio.sleep(2.3)
+            # Intervals default to 2s for scheduler/outbox; poll with timeout
+            # to avoid timing races under CPU contention.
+            deadline = asyncio.get_running_loop().time() + 5.0
+            while automation_state.scheduler_ticks < 1 or automation_state.outbox_ticks < 1:
+                if asyncio.get_running_loop().time() >= deadline:
+                    break
+                await asyncio.sleep(0.1)
             assert automation_state.scheduler_ticks >= 1
             assert automation_state.outbox_ticks >= 1
         assert automation_state.tasks_running == []
