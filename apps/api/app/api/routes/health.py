@@ -31,17 +31,21 @@ async def readiness(db: AsyncSession = Depends(get_db)) -> dict[str, str]:
     """Process is running AND its dependencies (currently: Postgres) are reachable.
 
     Returns 503 (not 200 with an error body) on failure so load balancers
-    and orchestrators treat it as a real readiness failure.
+    and orchestrators treat it as a real readiness failure. Reports the
+    connected role so a DATABASE_URL misconfiguration (wrong role, not
+    just wrong host) is visible here instead of only surfacing downstream
+    as a permission error on a specific table.
     """
     try:
-        await db.execute(text("SELECT 1"))
+        result = await db.execute(text("SELECT current_user"))
+        db_user = result.scalar_one()
     except Exception as exc:
         logger.exception("readiness check failed: database unreachable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="database unreachable",
         ) from exc
-    return {"status": "ok", "database": "reachable"}
+    return {"status": "ok", "database": "reachable", "db_user": db_user}
 
 
 @router.get("/health/automation")
