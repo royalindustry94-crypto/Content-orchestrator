@@ -53,6 +53,43 @@ docker build -t co-worker ./apps/worker
 docker build -t co-web ./apps/web
 ```
 
+## Python dependency locks (API/worker)
+
+`apps/api/constraints-prod.txt` and `apps/worker/constraints-prod.txt` are the
+deterministic production dependency constraints for each Python service.
+
+- CI installs API/worker packages with `-c constraints-prod.txt` so the tested
+  graph matches what the images ship.
+- API and worker Dockerfiles also install with `-c constraints-prod.txt`.
+
+Refresh workflow (reviewable lock update):
+
+```bash
+python -m venv /tmp/co-lock-api
+/tmp/co-lock-api/bin/pip install --upgrade pip
+/tmp/co-lock-api/bin/pip install ./apps/api
+/tmp/co-lock-api/bin/pip freeze --exclude-editable | sort > apps/api/constraints-prod.txt
+
+python -m venv /tmp/co-lock-worker
+/tmp/co-lock-worker/bin/pip install --upgrade pip
+/tmp/co-lock-worker/bin/pip install ./apps/worker
+/tmp/co-lock-worker/bin/pip freeze --exclude-editable | sort > apps/worker/constraints-prod.txt
+```
+
+Rollback:
+
+- Revert the lock file update commit (or checkout the prior
+  `constraints-prod.txt` versions), then rerun CI.
+- If an upgraded lock introduced regressions, pin back to the last known-good
+  lock versions and rerun tests/audit gates before merge.
+
+### Docker base-image reproducibility status
+
+Not pinned by digest in this change. The current Docker images still use
+floating tags (`python:3.12-slim`, `node:22-alpine`, `nginx:1.27-alpine`) to
+preserve existing multi-architecture behavior without introducing an
+architecture-specific digest mismatch in this hardening PR.
+
 ## Environment variables
 
 See `.env.example` for the full annotated list. Staging-relevant knobs:
