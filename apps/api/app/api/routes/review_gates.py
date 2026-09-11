@@ -41,6 +41,7 @@ _VALID_STATUSES = {s.value for s in ReviewGateStatus}
 async def list_review_gates(
     workspace_id: uuid.UUID,
     status_filter: str | None = Query(default="awaiting", alias="status"),
+    limit: int | None = Query(default=None, ge=1, le=200),
     db: AsyncSession = Depends(get_current_session),
     _membership: WorkspaceMembership = Depends(require_workspace_member()),
 ) -> list[ReviewGateOut]:
@@ -52,7 +53,7 @@ async def list_review_gates(
             )
     filter_value = None if status_filter in (None, "all") else status_filter
     rows = await content_desk.list_review_gates(
-        db, workspace_id=workspace_id, status_filter=filter_value
+        db, workspace_id=workspace_id, status_filter=filter_value, limit=limit
     )
     return [ReviewGateOut.model_validate(row) for row in rows]
 

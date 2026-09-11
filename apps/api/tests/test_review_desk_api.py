@@ -674,3 +674,59 @@ async def test_concurrent_review_decisions_are_serialized(client, new_user):
     decided = approve if approve.status_code == 200 else reject
     assert decided.json()["status"] in {"approved", "rejected"}
     assert decided.json()["decided_at"] is not None
+
+
+@pytest.mark.asyncio
+async def test_list_review_gates_limit_bounds_result_and_keeps_newest_first(client, new_user):
+    """See issue #110: the review desk history fetch must be boundable so a
+    workspace with a large decided-gate history doesn't force every poll to
+    download it in full."""
+    _user_id, _token, headers = new_user
+    workspace_id = await _create_workspace(client, headers)
+
+    gate_ids: list[str] = []
+    for i in range(3):
+        created = await client.post(
+            f"/workspaces/{workspace_id}/content-jobs",
+            headers=headers,
+            json={
+                "topic": f"Bounded fetch {i}",
+                "script_body": "Body",
+                "idempotency_key": f"job-{i}",
+            },
+        )
+        assert created.status_code == 201, created.text
+        gate_id = created.json()["review_gate_id"]
+        version_id = await _current_version_id(
+            client, workspace_id=workspace_id, gate_id=gate_id, headers=headers
+        )
+        decided = await client.post(
+            f"/workspaces/{workspace_id}/review-gates/{gate_id}/decision",
+            headers=headers,
+            json={"approved": True, "expected_content_version_id": version_id},
+        )
+        assert decided.status_code == 200, decided.text
+        gate_ids.append(gate_id)
+
+    unbounded = await client.get(
+        f"/workspaces/{workspace_id}/review-gates?status=approved",
+        headers=headers,
+    )
+    assert unbounded.status_code == 200
+    assert len(unbounded.json()) == 3
+
+    bounded = await client.get(
+        f"/workspaces/{workspace_id}/review-gates?status=approved&limit=2",
+        headers=headers,
+    )
+    assert bounded.status_code == 200
+    bounded_gates = bounded.json()
+    assert len(bounded_gates) == 2
+    # order_by requested_at desc: the two most recently requested gates win.
+    assert [g["id"] for g in bounded_gates] == list(reversed(gate_ids))[:2]
+
+    invalid = await client.get(
+        f"/workspaces/{workspace_id}/review-gates?status=approved&limit=0",
+        headers=headers,
+    )
+    assert invalid.status_code == 422

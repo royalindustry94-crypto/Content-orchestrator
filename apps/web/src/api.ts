@@ -791,8 +791,12 @@ export function listReviewGates(
   token: string,
   workspaceId: string,
   status = "awaiting",
+  options: { limit?: number } = {},
 ): Promise<ReviewGate[]> {
-  const query = status ? `?status=${encodeURIComponent(status)}` : "";
+  const params = new URLSearchParams();
+  if (status) params.set("status", status);
+  if (options.limit) params.set("limit", String(options.limit));
+  const query = params.toString() ? `?${params.toString()}` : "";
   return apiFetch<ReviewGate[]>(
     `/workspaces/${workspaceId}/review-gates${query}`,
     token,

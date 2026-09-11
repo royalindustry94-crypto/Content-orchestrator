@@ -335,6 +335,7 @@ async def list_review_gates(
     *,
     workspace_id: uuid.UUID,
     status_filter: str | None = None,
+    limit: int | None = None,
 ) -> list[dict]:
     stmt = (
         select(ReviewGate, PipelineRun, ContentItem, ContentVersion)
@@ -346,6 +347,8 @@ async def list_review_gates(
     )
     if status_filter is not None:
         stmt = stmt.where(ReviewGate.status == ReviewGateStatus(status_filter))
+    if limit is not None:
+        stmt = stmt.limit(limit)
     rows = (await session.execute(stmt)).all()
     out: list[dict] = []
     for gate, run, item, version in rows:

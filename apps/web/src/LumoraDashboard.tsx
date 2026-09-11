@@ -1930,7 +1930,13 @@ export default function LumoraDashboard({
         else if (missionTab === "logs") next = await getLiveLogs(token, workspaceId);
         else if (missionTab === "content") next = await getContentCommand(token, workspaceId);
         else next = null;
-      } else if (nav === "review") next = await listReviewGates(token, workspaceId, "all");
+      } else if (nav === "review") {
+        const [awaitingGates, approvedGates] = await Promise.all([
+          listReviewGates(token, workspaceId, "awaiting"),
+          listReviewGates(token, workspaceId, "approved", { limit: 50 }),
+        ]);
+        next = [...awaitingGates, ...approvedGates];
+      }
       else if (nav === "pipelines") next = await getPipelineMonitor(token, workspaceId);
       else if (nav === "workers") {
         const [monitor, timeline] = await Promise.all([
