@@ -31,13 +31,13 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
 docker compose up -d postgres
 
 cd apps/api
-pip install -e ".[dev]"
+pip install -e ".[dev]" -c constraints-prod.txt
 alembic upgrade head
 uvicorn app.main:app --reload --port 8000
 
 # separate terminal
 cd apps/worker
-pip install -e ".[dev]"
+pip install -e ".[dev]" -c constraints-prod.txt
 python -m worker.main
 
 # separate terminal

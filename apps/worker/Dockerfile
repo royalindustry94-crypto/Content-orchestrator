@@ -12,10 +12,11 @@ RUN groupadd --system --gid 1000 app \
     && useradd --system --uid 1000 --gid app --home /app --shell /usr/sbin/nologin app
 
 COPY pyproject.toml ./
+COPY constraints-prod.txt ./
 COPY worker ./worker
 
 RUN pip install --upgrade pip \
-    && pip install . \
+    && pip install -c constraints-prod.txt . \
     && chown -R app:app /app
 
 USER app

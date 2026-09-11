@@ -12,13 +12,14 @@ RUN groupadd --system --gid 1000 app \
     && useradd --system --uid 1000 --gid app --home /app --shell /usr/sbin/nologin app
 
 COPY pyproject.toml ./
+COPY constraints-prod.txt ./
 COPY app ./app
 COPY alembic ./alembic
 COPY alembic.ini ./
 COPY docker-entrypoint.sh ./docker-entrypoint.sh
 
 RUN pip install --upgrade pip \
-    && pip install . \
+    && pip install -c constraints-prod.txt . \
     && chmod +x /app/docker-entrypoint.sh \
     && chown -R app:app /app
 
