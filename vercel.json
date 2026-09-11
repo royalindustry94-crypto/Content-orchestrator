@@ -2,5 +2,11 @@
   "framework": "vite",
   "installCommand": "cd apps/web && npm ci",
   "buildCommand": "cd apps/web && npm run build",
-  "outputDirectory": "apps/web/dist"
+  "outputDirectory": "apps/web/dist",
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://content-orchestrator-api.vercel.app/:path*"
+    }
+  ]
 }
