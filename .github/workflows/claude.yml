@@ -158,5 +158,6 @@ jobs:
             exact pushed head SHA, changed files, tests/run URLs, migrations,
             risks, blockers, and remaining work. Every new commit returns the PR
             to Codex audit hold. Do not continue until a new exact-SHA Codex
-            authorization is present.
+            authorization is present. Every Claude-owned PR title must begin
+            with [Claude] so the event-driven Codex auditor can identify it.
           claude_args: "--max-turns 20"

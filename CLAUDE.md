@@ -16,6 +16,8 @@ for `CLAIM`, `HEARTBEAT`, `HANDOFF`, and baseline audit records.
 - At the end of every invocation, stop and post a `HANDOFF` with the issue/PR,
   branch, exact head SHA, files changed, tests/run URLs, migrations, risks,
   blockers, and remaining work.
+- Every Claude-owned pull request title must begin with `[Claude]` so the
+  event-driven Codex auditor can identify and inspect it automatically.
 - Do not start a new task unless the current `main` SHA has a matching
   `CODEX_BASELINE: PASS` on coordination issue #90.
 - Do not continue feature work on a PR unless a trusted Codex comment records
