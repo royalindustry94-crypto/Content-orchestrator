@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from sqlalchemy import (
     Boolean,
@@ -194,7 +195,7 @@ class OpportunityEvidence(Base, WorkspaceScopedMixin, CreatedAtMixin):
         nullable=False,
     )
     claim_supported: Mapped[str] = mapped_column(Text, nullable=False)
-    relevance: Mapped[float] = mapped_column(Numeric(5, 4), nullable=False, default=0)
+    relevance: Mapped[Decimal] = mapped_column(Numeric(5, 4), nullable=False, default=0)
     contradiction_flag: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
 

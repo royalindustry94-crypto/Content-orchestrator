@@ -12,8 +12,9 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import cast
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import CursorResult, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
@@ -840,7 +841,7 @@ async def emergency_stop(
             )
             .values(status=WorkerCredentialStatus.REVOKED)
         )
-        revoked += result.rowcount or 0
+        revoked += cast(CursorResult, result).rowcount or 0
         await reap_worker_assignments(session, worker.id, reason=RecoveryReason.WORKER_REVOKED)
         worker.status = WorkerStatus.OFFLINE
         worker.current_load = 0

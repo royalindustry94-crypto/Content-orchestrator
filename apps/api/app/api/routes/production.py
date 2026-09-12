@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import audit
 from app.core.authorization import require_workspace_admin
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
-from app.models.production import FinalArtifact, MediaQaResult, ProductionReadiness
+from app.models.production import FinalArtifact, MediaQaResult, ProductionJob, ProductionReadiness
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.production import (
     FinalArtifactOut,
@@ -39,7 +39,7 @@ async def create_run(
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_current_session),
-) -> ProductionRunOut:
+) -> ProductionJob:
     del membership
     try:
         result = await production.create_production_run(
@@ -89,7 +89,7 @@ async def runs(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     db: AsyncSession = Depends(get_current_session),
-) -> list[ProductionRunOut]:
+) -> list[ProductionJob]:
     del membership
     return await production.list_jobs(db, workspace_id=workspace_id)
 
@@ -147,9 +147,9 @@ async def artifact_qa(
     artifact_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     db: AsyncSession = Depends(get_current_session),
-) -> list[MediaQaOut]:
+) -> list[MediaQaResult]:
     del membership
-    return (
+    return list(
         (
             await db.execute(
                 select(MediaQaResult)

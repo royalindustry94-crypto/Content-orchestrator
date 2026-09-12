@@ -82,7 +82,41 @@ async def _bring_online(client, provisioned, *, current_load=0, status="online",
     return wh
 
 
-async def _seed_assignment(workspace_id, *, stage=STAGE, created_at=None) -> uuid.UUID:
+async def _make_worker_global(worker_id: str) -> None:
+    async with AsyncSessionLocal() as session:
+        await session.execute(
+            text("UPDATE worker_registry SET workspace_id = NULL WHERE id = :worker_id"),
+            {"worker_id": worker_id},
+        )
+        await session.commit()
+
+
+async def _retire_other_pending_assignments(*keep_ids: uuid.UUID) -> None:
+    async with AsyncSessionLocal() as session:
+        params: dict[str, object] = {}
+        where = ""
+        if keep_ids:
+            params["keep_ids"] = list(keep_ids)
+            where = " AND id != ALL(CAST(:keep_ids AS uuid[]))"
+        await session.execute(
+            text(
+                "UPDATE stage_assignments SET status = 'failed'::stage_assignment_status "
+                "WHERE status = 'pending'::stage_assignment_status" + where
+            ),
+            params,
+        )
+        await session.commit()
+
+
+async def _seed_assignment(
+    workspace_id,
+    *,
+    stage=STAGE,
+    created_at=None,
+    priority=0,
+    provider=None,
+    status=StageAssignmentStatus.PENDING,
+) -> uuid.UUID:
     """Create a PENDING stage_assignment (+ backing content_item/run)."""
     async with AsyncSessionLocal() as session:
         item_id = str(uuid.uuid4())
@@ -105,9 +139,11 @@ async def _seed_assignment(workspace_id, *, stage=STAGE, created_at=None) -> uui
             pipeline_run_id=run.id,
             stage=stage,
             attempt_number=1,
-            status=StageAssignmentStatus.PENDING,
+            status=status,
             idempotency_key=f"{run.id}:{stage}:1",
             correlation_id=uuid.uuid4(),
+            priority=priority,
+            provider=provider,
         )
         if created_at is not None:
             a.created_at = created_at
@@ -178,6 +214,49 @@ async def test_workspace_mismatch(ctx):
     await _seed_assignment(other_ws)
     r = await ctx["client"].post("/workers/claim", headers=wh, json={})
     assert r.json()["outcome"] == "no_work"
+
+
+@pytest.mark.asyncio
+async def test_global_worker_can_claim_other_workspace_and_ack(ctx):
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"], max_concurrency=2)
+    wh = await _bring_online(ctx["client"], prov, max_concurrency=2)
+    await _make_worker_global(prov["worker_id"])
+
+    other = await _make_user()
+    other_ws = await _make_workspace(ctx["client"], other["headers"])
+    assignment_id = await _seed_assignment(other_ws)
+    await _retire_other_pending_assignments(assignment_id)
+    token = str(uuid.uuid4())
+
+    first = await ctx["client"].post("/workers/claim", headers=wh, json={"claim_token": token})
+    assert first.status_code == 200, first.text
+    assert first.json()["outcome"] == "granted"
+    assert first.json()["assignment"]["id"] == str(assignment_id)
+    assert first.json()["assignment"]["workspace_id"] == other_ws
+
+    replay = await ctx["client"].post("/workers/claim", headers=wh, json={"claim_token": token})
+    assert replay.status_code == 200, replay.text
+    assert replay.json()["outcome"] == "granted"
+    assert replay.json()["assignment"]["id"] == str(assignment_id)
+
+    ack = await ctx["client"].post(f"/workers/assignments/{assignment_id}/ack", headers=wh)
+    assert ack.status_code == 200, ack.text
+
+    async with AsyncSessionLocal() as s:
+        rows = (
+            (
+                await s.execute(
+                    select(StageClaimAudit).where(
+                        StageClaimAudit.worker_id == uuid.UUID(prov["worker_id"]),
+                        StageClaimAudit.outcome == ClaimOutcome.GRANTED,
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(rows) == 2
+        assert {str(row.workspace_id) for row in rows} == {other_ws}
 
 
 @pytest.mark.asyncio
@@ -480,6 +559,22 @@ async def test_service_offline_and_stale_and_capacity_and_nowork(ctx):
 
 
 @pytest.mark.asyncio
+async def test_service_global_worker_no_work_without_request_workspace(ctx):
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"], max_concurrency=1)
+    await _bring_online(ctx["client"], prov, max_concurrency=1)
+    await _make_worker_global(prov["worker_id"])
+    wid = uuid.UUID(prov["worker_id"])
+    await _retire_other_pending_assignments()
+
+    async with AsyncSessionLocal() as s:
+        result = await claiming.claim_assignment(s, worker_id=wid)
+        await s.commit()
+
+    assert result.outcome == ClaimOutcome.NO_WORK
+    assert result.assignment is None
+
+
+@pytest.mark.asyncio
 async def test_service_granted_then_idempotent_replay(ctx):
     prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"], max_concurrency=3)
     await _bring_online(ctx["client"], prov, max_concurrency=3)
@@ -497,6 +592,90 @@ async def test_service_granted_then_idempotent_replay(ctx):
     async with AsyncSessionLocal() as s:
         w = await s.get(WorkerRegistration, wid)
         assert w.current_load == 1
+
+
+@pytest.mark.asyncio
+async def test_service_global_worker_skips_budget_blocked_workspace_and_claims_other_workspace(ctx):
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"], max_concurrency=2)
+    await _bring_online(ctx["client"], prov, max_concurrency=2)
+    await _make_worker_global(prov["worker_id"])
+    wid = uuid.UUID(prov["worker_id"])
+
+    other = await _make_user()
+    other_ws = await _make_workspace(ctx["client"], other["headers"])
+    await ctx["client"].put(
+        f"/workspaces/{ctx['ws']}/provider-budgets/openai",
+        headers=ctx["headers"],
+        json={"max_concurrent": 1},
+    )
+    await _seed_assignment(ctx["ws"], provider="openai", status=StageAssignmentStatus.DISPATCHED)
+    blocked = await _seed_assignment(
+        ctx["ws"], provider="openai", priority=50, created_at=datetime.now(UTC)
+    )
+    expected = await _seed_assignment(
+        other_ws,
+        provider="openai",
+        priority=1,
+        created_at=datetime.now(UTC) + timedelta(seconds=1),
+    )
+    await _retire_other_pending_assignments(blocked, expected)
+
+    async with AsyncSessionLocal() as s:
+        result = await claiming.claim_assignment(s, worker_id=wid)
+        await s.commit()
+
+    assert result.outcome == ClaimOutcome.GRANTED
+    assert result.assignment is not None
+    assert result.assignment.id == expected
+    assert str(result.assignment.workspace_id) == other_ws
+    async with AsyncSessionLocal() as s:
+        assert (await s.get(StageAssignment, blocked)).status == StageAssignmentStatus.PENDING
+
+
+@pytest.mark.asyncio
+async def test_service_global_worker_spend_cap_stays_scoped_to_assignment_workspace(ctx):
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"], max_concurrency=2)
+    await _bring_online(ctx["client"], prov, max_concurrency=2)
+    await _make_worker_global(prov["worker_id"])
+    wid = uuid.UUID(prov["worker_id"])
+
+    other = await _make_user()
+    other_ws = await _make_workspace(ctx["client"], other["headers"])
+    blocked = await _seed_assignment(ctx["ws"], priority=1)
+    expected = await _seed_assignment(other_ws, priority=50)
+    await _retire_other_pending_assignments(blocked, expected)
+    async with AsyncSessionLocal() as s:
+        await s.execute(
+            text(
+                "UPDATE spend_caps SET daily_cap_usd = 0, monthly_cap_usd = 0 "
+                "WHERE workspace_id = :ws"
+            ),
+            {"ws": ctx["ws"]},
+        )
+        await s.commit()
+
+    async with AsyncSessionLocal() as s:
+        first = await claiming.claim_assignment(s, worker_id=wid)
+        await s.commit()
+    assert first.outcome == ClaimOutcome.GRANTED
+    assert first.assignment is not None
+    assert first.assignment.id == expected
+    assert str(first.assignment.workspace_id) == other_ws
+
+    async with AsyncSessionLocal() as s:
+        worker = await s.get(WorkerRegistration, wid)
+        worker.current_load = 0
+        worker.status = WorkerStatus.ONLINE
+        await s.commit()
+
+    async with AsyncSessionLocal() as s:
+        second = await claiming.claim_assignment(s, worker_id=wid)
+        await s.commit()
+    assert second.outcome == ClaimOutcome.CAPACITY
+    assert second.assignment is None
+    assert second.reason == "workspace spend cap reached"
+    async with AsyncSessionLocal() as s:
+        assert (await s.get(StageAssignment, blocked)).status == StageAssignmentStatus.PENDING
 
 
 @pytest.mark.asyncio

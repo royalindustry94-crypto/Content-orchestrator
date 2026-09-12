@@ -148,24 +148,41 @@ async def create_checkout_session(
 ) -> CheckoutResult:
     settings = get_settings()
     _configure_stripe(settings)
+    # _configure_stripe() -> _require_billing_config() already raised BillingError
+    # if any of these were unset; the asserts just carry that guarantee through
+    # to the type checker.
+    assert settings.stripe_price_id_pro is not None
+    assert settings.stripe_checkout_success_url is not None
+    assert settings.stripe_checkout_cancel_url is not None
     billing = await ensure_workspace_billing(session, workspace_id=workspace_id)
 
     if is_entitled(billing, billing_enabled=True):
         raise BillingError("already_entitled", "workspace already has an active Pro plan")
 
     if not billing.stripe_customer_id:
+        # Deterministic per-workspace key: a retry after a network-level
+        # ambiguous failure (e.g. the request succeeded but the response was
+        # lost) reuses the same Stripe Customer instead of orphaning a
+        # duplicate. Safe to reuse across genuinely distinct attempts too,
+        # since a workspace only ever wants one Customer object.
+        idempotency_key = f"workspace-customer-{workspace_id}"
+        metadata = {"workspace_id": str(workspace_id)}
         try:
-            customer = stripe.Customer.create(
-                email=customer_email,
-                metadata={"workspace_id": str(workspace_id)},
-                # Deterministic per-workspace key: a retry after a network-level
-                # ambiguous failure (e.g. the request succeeded but the response
-                # was lost) reuses the same Stripe Customer instead of orphaning
-                # a duplicate. Safe to reuse across genuinely distinct attempts
-                # too, since a workspace only ever wants one Customer object.
-                idempotency_key=f"workspace-customer-{workspace_id}",
-            )
-        except stripe.error.StripeError as exc:
+            # Stripe's Customer object treats a missing email as unset, not an
+            # error — omit the keyword entirely rather than send an explicit
+            # null when the caller (JWT with no email claim) has none.
+            if customer_email:
+                customer = stripe.Customer.create(
+                    email=customer_email,
+                    metadata=metadata,
+                    idempotency_key=idempotency_key,
+                )
+            else:
+                customer = stripe.Customer.create(
+                    metadata=metadata,
+                    idempotency_key=idempotency_key,
+                )
+        except stripe.StripeError as exc:
             raise BillingError(
                 "stripe_unavailable", f"Stripe customer creation failed: {exc}"
             ) from exc
@@ -183,7 +200,7 @@ async def create_checkout_session(
             metadata={"workspace_id": str(workspace_id)},
             subscription_data={"metadata": {"workspace_id": str(workspace_id)}},
         )
-    except stripe.error.StripeError as exc:
+    except stripe.StripeError as exc:
         raise BillingError(
             "stripe_unavailable", f"Stripe checkout session creation failed: {exc}"
         ) from exc
@@ -245,9 +262,9 @@ async def _latest_applied_event_created(
         .all()
     )
     created_values = [
-        row.get("created")
+        created
         for row in rows
-        if isinstance(row, dict) and isinstance(row.get("created"), int)
+        if isinstance(row, dict) and isinstance((created := row.get("created")), int)
     ]
     return max(created_values) if created_values else None
 
@@ -473,7 +490,11 @@ async def process_stripe_event(session: AsyncSession, *, event: dict) -> dict:
                                 workspace_id=workspace_id,
                                 exclude_event_id=event_id,
                             )
-                        if latest is not None and raw_created < latest:
+                        if (
+                            isinstance(raw_created, int)
+                            and latest is not None
+                            and raw_created < latest
+                        ):
                             logger.info(
                                 "stripe_webhook_stale_payment_failure_skipped",
                                 extra={
