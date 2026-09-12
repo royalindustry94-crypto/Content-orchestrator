@@ -49,6 +49,8 @@ jobs:
         run: ruff check .
       - name: Format check
         run: ruff format --check .
+      - name: Type check
+        run: mypy app/
       - name: Test with coverage gate
         run: pytest --cov=app --cov-fail-under=79
 

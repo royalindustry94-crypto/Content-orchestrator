@@ -28,8 +28,9 @@ from __future__ import annotations
 import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from typing import cast
 
-from sqlalchemy import text
+from sqlalchemy import CursorResult, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 # Tables that may never appear in a customer export bundle: they hold
@@ -363,7 +364,7 @@ async def delete_workspace_content(
             ),
             {"ws": str(workspace_id)},
         )
-        soft_deleted[table] = int(result.rowcount or 0)
+        soft_deleted[table] = int(cast(CursorResult, result).rowcount or 0)
 
     for table in HARD_DELETABLE_TABLES:
         if table not in present:
@@ -374,7 +375,7 @@ async def delete_workspace_content(
             text(f"DELETE FROM {table} WHERE workspace_id = :ws"),  # noqa: S608
             {"ws": str(workspace_id)},
         )
-        hard_deleted[table] = int(result.rowcount or 0)
+        hard_deleted[table] = int(cast(CursorResult, result).rowcount or 0)
 
     return DeletionOutcome(
         workspace_id=workspace_id,

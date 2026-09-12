@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import audit
 from app.core.authorization import require_workspace_admin
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
+from app.models.compliance import ComplianceAudit
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.compliance import (
     ArtifactPublicationEligibilityResponse,
@@ -24,7 +25,7 @@ router = APIRouter(
 )
 
 
-def _audit(row: object) -> ComplianceAuditResponse:
+def _audit(row: ComplianceAudit) -> ComplianceAuditResponse:
     return ComplianceAuditResponse(
         id=row.id,
         final_artifact_id=row.final_artifact_id,

@@ -438,16 +438,16 @@ async def audit_brief(
     if not source_ids:
         blocked.append("No source opportunities are linked to this Strategy Brief.")
     for opportunity_id in source_ids:
-        audit = await research.latest_audit(
+        opportunity_audit = await research.latest_audit(
             session, workspace_id=workspace_id, opportunity_id=opportunity_id
         )
-        if audit is None or audit.state != "pass":
+        if opportunity_audit is None or opportunity_audit.state != "pass":
             blocked.append("Research Auditor PASS is required for every source opportunity.")
             break
         findings.append(
             {
                 "opportunity_id": str(opportunity_id),
-                "research_audit_state": audit.state,
+                "research_audit_state": opportunity_audit.state,
                 "evidence_traceability": "pass",
             }
         )
@@ -587,8 +587,9 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
     ).scalar_one()
     cost = sum((Decimal(str(run.actual_cost_usd)) for run in runs), Decimal("0"))
     business_context_state = await get_business_context_state(session, workspace_id=workspace_id)
-    if current or last:
-        last_error = (current or last).last_error
+    current_or_last = current or last
+    if current_or_last:
+        last_error = current_or_last.last_error
     else:
         last_error = "STRATEGY PROVIDER NOT CONFIGURED"
         if business_context_state != "complete":

@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 from sqlalchemy import Integer, cast, func
+from sqlalchemy.orm import InstrumentedAttribute
 from sqlalchemy.sql import ColumnElement
 
 from app.core.config import get_settings
@@ -53,11 +54,11 @@ def base_priority_for_tier(priority_tier: int) -> int:
 
 
 def effective_priority_expr(
-    priority_col: ColumnElement,
-    created_at_col: ColumnElement,
+    priority_col: ColumnElement | InstrumentedAttribute,
+    created_at_col: ColumnElement | InstrumentedAttribute,
     *,
     now: datetime | None = None,
-) -> ColumnElement:
+) -> ColumnElement | InstrumentedAttribute:
     """SQLAlchemy expression for ORDER BY effective priority DESC.
 
     ``now`` is injectable for clock-controlled tests; production callers

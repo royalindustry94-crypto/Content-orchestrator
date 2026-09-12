@@ -258,7 +258,7 @@ async def opportunity_evidence(
         )
         .order_by(ResearchSource.retrieved_at.desc())
     )
-    return list(result.all())
+    return list(result.tuples().all())
 
 
 async def latest_audit(
@@ -299,6 +299,7 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
         )
     ).scalar_one_or_none()
     cost = sum((Decimal(str(run.actual_cost_usd)) for run in runs), Decimal("0"))
+    current_or_last = current or last
     return {
         "provider_state": "not_configured",
         "status": current.status if current else (last.status if last else "not_run"),
@@ -309,8 +310,8 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict[str
         "audited_opportunities": int(counts[1] or 0),
         "blocked_findings": int(counts[2] or 0),
         "cost_today_usd": cost,
-        "last_error": (current or last).last_error
-        if (current or last)
+        "last_error": current_or_last.last_error
+        if current_or_last
         else "RESEARCH PROVIDER NOT CONFIGURED",
         "schedule_enabled": bool(schedule.enabled) if schedule else False,
         "research_data_state": "not_connected",

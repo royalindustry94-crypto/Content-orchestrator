@@ -193,7 +193,7 @@ async def summary(session: AsyncSession, *, workspace_id: uuid.UUID) -> dict:
 
 
 async def list_audits(session: AsyncSession, *, workspace_id: uuid.UUID) -> list[ComplianceAudit]:
-    return (
+    return list(
         (
             await session.execute(
                 select(ComplianceAudit)
@@ -207,7 +207,7 @@ async def list_audits(session: AsyncSession, *, workspace_id: uuid.UUID) -> list
 
 
 async def list_chief_audits(session: AsyncSession, *, workspace_id: uuid.UUID) -> list[ChiefAudit]:
-    return (
+    return list(
         (
             await session.execute(
                 select(ChiefAudit)
@@ -223,7 +223,7 @@ async def list_chief_audits(session: AsyncSession, *, workspace_id: uuid.UUID) -
 async def list_review_packages(
     session: AsyncSession, *, workspace_id: uuid.UUID
 ) -> list[HumanReviewPackage]:
-    return (
+    return list(
         (
             await session.execute(
                 select(HumanReviewPackage)

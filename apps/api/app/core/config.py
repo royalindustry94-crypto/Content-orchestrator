@@ -9,9 +9,16 @@ failure" rule in the project instructions.
 from __future__ import annotations
 
 from functools import lru_cache
+from typing import TypedDict
 
 from pydantic import Field, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class OpenAPIRouteKwargs(TypedDict):
+    docs_url: str | None
+    redoc_url: str | None
+    openapi_url: str | None
 
 
 class Settings(BaseSettings):
@@ -190,7 +197,7 @@ class Settings(BaseSettings):
         return self
 
 
-def openapi_route_kwargs(environment: str) -> dict[str, str | None]:
+def openapi_route_kwargs(environment: str) -> OpenAPIRouteKwargs:
     """FastAPI docs URL kwargs — disabled outside development (P-005)."""
     enabled = environment.strip().lower() in {"development", "dev"}
     if enabled:

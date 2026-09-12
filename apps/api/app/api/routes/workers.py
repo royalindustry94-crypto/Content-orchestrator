@@ -722,6 +722,8 @@ async def set_worker_drain(
     await _get_workspace_worker(db, workspace_id, worker_id)  # 404 + RLS check first
     async with AsyncSessionLocal() as session:
         registration = await session.get(WorkerRegistration, worker_id, with_for_update=True)
+        if registration is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="worker not found")
         registration.drain = payload.drain
         await session.commit()
         await session.refresh(registration)

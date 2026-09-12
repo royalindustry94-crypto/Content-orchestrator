@@ -633,7 +633,7 @@ async def assistant_answer(
             f"month-to-date is ${spend.month_usd}."
         )
     elif "review" in lowered or "blocked" in lowered:
-        rows = (
+        review_rows = (
             await session.execute(
                 select(ReviewGate, ContentItem.topic)
                 .join(PipelineRun, PipelineRun.id == ReviewGate.pipeline_run_id)
@@ -652,11 +652,11 @@ async def assistant_answer(
                 "topic": topic,
                 "requested_at": gate.requested_at.isoformat(),
             }
-            for gate, topic in rows
+            for gate, topic in review_rows
         ]
-        answer = f"{len(rows)} review gate(s) are waiting for a human decision."
+        answer = f"{len(review_rows)} review gate(s) are waiting for a human decision."
     elif "failed pipeline" in lowered or ("pipeline" in lowered and "fail" in lowered):
-        rows = (
+        pipeline_rows = (
             await session.execute(
                 select(PipelineRun, ContentItem.topic)
                 .join(ContentItem, ContentItem.id == PipelineRun.content_item_id)
@@ -676,9 +676,9 @@ async def assistant_answer(
                 "stage": _value(run.current_stage),
                 "updated_at": run.updated_at.isoformat(),
             }
-            for run, topic in rows
+            for run, topic in pipeline_rows
         ]
-        answer = f"{len(rows)} failed pipeline(s) are currently recorded."
+        answer = f"{len(pipeline_rows)} failed pipeline(s) are currently recorded."
     elif "idle" in lowered and "worker" in lowered:
         timelines = await operations_mission.worker_timeline(session, workspace_id)
         token = re.search(r"worker\s+([a-zA-Z0-9_-]+)", lowered, flags=re.IGNORECASE)

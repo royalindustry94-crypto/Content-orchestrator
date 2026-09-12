@@ -235,8 +235,12 @@ async def claim_assignment(
         if row is None:
             await session.execute(sa_text("RELEASE SAVEPOINT claim_candidate"))
             break
+        # Scope the budget check to the candidate assignment's own workspace
+        # (always set — StageAssignment is workspace-scoped) rather than the
+        # worker's, since worker_registry.workspace_id is a nullable pin
+        # (None for a worker serving all workspaces), not a guarantee.
         if not await has_provider_capacity(
-            session, workspace_id=worker.workspace_id, provider=row.provider
+            session, workspace_id=row.workspace_id, provider=row.provider
         ):
             saw_provider_budget_block = True
             skipped_ids.append(row.id)
