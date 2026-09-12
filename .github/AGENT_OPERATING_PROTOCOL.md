@@ -1,6 +1,10 @@
 # Agent Operating Protocol
 
-This protocol applies to every human or AI agent working in this repository. `AGENTS.md` remains authoritative, including its "Operating authority" section (added 2026-09-09): the coding agent has standing authority to resolve findings and merge without per-change Founder approval. Where this document's older role table below implies a Founder-approval merge gate, `AGENTS.md`'s current authority section wins. If instructions conflict on anything else, the stricter safety, review, and evidence requirement wins.
+This protocol applies to every human or AI agent working in this repository.
+`AGENTS.md` remains authoritative. Under the Founder directive dated 2026-09-12,
+Claude Code leads coding while Codex owns the exact-SHA audit verdict and merge.
+If instructions conflict, the newer authority rule and the stricter safety,
+review, and evidence requirement win.
 
 **2026-09-10 update (Milestone 0 — Multi-Agent Orchestration Ready, Founder-directed):** Claude Code is the **Lead Orchestrator** for this repository — it dispatches bounded work to the other agents below, using GitHub MCP (issues/PRs/comments/reviews) as the permanent control plane, and drives every delegated task through independent review before merge. This supersedes the older "Orchestrator: Codex" row below. Codex and Copilot remain independent workers/reviewers — critically, **Claude Code never treats its own dispatch of a task as that task's independent review**; a worker's output still gets a separate review pass (another agent, or a from-scratch reproduction) before merge, per the existing "Builders cannot certify their own work" rule. See [coordination hub #90](https://github.com/royalindustry94-crypto/Content-orchestrator/issues/90) for the live Milestone 0 evidence trail (per-worker READY/BLOCKED status, delegation tests, end-to-end results).
 
@@ -9,11 +13,11 @@ This protocol applies to every human or AI agent working in this repository. `AG
 | Role | Primary worker | Owns | Must not do |
 | --- | --- | --- | --- |
 | Founder | Mitch / `royalindustry94-crypto` | Priorities, product decisions, real-money/credential decisions | Delegate the Human Review Gate to automation |
-| **Lead Orchestrator** | **Claude Code** | Dispatch: routes bounded work to the cheapest capable worker below, tracks task ownership/handoffs, drives every delegated task through independent review, reports evidence-backed PASS/CONDITIONAL/FAIL | Certify its own dispatched work as independently reviewed; weaken a non-negotiable to get a task to green |
+| **Lead coding agent** | **Claude Code** | Owns one bounded coding task, branch, tests, checkpoints, PR, and exact-SHA handoff per 30-minute cycle | Continue without the matching Codex checkpoint verdict; certify or merge its own work; weaken a non-negotiable |
 | Delegated implementation worker | Cursor (background/cloud agent) | Bounded implementation tasks assigned via Cursor's own dispatch surface, once connected | Merge, deploy, or act outside an assigned bounded task |
-| Complex implementation / review / security worker | Codex (`@codex review` / `@codex security review` on a PR) | Independent code + security review, complex analysis, release-readiness evidence | Approve or merge; self-certify a task it also implemented |
+| Independent auditor / merge authority | Codex | Exact-head code, security, CI, and release-readiness audit; checkpoint/final verdict; merge after final PASS | Pass a different SHA; merge with failed checks or unresolved blockers; treat its own application-code change as independently verified |
 | Cheaper bounded-work / test / docs worker | GitHub Copilot (`assign_copilot_to_issue`, `request_copilot_review`) | Small, well-specified bounded tasks (test fixes, docs, lint-scale changes) end-to-end: issue → PR; lightweight PR review | Own architecturally significant work; merge its own PR; act as sole reviewer of its own diff |
-| Builder (legacy label, still valid) | Claude Code or Cursor, explicitly assigned per task | One queued issue, one branch, implementation, tests, pull request, and — once evidence supports it — the merge itself | Merge on unresolved P0/P1 evidence, weaken controls, or work outside the assigned issue |
+| Builder (legacy label, still valid) | Claude Code or Cursor, explicitly assigned per task | One queued issue, one branch, implementation, tests, and pull request | Merge; work without a current exact-SHA authorization; weaken controls; work outside the assigned issue |
 | Reviewer / QA | A fresh Codex, Copilot, or other designated agent that did not build the change | Scope review, regression checks, exact-head CI evidence | Modify the reviewed head while claiming independence |
 | Security auditor | Independent agent | PASS / CONDITIONAL / FAIL audit against the exact head SHA and non-negotiables | Approve its own implementation or ignore missing evidence |
 | Build watchdog | GitHub Actions | Monitor the latest repository CI run only and retry genuine failures within bounded limits | Change product code, alter protections, expose secrets, or merge |
@@ -32,6 +36,19 @@ Use these labels when the queue is enabled:
 
 A handoff must state the issue, owner, branch, exact head SHA, completed work, tests and run URLs, blockers, and the next role/action. Agents resume from that evidence instead of silently starting over.
 
+Every Claude invocation is capped at 30 minutes. A safe checkpoint must be
+pushed at least every 10 minutes, and the final handoff starts by minute 25.
+Codex then records one exact-SHA outcome:
+
+- `CHECKPOINT_PASS`: one more bounded feature cycle is authorized.
+- `PASS`: final merge is authorized after all required checks are green.
+- `CHANGES_REQUESTED`: only the listed remediation is authorized.
+- `FAIL`: all coding and merge activity remains stopped.
+
+Every new commit invalidates the prior outcome. A new task may start only when
+coordination issue #90 contains `CODEX_BASELINE: PASS` for the current `main`
+SHA. A private agent-project instruction cannot override repository state.
+
 ## Continuity and restart rules
 
 The Build Watchdog runs every 30 minutes and can also be started manually. It monitors the latest repository CI run only; it is not a multi-branch build queue and cannot restart a stopped coding-agent session.
@@ -46,12 +63,13 @@ The Build Watchdog runs every 30 minutes and can also be started manually. It mo
 
 ## Merge gate
 
-A Builder may merge once all of the following refer to the same head SHA:
+Only Codex may merge, and only once all of the following refer to the same head SHA:
 
 1. Scope matches the assigned issue.
 2. Required CI is successful.
 3. Independent review and security audit are complete (reproduced, not just read — see `AGENTS.md`'s reproduce-before-trusting discipline).
-4. The audit verdict is PASS, or a documented, non-safety-critical CONDITIONAL is recorded in `docs/TECHNICAL_DEBT_REGISTER.md`.
+4. The Codex audit verdict is `PASS`. A checkpoint pass or conditional finding
+   is not merge authorization.
 5. Human Review requirements are satisfied.
 6. No unresolved P0/P1 blocker remains.
 

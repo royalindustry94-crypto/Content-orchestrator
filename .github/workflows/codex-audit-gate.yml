@@ -1,0 +1,61 @@
+name: Codex Audit Gate
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+  issue_comment:
+    types: [created, edited]
+
+# This workflow never checks out or executes pull-request code. It only compares
+# a trusted, structured Codex verdict with the PR's current head SHA.
+permissions:
+  contents: read
+  issues: read
+  pull-requests: read
+  statuses: write
+
+jobs:
+  exact-head-gate:
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      github.event.issue.pull_request
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set exact-head Codex status
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const owner = context.repo.owner;
+            const pullNumber = context.payload.pull_request?.number || context.issue.number;
+            const {data: pr} = await github.rest.pulls.get({
+              owner,
+              repo: context.repo.repo,
+              pull_number: pullNumber,
+            });
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo: context.repo.repo,
+              issue_number: pullNumber,
+              per_page: 100,
+            });
+            const passed = comments.some((comment) => {
+              if (comment.user?.login !== owner) return false;
+              const body = comment.body || '';
+              return body.includes('<!-- codex-audit-gate:v1 -->') &&
+                body.includes('CODEX_AUDIT: PASS') &&
+                body.includes(`HEAD_SHA: ${pr.head.sha}`);
+            });
+            await github.rest.repos.createCommitStatus({
+              owner,
+              repo: context.repo.repo,
+              sha: pr.head.sha,
+              state: passed ? 'success' : 'failure',
+              context: 'Codex Audit Gate',
+              description: passed
+                ? 'Exact PR head passed independent Codex audit'
+                : 'Waiting for Codex PASS on this exact PR head',
+              target_url: `https://github.com/${owner}/${context.repo.repo}/pull/${pullNumber}`,
+            });
+            if (!passed) {
+              core.setFailed(`No Codex PASS for exact PR head ${pr.head.sha}`);
+            }
