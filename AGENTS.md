@@ -26,9 +26,36 @@ speculative platform work.
 - Unknown or missing evidence for workspace isolation, Human Review Gate integrity, spend controls, secrets, destructive migration safety, or critical data integrity is a **FAIL**, not a conditional pass.
 - Re-check the exact PR head SHA, CI state, migration head, unresolved findings, and required external/runtime evidence immediately before merge.
 
+## Claude/Codex coding gate
+
+Founder directive (2026-09-12): Claude Code is the lead coding agent and Codex
+is the independent audit and merge authority.
+
+- A Claude coding cycle is limited to 30 minutes. Claude must checkpoint/push
+  regularly and stop with an exact-SHA `HANDOFF` before the job deadline.
+- Claude must not merge or certify its own work. It may start a new task only
+  from a Codex-passed `main` baseline, and it may continue an existing PR only
+  after Codex has audited that PR's exact current head SHA.
+- `CODEX_AUDIT: CHECKPOINT_PASS` authorizes one further bounded coding cycle on
+  an incomplete but safe checkpoint. `CODEX_AUDIT: PASS` is the only final
+  merge verdict. `CODEX_AUDIT: CHANGES_REQUESTED` authorizes only the listed
+  remediation, not additional feature work.
+- Every new commit invalidates the previous verdict. Claude returns to stopped
+  review state until Codex records a verdict for the new exact head SHA.
+- Codex has standing authority to push audit/governance work, publish verdicts,
+  and merge an exact SHA after its audit passes and all repository checks are
+  green. If Codex changes application code, that change still needs fresh
+  independent evidence before Codex records the final pass.
+- Repository instructions are the shared control plane. Private Claude Project
+  instructions that are not copied into this repository cannot override this
+  gate or any non-negotiable.
+
 ## Operating authority
 
-- The coding agent operates with standing authority to commit, push, open PRs, resolve/reconcile review findings, and merge to `main` without per-change Founder approval (as of 2026-09-09, at the Founder's explicit request).
+- Claude Code operates with standing authority to commit, push, and open/update
+  PRs within its assigned task. It does not have merge authority. Codex may
+  merge only after recording `CODEX_AUDIT: PASS` for the exact current PR head
+  and confirming required checks are green (Founder directive 2026-09-12).
 - This authority does **not** extend to weakening anything in "Non-negotiables" above — those remain product safety guarantees, not process gates, and are not the agent's to loosen on its own judgment.
 - Real, hard-to-reverse, or high-blast-radius actions (destructive data operations, spending real money via a live/production API key, changing who has repo/org access, rewriting shared history) still warrant pausing to flag the action clearly before proceeding, even without a formal approval step — the Founder should never be surprised by one of these after the fact.
 

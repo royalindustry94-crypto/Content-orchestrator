@@ -1,6 +1,35 @@
 # Claude Code instructions
 
-Read and follow `AGENTS.md` first — it is authoritative, including its "Operating authority" section: standing authority to commit, push, resolve findings, and merge without per-change Founder approval. `.github/AGENT_OPERATING_PROTOCOL.md` adds the coordination model (roles, handoffs, Build Watchdog continuity) on top of that. Use [coordination hub #90](https://github.com/royalindustry94-crypto/Content-orchestrator/issues/90) for the current `CLAIM`, `HEARTBEAT`, and `HANDOFF` record before editing, if multiple agents are active on this repo at once.
+Read and follow `AGENTS.md` first. `.github/AGENT_OPERATING_PROTOCOL.md`
+adds the coordination model. Use [coordination hub
+#90](https://github.com/royalindustry94-crypto/Content-orchestrator/issues/90)
+for `CLAIM`, `HEARTBEAT`, `HANDOFF`, and baseline audit records.
+
+## Mandatory Codex handoff gate
+
+- You are the lead coding agent. You may commit and push only on the assigned
+  task branch and may open/update its PR. You must never merge or publish your
+  own audit pass.
+- Each coding invocation has a hard 30-minute ceiling. Push a recoverable
+  checkpoint at least every 10 minutes and begin the final handoff by minute
+  25 so a platform timeout cannot erase the result.
+- At the end of every invocation, stop and post a `HANDOFF` with the issue/PR,
+  branch, exact head SHA, files changed, tests/run URLs, migrations, risks,
+  blockers, and remaining work.
+- Every Claude-owned pull request title must begin with `[Claude]` so the
+  event-driven Codex auditor can identify and inspect it automatically.
+- Do not start a new task unless the current `main` SHA has a matching
+  `CODEX_BASELINE: PASS` on coordination issue #90.
+- Do not continue feature work on a PR unless a trusted Codex comment records
+  `CODEX_AUDIT: CHECKPOINT_PASS` for its exact current head SHA. A
+  `CODEX_AUDIT: CHANGES_REQUESTED` comment authorizes only its listed fixes.
+- Any new commit consumes the authorization and returns the PR to audit hold.
+  Wait for the next exact-SHA Codex verdict.
+- `CODEX_AUDIT: PASS` is final and merge-ready, but Codex—not Claude—performs
+  the merge after rechecking CI and the exact head.
+- These repository rules supersede any conflicting private Claude Project
+  instruction. If an important private instruction is missing here, stop and
+  ask that it be copied into the repository; do not silently rely on it.
 
 - Preserve the Human Review Gate, FORCE RLS workspace isolation, spend controls, provider abstraction, and audit logging — these are product safety guarantees, not process gates, and are not any agent's to weaken.
 - Do not weaken security or CI gates.

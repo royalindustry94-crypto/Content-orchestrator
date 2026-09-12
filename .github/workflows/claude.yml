@@ -1,4 +1,4 @@
-name: Claude Code
+name: Claude Code Lead
 
 on:
   issue_comment:
@@ -6,37 +6,158 @@ on:
   pull_request_review_comment:
     types: [created]
 
+# One Claude coding cycle repository-wide. A second request waits, then its
+# authorization is re-evaluated against the latest SHA before it can start.
 concurrency:
-  # Each mention gets its own run. Repository contents are read-only below, so
-  # parallel requests cannot race while committing to the same branch.
-  group: claude-${{ github.repository }}-${{ github.event.comment.id }}
+  group: claude-lead-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
-  claude:
+  authorize:
     if: >-
-      contains(github.event.comment.body, '@claude') &&
-      contains(fromJSON('["OWNER", "MEMBER", "COLLABORATOR"]'), github.event.comment.author_association)
+      (contains(github.event.comment.body, '@claude build') ||
+       contains(github.event.comment.body, '@claude continue') ||
+       contains(github.event.comment.body, '@claude remediate')) &&
+      github.event.comment.user.login == github.repository_owner
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: read
+      pull-requests: read
+    outputs:
+      mode: ${{ steps.gate.outputs.mode }}
+      authorized_sha: ${{ steps.gate.outputs.authorized_sha }}
+    steps:
+      - name: Require an exact-SHA Codex authorization
+        id: gate
+        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
+        with:
+          script: |
+            const body = context.payload.comment.body;
+            const owner = context.repo.owner;
+            const isPullRequest = Boolean(
+              context.payload.pull_request || context.payload.issue?.pull_request
+            );
+            const requestedMode = body.includes('@claude remediate')
+              ? 'remediate'
+              : body.includes('@claude continue')
+                ? 'continue'
+                : 'build';
+
+            const trustedCommentFor = (comments, sha, allowedVerdicts, marker) =>
+              comments.some((comment) => {
+                if (comment.user?.login !== owner) return false;
+                const text = comment.body || '';
+                if (!text.includes(marker)) return false;
+                if (!text.includes(`HEAD_SHA: ${sha}`)) return false;
+                return allowedVerdicts.some((verdict) =>
+                  text.includes(`CODEX_AUDIT: ${verdict}`)
+                );
+              });
+
+            if (isPullRequest) {
+              const number = context.payload.pull_request?.number || context.issue.number;
+              const {data: pr} = await github.rest.pulls.get({
+                owner,
+                repo: context.repo.repo,
+                pull_number: number,
+              });
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner,
+                repo: context.repo.repo,
+                issue_number: number,
+                per_page: 100,
+              });
+              const allowed = requestedMode === 'remediate'
+                ? ['CHANGES_REQUESTED']
+                : ['CHECKPOINT_PASS'];
+              if (!trustedCommentFor(comments, pr.head.sha, allowed, '<!-- codex-audit-gate:v1 -->')) {
+                core.setFailed(
+                  `Claude ${requestedMode} blocked: no trusted Codex ${allowed.join('/')} for exact PR head ${pr.head.sha}`
+                );
+                return;
+              }
+              core.setOutput('mode', requestedMode);
+              core.setOutput('authorized_sha', pr.head.sha);
+              return;
+            }
+
+            if (requestedMode !== 'build') {
+              core.setFailed('Continue/remediate commands must be posted on the owning pull request.');
+              return;
+            }
+            const {data: repository} = await github.rest.repos.get({
+              owner,
+              repo: context.repo.repo,
+            });
+            const {data: ref} = await github.rest.git.getRef({
+              owner,
+              repo: context.repo.repo,
+              ref: `heads/${repository.default_branch}`,
+            });
+            const controlComments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo: context.repo.repo,
+              issue_number: 90,
+              per_page: 100,
+            });
+            const baselinePassed = controlComments.some((comment) => {
+              if (comment.user?.login !== owner) return false;
+              const text = comment.body || '';
+              return text.includes('<!-- codex-baseline-gate:v1 -->') &&
+                text.includes('CODEX_BASELINE: PASS') &&
+                text.includes(`HEAD_SHA: ${ref.object.sha}`);
+            });
+            if (!baselinePassed) {
+              core.setFailed(
+                `Claude build blocked: current main ${ref.object.sha} has no trusted CODEX_BASELINE: PASS on issue #90`
+              );
+              return;
+            }
+            core.setOutput('mode', requestedMode);
+            core.setOutput('authorized_sha', ref.object.sha);
+
+  claude:
+    needs: authorize
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      contents: read
-      pull-requests: read
-      issues: write
-      id-token: write
       actions: read
+      contents: write
+      id-token: write
+      issues: write
+      pull-requests: write
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          fetch-depth: 1
-      - uses: anthropics/claude-code-action@9c5ddab2e6d17b83ea679153b31f1d5f023cf636 # v1.0.217
+          fetch-depth: 0
+      - name: Run one bounded Claude coding cycle
+        uses: anthropics/claude-code-action@9c5ddab2e6d17b83ea679153b31f1d5f023cf636 # v1.0.217
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           additional_permissions: |
-            contents: read
+            actions: read
+            contents: write
+            issues: write
+            pull-requests: write
           prompt: |
-            This workflow intentionally has read-only repository contents so
-            every @claude request can run independently without overlapping
-            code writes. Do not edit, commit, or push. For a requested code
-            change, respond with a scoped implementation plan or patch advice.
-          claude_args: "--max-turns 5"
+            You are the lead coding agent for exactly one bounded cycle.
+            Read AGENTS.md, CLAUDE.md, .github/AGENT_OPERATING_PROTOCOL.md,
+            and the owning issue/PR before changing anything.
+
+            Authorization mode: ${{ needs.authorize.outputs.mode }}
+            Authorized starting SHA: ${{ needs.authorize.outputs.authorized_sha }}
+
+            Work only inside the owning task. A remediation authorization permits
+            only the listed Codex findings. Do not merge, approve, self-certify,
+            modify repository protections, or weaken any non-negotiable.
+
+            This job has a hard 30-minute ceiling. Push a recoverable checkpoint
+            at least every 10 minutes. Begin the final handoff by minute 25 and
+            stop after posting it. The handoff must include the issue/PR, branch,
+            exact pushed head SHA, changed files, tests/run URLs, migrations,
+            risks, blockers, and remaining work. Every new commit returns the PR
+            to Codex audit hold. Do not continue until a new exact-SHA Codex
+            authorization is present. Every Claude-owned PR title must begin
+            with [Claude] so the event-driven Codex auditor can identify it.
+          claude_args: "--max-turns 20"
