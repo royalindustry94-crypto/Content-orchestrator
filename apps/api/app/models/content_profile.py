@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Protocol
 
 from sqlalchemy import Index, Text, select
 from sqlalchemy.dialects.postgresql import UUID
@@ -32,7 +33,23 @@ class WorkspaceContentProfile(Base, WorkspaceScopedMixin, TimestampMixin, ActorM
     content_goal: Mapped[str | None] = mapped_column(Text, nullable=True)
 
 
-def is_content_profile_complete(profile: WorkspaceContentProfile | None) -> bool:
+class _ContentProfileFields(Protocol):
+    """Structural shape shared by `WorkspaceContentProfile` (the ORM row)
+    and `ContentProfileOut` (the API schema) — this function is called with
+    either, and only ever reads these six fields, so it's typed against the
+    shape rather than importing the schema here (which would invert the
+    usual schemas-import-models dependency direction).
+    """
+
+    business_name: str | None
+    offer: str | None
+    target_audience: str | None
+    brand_voice: str | None
+    target_platform: str | None
+    content_goal: str | None
+
+
+def is_content_profile_complete(profile: _ContentProfileFields | None) -> bool:
     """True once every field a first-time-setup wizard collects has a
     value. Shared by the API output schema (`ContentProfileOut.is_complete`)
     and by generation-defaults callers (Strategy/Content Department manual

@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import audit
 from app.core.authorization import require_workspace_admin
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
+from app.models.content_department import ContentDepartmentRun, ContentPackage
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.content_department import (
     ContentDepartmentRunCreate,
@@ -38,7 +39,7 @@ async def create_run(
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_current_session),
-) -> ContentDepartmentRunOut:
+) -> ContentDepartmentRun:
     del membership
     try:
         result = await content_department.create_manual_run(
@@ -66,7 +67,7 @@ async def run_detail(
     run_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     db: AsyncSession = Depends(get_current_session),
-) -> ContentDepartmentRunOut:
+) -> ContentDepartmentRun:
     del membership
     run = await content_department.get_run(db, workspace_id=workspace_id, run_id=run_id)
     if run is None:
@@ -91,7 +92,7 @@ async def packages(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     db: AsyncSession = Depends(get_current_session),
-) -> list[ContentPackageOut]:
+) -> list[ContentPackage]:
     del membership
     return await content_department.list_packages(db, workspace_id=workspace_id)
 

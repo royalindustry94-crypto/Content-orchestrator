@@ -133,7 +133,7 @@ async def create_production_run(
 
 
 async def list_jobs(session: AsyncSession, *, workspace_id: uuid.UUID) -> list[ProductionJob]:
-    return (
+    return list(
         (
             await session.execute(
                 select(ProductionJob)
@@ -236,11 +236,11 @@ async def job_detail(
         .all()
     )
     artifact_ids = [row.id for row in artifacts]
-    qa_rows = []
-    repairs = []
-    readiness = []
+    qa_rows: list[MediaQaResult] = []
+    repairs: list[ProductionRepair] = []
+    readiness: list[ProductionReadiness] = []
     if artifact_ids:
-        qa_rows = (
+        qa_rows = list(
             (
                 await session.execute(
                     select(MediaQaResult).where(
@@ -252,7 +252,7 @@ async def job_detail(
             .scalars()
             .all()
         )
-        repairs = (
+        repairs = list(
             (
                 await session.execute(
                     select(ProductionRepair).where(
@@ -264,7 +264,7 @@ async def job_detail(
             .scalars()
             .all()
         )
-        readiness = (
+        readiness = list(
             (
                 await session.execute(
                     select(ProductionReadiness).where(

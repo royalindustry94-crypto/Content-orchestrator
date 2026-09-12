@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import audit
 from app.core.authorization import require_workspace_admin
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
+from app.models.research import Opportunity, ResearchAudit, ResearchRun
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.research import (
     EvidenceOut,
@@ -39,7 +40,7 @@ async def create_run(
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_current_session),
-) -> ResearchRunOut:
+) -> ResearchRun:
     del membership
     result = await research.create_manual_run(
         db, workspace_id=workspace_id, actor_id=uuid.UUID(user.id), payload=payload
@@ -59,7 +60,7 @@ async def runs(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     db: AsyncSession = Depends(get_current_session),
-) -> list[ResearchRunOut]:
+) -> list[ResearchRun]:
     del membership
     return await research.list_runs(db, workspace_id=workspace_id)
 
@@ -70,7 +71,7 @@ async def run_detail(
     run_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     db: AsyncSession = Depends(get_current_session),
-) -> ResearchRunOut:
+) -> ResearchRun:
     del membership
     run = await research.get_run(db, workspace_id=workspace_id, run_id=run_id)
     if run is None:
@@ -93,7 +94,7 @@ async def opportunities(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     db: AsyncSession = Depends(get_current_session),
-) -> list[OpportunityOut]:
+) -> list[Opportunity]:
     del membership
     return await research.list_opportunities(db, workspace_id=workspace_id)
 
@@ -184,7 +185,7 @@ async def run_audit(
     opportunity_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     db: AsyncSession = Depends(get_current_session),
-) -> ResearchAuditOut:
+) -> ResearchAudit:
     del membership
     try:
         return await research.audit_opportunity(

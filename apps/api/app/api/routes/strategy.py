@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.audit import audit
 from app.core.authorization import require_workspace_admin
 from app.core.security import AuthenticatedUser, get_current_session, get_current_user
+from app.models.strategy import StrategyAudit, StrategyBrief, StrategyRun
 from app.models.workspace_membership import WorkspaceMembership
 from app.schemas.strategy import (
     StrategyAuditOut,
@@ -37,7 +38,7 @@ async def create_run(
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     user: AuthenticatedUser = Depends(get_current_user),
     db: AsyncSession = Depends(get_current_session),
-) -> StrategyRunOut:
+) -> StrategyRun:
     del membership
     try:
         result = await strategy.create_manual_run(
@@ -64,7 +65,7 @@ async def runs(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     db: AsyncSession = Depends(get_current_session),
-) -> list[StrategyRunOut]:
+) -> list[StrategyRun]:
     del membership
     return await strategy.list_runs(db, workspace_id=workspace_id)
 
@@ -75,7 +76,7 @@ async def run_detail(
     run_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     db: AsyncSession = Depends(get_current_session),
-) -> StrategyRunOut:
+) -> StrategyRun:
     del membership
     run = await strategy.get_run(db, workspace_id=workspace_id, run_id=run_id)
     if run is None:
@@ -98,7 +99,7 @@ async def briefs(
     workspace_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     db: AsyncSession = Depends(get_current_session),
-) -> list[StrategyBriefOut]:
+) -> list[StrategyBrief]:
     del membership
     return await strategy.list_briefs(db, workspace_id=workspace_id)
 
@@ -146,7 +147,7 @@ async def run_audit(
     brief_id: uuid.UUID,
     membership: WorkspaceMembership = Depends(require_workspace_admin),
     db: AsyncSession = Depends(get_current_session),
-) -> StrategyAuditOut:
+) -> StrategyAudit:
     del membership
     try:
         return await strategy.audit_brief(db, workspace_id=workspace_id, brief_id=brief_id)

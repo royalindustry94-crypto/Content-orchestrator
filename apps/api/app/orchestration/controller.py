@@ -12,6 +12,7 @@ import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from decimal import Decimal
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.config import SpendCap
 from app.models.content import ContentItem
 from app.models.enums import (
+    ContentStage,
     JobType,
     PauseReason,
     PipelineRunStatus,
@@ -76,13 +78,34 @@ def evaluate_condition(condition: dict | None, context: dict) -> bool:
     if condition is None:
         return True
     field_path = condition["field"].split(".")
-    value = context
+    value: Any = context
     for part in field_path:
         value = value.get(part) if isinstance(value, dict) else None
     op = _OPS.get(condition["op"])
     if op is None:
         raise ValueError(f"unsupported condition operator: {condition['op']}")
     return op(value, condition["value"])
+
+
+def _correlation_id(run: PipelineRun) -> uuid.UUID:
+    """`correlation_id` is nullable at the schema level but is always set,
+    once, in `start_run()`. The fallback here only matters for the same
+    edge case the pre-existing `run.correlation_id if run else uuid.uuid4()`
+    call sites already guarded against — it never masks a real bug, it just
+    keeps `None` from reaching `emit()`, which requires a real UUID.
+    """
+    return run.correlation_id or uuid.uuid4()
+
+
+def _definition_id(run: PipelineRun) -> uuid.UUID:
+    """`definition_id` is pinned once in `start_run()` and never cleared.
+    A run reaching any post-start call site without one is a genuine
+    invariant violation, not a normal transient state — fail loudly rather
+    than silently substituting a value that can't be invented.
+    """
+    if run.definition_id is None:
+        raise ValueError(f"pipeline run {run.id} has no definition_id pinned")
+    return run.definition_id
 
 
 async def _find_transition(
@@ -144,7 +167,7 @@ async def enqueue_stage(
         run_after=run_after or datetime.now(UTC),
         attempt=attempt,
         priority=priority,
-        correlation_id=run.correlation_id,
+        correlation_id=_correlation_id(run),
         trace_id=run.trace_id,
     )
     session.add(job)
@@ -192,7 +215,7 @@ async def _advance_or_finish(
 ) -> None:
     transition = await _find_transition(
         session,
-        definition_id=run.definition_id,
+        definition_id=_definition_id(run),
         from_stage=from_stage,
         trigger=trigger,
         context=context,
@@ -203,21 +226,21 @@ async def _advance_or_finish(
         # outgoing edge). If so, the run is complete; otherwise it's a
         # workflow-definition authoring error.
         current_stage_def = await _get_stage_def(
-            session, definition_id=run.definition_id, stage_key=from_stage
+            session, definition_id=_definition_id(run), stage_key=from_stage
         )
         if current_stage_def.is_terminal:
             trace_id, span_id = child_span(run.trace_id)
             run.trace_id = trace_id
             run.status = PipelineRunStatus.SUCCEEDED
             run.completed_at = datetime.now(UTC)
-            run.current_stage = from_stage
+            run.current_stage = ContentStage(from_stage)
             await emit(
                 session,
                 event_type=PIPELINE_SUCCEEDED,
                 workspace_id=run.workspace_id,
                 aggregate_type="pipeline_run",
                 aggregate_id=run.id,
-                correlation_id=run.correlation_id,
+                correlation_id=_correlation_id(run),
                 trace_id=trace_id,
                 span_id=span_id,
                 payload={"final_stage": from_stage},
@@ -229,7 +252,7 @@ async def _advance_or_finish(
             f"for definition {run.definition_id}"
         )
     to_stage_def = await _get_stage_def(
-        session, definition_id=run.definition_id, stage_key=transition.to_stage
+        session, definition_id=_definition_id(run), stage_key=transition.to_stage
     )
     trace_id, span_id = child_span(run.trace_id)
     run.trace_id = trace_id
@@ -244,7 +267,7 @@ async def _advance_or_finish(
             workspace_id=run.workspace_id,
             aggregate_type="pipeline_run",
             aggregate_id=run.id,
-            correlation_id=run.correlation_id,
+            correlation_id=_correlation_id(run),
             trace_id=trace_id,
             span_id=span_id,
             payload={"final_stage": transition.to_stage},
@@ -310,14 +333,14 @@ async def handle_stage_failure(
         workspace_id=run.workspace_id,
         aggregate_type="pipeline_run",
         aggregate_id=run.id,
-        correlation_id=run.correlation_id,
+        correlation_id=_correlation_id(run),
         trace_id=trace_id,
         span_id=span_id,
         payload={"stage": stage, "attempt_number": attempt_number, "error": error_message},
         produced_by="controller",
     )
 
-    stage_def = await _get_stage_def(session, definition_id=run.definition_id, stage_key=stage)
+    stage_def = await _get_stage_def(session, definition_id=_definition_id(run), stage_key=stage)
     retryable = is_retryable(error_message)
     if retryable and attempt_number < stage_def.max_attempts:
         delay = compute_backoff_seconds(
@@ -380,7 +403,7 @@ async def _fail_run(session: AsyncSession, *, run: PipelineRun, reason: str) -> 
         workspace_id=run.workspace_id,
         aggregate_type="pipeline_run",
         aggregate_id=run.id,
-        correlation_id=run.correlation_id,
+        correlation_id=_correlation_id(run),
         trace_id=trace_id,
         span_id=span_id,
         payload={"reason": reason},
@@ -423,7 +446,7 @@ async def cancel_run(session: AsyncSession, *, run: PipelineRun) -> None:
         workspace_id=run.workspace_id,
         aggregate_type="pipeline_run",
         aggregate_id=run.id,
-        correlation_id=run.correlation_id,
+        correlation_id=_correlation_id(run),
         trace_id=trace_id,
         span_id=span_id,
         payload={},
@@ -449,7 +472,7 @@ async def _trigger_compensation(session: AsyncSession, *, run: PipelineRun) -> N
     )
     for stage_run in completed.scalars().all():
         stage_def = await _get_stage_def(
-            session, definition_id=run.definition_id, stage_key=stage_run.stage
+            session, definition_id=_definition_id(run), stage_key=stage_run.stage
         )
         if stage_def.compensation_stage_key is not None:
             job = JobSchedule(
@@ -459,7 +482,7 @@ async def _trigger_compensation(session: AsyncSession, *, run: PipelineRun) -> N
                 ref_table=stage_def.compensation_stage_key,
                 ref_id=run.id,
                 run_after=datetime.now(UTC),
-                correlation_id=run.correlation_id,
+                correlation_id=_correlation_id(run),
                 trace_id=run.trace_id,
             )
             session.add(job)
@@ -547,7 +570,7 @@ async def pause_for_review(
             ref_table="review_gates",
             ref_id=gate.id,
             run_after=timeout_at,
-            correlation_id=run.correlation_id,
+            correlation_id=_correlation_id(run),
             trace_id=run.trace_id,
         )
     )
@@ -559,7 +582,7 @@ async def pause_for_review(
         workspace_id=run.workspace_id,
         aggregate_type="pipeline_run",
         aggregate_id=run.id,
-        correlation_id=run.correlation_id,
+        correlation_id=_correlation_id(run),
         trace_id=trace_id,
         span_id=span_id,
         payload={"stage": stage_key, "review_gate_id": str(gate.id)},
@@ -582,7 +605,7 @@ async def resume_from_review(session: AsyncSession, *, gate: ReviewGate, approve
         # no fake "succeeded" terminal).
         reject_transition = await _find_transition(
             session,
-            definition_id=run.definition_id,
+            definition_id=_definition_id(run),
             from_stage=gate.stage,
             trigger=WorkflowTransitionTrigger.ON_REVIEW_REJECTED,
             context={},
@@ -630,7 +653,7 @@ async def handle_review_timeout(session: AsyncSession, *, review_gate_id: uuid.U
             workspace_id=gate.workspace_id,
             aggregate_type="pipeline_run",
             aggregate_id=gate.pipeline_run_id,
-            correlation_id=run.correlation_id if run else uuid.uuid4(),
+            correlation_id=_correlation_id(run) if run else uuid.uuid4(),
             trace_id=trace_id,
             span_id=span_id,
             payload={"review_gate_id": str(gate.id), "escalation_level": gate.escalation_level},
@@ -644,7 +667,7 @@ async def handle_review_timeout(session: AsyncSession, *, review_gate_id: uuid.U
             workspace_id=gate.workspace_id,
             aggregate_type="pipeline_run",
             aggregate_id=gate.pipeline_run_id,
-            correlation_id=run.correlation_id if run else uuid.uuid4(),
+            correlation_id=_correlation_id(run) if run else uuid.uuid4(),
             trace_id=trace_id,
             span_id=span_id,
             payload={"review_gate_id": str(gate.id)},
@@ -821,7 +844,7 @@ async def reserve_spend(
             workspace_id=run.workspace_id,
             aggregate_type="pipeline_run",
             aggregate_id=run.id,
-            correlation_id=run.correlation_id,
+            correlation_id=_correlation_id(run),
             trace_id=trace_id,
             span_id=span_id,
             payload=payload,
@@ -851,7 +874,7 @@ async def reserve_spend(
         workspace_id=run.workspace_id,
         aggregate_type="pipeline_run",
         aggregate_id=run.id,
-        correlation_id=run.correlation_id,
+        correlation_id=_correlation_id(run),
         trace_id=trace_id,
         span_id=span_id,
         payload={"reservation_id": str(reservation.id), "estimated_usd": str(estimated_cost_usd)},
@@ -918,7 +941,7 @@ async def commit_spend(
         workspace_id=run.workspace_id,
         aggregate_type="pipeline_run",
         aggregate_id=run.id,
-        correlation_id=run.correlation_id,
+        correlation_id=_correlation_id(run),
         trace_id=trace_id,
         span_id=span_id,
         payload={
@@ -944,7 +967,7 @@ async def release_spend(
         workspace_id=run.workspace_id,
         aggregate_type="pipeline_run",
         aggregate_id=run.id,
-        correlation_id=run.correlation_id,
+        correlation_id=_correlation_id(run),
         trace_id=trace_id,
         span_id=span_id,
         payload={"reservation_id": str(reservation.id)},
@@ -987,7 +1010,15 @@ async def submit_review_decision(
     from app.orchestration.events.types import REVIEW_APPROVED, REVIEW_REJECTED
 
     if gate.status != ReviewGateStatus.AWAITING:
-        return  # idempotent — already decided
+        # This function's contract is to always return the OutboxEvent it
+        # emitted for the decision; there is no prior event to hand back
+        # here without a payload query that could itself pick the wrong
+        # historical gate. The one current caller (content_desk.submit_
+        # review_decision) already guards against calling this on a
+        # non-AWAITING gate, so reaching here is a genuine invariant
+        # violation — fail loudly instead of returning None against the
+        # declared return type, which would crash ambiguously downstream.
+        raise ValueError(f"review_gate {gate.id} is not awaiting a decision")
 
     run = await session.get(PipelineRun, gate.pipeline_run_id)
     if run is None or run.content_item_id is None:
