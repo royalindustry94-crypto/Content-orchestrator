@@ -121,10 +121,13 @@ async def signup(
         raise AuthError("email_taken", "an account with this email already exists")
 
     user_id = uuid.uuid4()
-    await session.execute(
-        text("INSERT INTO auth.users (id, email) VALUES (:id, :email)"),
-        {"id": str(user_id), "email": normalized},
-    )
+    # AUTH_MODE=supabase relies on a database trigger on `auth.users` to
+    # create the matching `profiles` row (see app/models/profile.py). Local
+    # auth has no such trigger firing, so it inserts `profiles` directly
+    # below — but writing to Supabase's real `auth.users` table itself has
+    # no downstream reader in local mode (no FK references it; only
+    # Supabase's own internal auth.* tables do) and requires ownership-level
+    # grants on a schema this app does not otherwise touch. Skipped.
     await session.execute(
         text(
             "INSERT INTO profiles (id, email, full_name) VALUES (:id, :email, :full_name) "
