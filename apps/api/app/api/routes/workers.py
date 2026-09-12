@@ -393,12 +393,19 @@ def _lease_http_error(exc: LeaseError) -> HTTPException:
 
 
 async def _load_owned_assignment(
-    session, *, assignment_id: uuid.UUID, worker: AuthenticatedWorker
+    session,
+    *,
+    assignment_id: uuid.UUID,
+    worker: AuthenticatedWorker,
+    registration: WorkerRegistration,
 ) -> StageAssignment:
     assignment = await session.get(StageAssignment, assignment_id, with_for_update=True)
-    if assignment is None or (
-        assignment.workspace_id != worker.workspace_id and assignment.worker_id != worker.worker_id
-    ):
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="assignment not found")
+    if registration.workspace_id is None:
+        if assignment.worker_id != worker.worker_id:
+            raise HTTPException(status_code=404, detail="assignment not found")
+    elif assignment.workspace_id != worker.workspace_id:
         raise HTTPException(status_code=404, detail="assignment not found")
     return assignment
 
@@ -445,7 +452,7 @@ async def ack_assignment(
         if registration.deregistered_at is not None:
             raise HTTPException(status_code=status.HTTP_410_GONE, detail="worker is deregistered")
         assignment = await _load_owned_assignment(
-            session, assignment_id=assignment_id, worker=worker
+            session, assignment_id=assignment_id, worker=worker, registration=registration
         )
         try:
             await acknowledge(session, assignment, worker_id=worker.worker_id)
@@ -496,7 +503,7 @@ async def renew_assignment_lease(
         if registration.deregistered_at is not None:
             raise HTTPException(status_code=status.HTTP_410_GONE, detail="worker is deregistered")
         assignment = await _load_owned_assignment(
-            session, assignment_id=assignment_id, worker=worker
+            session, assignment_id=assignment_id, worker=worker, registration=registration
         )
         try:
             await renew_lease(session, assignment, worker_id=worker.worker_id)
@@ -542,7 +549,7 @@ async def submit_assignment_result(
         if registration.deregistered_at is not None:
             raise HTTPException(status_code=status.HTTP_410_GONE, detail="worker is deregistered")
         assignment = await _load_owned_assignment(
-            session, assignment_id=assignment_id, worker=worker
+            session, assignment_id=assignment_id, worker=worker, registration=registration
         )
         effect = await ensure_provider_effect_key(
             session,
