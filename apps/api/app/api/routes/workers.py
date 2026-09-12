@@ -329,7 +329,8 @@ async def claim_assignment_endpoint(
     worker: AuthenticatedWorker = Depends(get_current_worker),
 ) -> ClaimOut:
     """Atomic worker-pull claim (WS2). The credential is the identity — a
-    worker can only ever claim work in its own workspace, for stages it
+    workspace-pinned worker can only claim work in its own workspace, while
+    a global worker may claim any workspace's assignments for stages it
     supports, when online with fresh heartbeat and spare capacity. The
     assignment state change and the worker's load increment happen in one
     transaction; on any failure nothing moves (no partial state).
@@ -344,6 +345,7 @@ async def claim_assignment_endpoint(
             session,
             worker_id=worker.worker_id,
             claim_token=payload.claim_token,
+            request_workspace_id=worker.workspace_id,
         )
         assignment_out = None
         if result.assignment is not None:
@@ -391,10 +393,19 @@ def _lease_http_error(exc: LeaseError) -> HTTPException:
 
 
 async def _load_owned_assignment(
-    session, *, assignment_id: uuid.UUID, worker: AuthenticatedWorker
+    session,
+    *,
+    assignment_id: uuid.UUID,
+    worker: AuthenticatedWorker,
+    registration: WorkerRegistration,
 ) -> StageAssignment:
     assignment = await session.get(StageAssignment, assignment_id, with_for_update=True)
-    if assignment is None or assignment.workspace_id != worker.workspace_id:
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="assignment not found")
+    if registration.workspace_id is None:
+        if assignment.worker_id != worker.worker_id:
+            raise HTTPException(status_code=404, detail="assignment not found")
+    elif assignment.workspace_id != worker.workspace_id:
         raise HTTPException(status_code=404, detail="assignment not found")
     return assignment
 
@@ -441,7 +452,7 @@ async def ack_assignment(
         if registration.deregistered_at is not None:
             raise HTTPException(status_code=status.HTTP_410_GONE, detail="worker is deregistered")
         assignment = await _load_owned_assignment(
-            session, assignment_id=assignment_id, worker=worker
+            session, assignment_id=assignment_id, worker=worker, registration=registration
         )
         try:
             await acknowledge(session, assignment, worker_id=worker.worker_id)
@@ -492,7 +503,7 @@ async def renew_assignment_lease(
         if registration.deregistered_at is not None:
             raise HTTPException(status_code=status.HTTP_410_GONE, detail="worker is deregistered")
         assignment = await _load_owned_assignment(
-            session, assignment_id=assignment_id, worker=worker
+            session, assignment_id=assignment_id, worker=worker, registration=registration
         )
         try:
             await renew_lease(session, assignment, worker_id=worker.worker_id)
@@ -538,7 +549,7 @@ async def submit_assignment_result(
         if registration.deregistered_at is not None:
             raise HTTPException(status_code=status.HTTP_410_GONE, detail="worker is deregistered")
         assignment = await _load_owned_assignment(
-            session, assignment_id=assignment_id, worker=worker
+            session, assignment_id=assignment_id, worker=worker, registration=registration
         )
         effect = await ensure_provider_effect_key(
             session,
