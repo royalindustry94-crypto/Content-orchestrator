@@ -77,11 +77,19 @@ async def _record(
     reason: str,
     assignment: StageAssignment | None,
     stage: str | None,
+    request_workspace_id: uuid.UUID | None = None,
 ) -> None:
+    workspace_id = (
+        assignment.workspace_id
+        if assignment is not None
+        else worker.workspace_id or request_workspace_id
+    )
+    if workspace_id is None:
+        raise ValueError("global worker claim audit requires workspace context or assignment")
     session.add(
         StageClaimAudit(
             id=uuid.uuid4(),
-            workspace_id=worker.workspace_id,
+            workspace_id=workspace_id,
             assignment_id=assignment.id if assignment is not None else None,
             worker_id=worker.id,
             outcome=outcome,
@@ -98,6 +106,7 @@ async def claim_assignment(
     worker_id: uuid.UUID,
     now: datetime | None = None,
     claim_token: uuid.UUID | None = None,
+    request_workspace_id: uuid.UUID | None = None,
 ) -> ClaimResult:
     """Claim one eligible assignment for ``worker_id`` inside the caller's
     transaction. ``now`` is injectable for clock-controlled tests.
@@ -117,13 +126,15 @@ async def claim_assignment(
 
     # 1a. Idempotent replay: return the assignment already held under this token.
     if claim_token is not None:
+        held_where = [
+            StageAssignment.claimed_by == worker.id,
+            StageAssignment.claim_token == claim_token,
+            StageAssignment.status == StageAssignmentStatus.DISPATCHED,
+        ]
+        if worker.workspace_id is not None:
+            held_where.append(StageAssignment.workspace_id == worker.workspace_id)
         held = await session.execute(
-            select(StageAssignment).where(
-                StageAssignment.workspace_id == worker.workspace_id,
-                StageAssignment.claimed_by == worker.id,
-                StageAssignment.claim_token == claim_token,
-                StageAssignment.status == StageAssignmentStatus.DISPATCHED,
-            )
+            select(StageAssignment).where(*held_where)
         )
         existing = held.scalar_one_or_none()
         if existing is not None:
@@ -134,6 +145,7 @@ async def claim_assignment(
                 reason="idempotent replay",
                 assignment=existing,
                 stage=existing.stage,
+                request_workspace_id=request_workspace_id,
             )
             return ClaimResult(existing, ClaimOutcome.GRANTED, "idempotent replay")
 
@@ -147,6 +159,7 @@ async def claim_assignment(
             reason=reason,
             assignment=None,
             stage=None,
+            request_workspace_id=request_workspace_id,
         )
         return ClaimResult(None, ClaimOutcome.INELIGIBLE, reason)
 
@@ -159,6 +172,7 @@ async def claim_assignment(
             reason=reason,
             assignment=None,
             stage=None,
+            request_workspace_id=request_workspace_id,
         )
         return ClaimResult(None, ClaimOutcome.INELIGIBLE, reason)
 
@@ -173,6 +187,7 @@ async def claim_assignment(
             reason=reason,
             assignment=None,
             stage=None,
+            request_workspace_id=request_workspace_id,
         )
         return ClaimResult(None, ClaimOutcome.INELIGIBLE, reason)
 
@@ -185,6 +200,7 @@ async def claim_assignment(
             reason=reason,
             assignment=None,
             stage=None,
+            request_workspace_id=request_workspace_id,
         )
         return ClaimResult(None, ClaimOutcome.CAPACITY, reason)
 
@@ -202,6 +218,7 @@ async def claim_assignment(
             reason=reason,
             assignment=None,
             stage=None,
+            request_workspace_id=request_workspace_id,
         )
         return ClaimResult(None, ClaimOutcome.NO_WORK, reason)
 
@@ -218,10 +235,11 @@ async def claim_assignment(
     for _ in range(batch):
         await session.execute(sa_text("SAVEPOINT claim_candidate"))
         where = [
-            StageAssignment.workspace_id == worker.workspace_id,
             StageAssignment.status == StageAssignmentStatus.PENDING,
             StageAssignment.stage.in_(list(worker.supported_stages)),
         ]
+        if worker.workspace_id is not None:
+            where.append(StageAssignment.workspace_id == worker.workspace_id)
         if skipped_ids:
             where.append(StageAssignment.id.notin_(skipped_ids))
         candidate = await session.execute(
@@ -265,6 +283,7 @@ async def claim_assignment(
             reason=reason,
             assignment=None,
             stage=None,
+            request_workspace_id=request_workspace_id,
         )
         return ClaimResult(None, outcome, reason)
 
@@ -304,6 +323,7 @@ async def claim_assignment(
                     reason=reason,
                     assignment=assignment,
                     stage=assignment.stage,
+                    request_workspace_id=request_workspace_id,
                 )
                 return ClaimResult(None, ClaimOutcome.CAPACITY, reason)
 
@@ -333,6 +353,7 @@ async def claim_assignment(
         reason="claimed",
         assignment=assignment,
         stage=assignment.stage,
+        request_workspace_id=request_workspace_id,
     )
     await emit(
         session,
