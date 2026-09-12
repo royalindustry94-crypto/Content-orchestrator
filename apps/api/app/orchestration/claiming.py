@@ -85,7 +85,7 @@ async def _record(
         else worker.workspace_id or request_workspace_id
     )
     if workspace_id is None:
-        raise ValueError("global worker claim audit requires workspace context or assignment")
+        return
     session.add(
         StageClaimAudit(
             id=uuid.uuid4(),

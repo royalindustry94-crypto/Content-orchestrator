@@ -559,6 +559,22 @@ async def test_service_offline_and_stale_and_capacity_and_nowork(ctx):
 
 
 @pytest.mark.asyncio
+async def test_service_global_worker_no_work_without_request_workspace(ctx):
+    prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"], max_concurrency=1)
+    await _bring_online(ctx["client"], prov, max_concurrency=1)
+    await _make_worker_global(prov["worker_id"])
+    wid = uuid.UUID(prov["worker_id"])
+    await _retire_other_pending_assignments()
+
+    async with AsyncSessionLocal() as s:
+        result = await claiming.claim_assignment(s, worker_id=wid)
+        await s.commit()
+
+    assert result.outcome == ClaimOutcome.NO_WORK
+    assert result.assignment is None
+
+
+@pytest.mark.asyncio
 async def test_service_granted_then_idempotent_replay(ctx):
     prov = await _provision(ctx["client"], ctx["headers"], ctx["ws"], max_concurrency=3)
     await _bring_online(ctx["client"], prov, max_concurrency=3)
