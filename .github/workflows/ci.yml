@@ -91,7 +91,9 @@ jobs:
         run: npm ci
       - name: Lint
         run: npm run lint
-      - name: Typecheck + build
+      - name: Typecheck
+        run: npx tsc --noEmit
+      - name: Build
         run: npm run build
       - name: Test
         run: npm test
