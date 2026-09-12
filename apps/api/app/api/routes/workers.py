@@ -396,7 +396,9 @@ async def _load_owned_assignment(
     session, *, assignment_id: uuid.UUID, worker: AuthenticatedWorker
 ) -> StageAssignment:
     assignment = await session.get(StageAssignment, assignment_id, with_for_update=True)
-    if assignment is None or assignment.worker_id != worker.worker_id:
+    if assignment is None or (
+        assignment.workspace_id != worker.workspace_id and assignment.worker_id != worker.worker_id
+    ):
         raise HTTPException(status_code=404, detail="assignment not found")
     return assignment
 

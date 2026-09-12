@@ -133,9 +133,7 @@ async def claim_assignment(
         ]
         if worker.workspace_id is not None:
             held_where.append(StageAssignment.workspace_id == worker.workspace_id)
-        held = await session.execute(
-            select(StageAssignment).where(*held_where)
-        )
+        held = await session.execute(select(StageAssignment).where(*held_where))
         existing = held.scalar_one_or_none()
         if existing is not None:
             await _record(

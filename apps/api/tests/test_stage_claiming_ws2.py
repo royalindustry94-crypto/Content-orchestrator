@@ -91,6 +91,23 @@ async def _make_worker_global(worker_id: str) -> None:
         await session.commit()
 
 
+async def _retire_other_pending_assignments(*keep_ids: uuid.UUID) -> None:
+    async with AsyncSessionLocal() as session:
+        params: dict[str, object] = {}
+        where = ""
+        if keep_ids:
+            params["keep_ids"] = list(keep_ids)
+            where = " AND id != ALL(CAST(:keep_ids AS uuid[]))"
+        await session.execute(
+            text(
+                "UPDATE stage_assignments SET status = 'failed'::stage_assignment_status "
+                "WHERE status = 'pending'::stage_assignment_status" + where
+            ),
+            params,
+        )
+        await session.commit()
+
+
 async def _seed_assignment(
     workspace_id,
     *,
@@ -208,6 +225,7 @@ async def test_global_worker_can_claim_other_workspace_and_ack(ctx):
     other = await _make_user()
     other_ws = await _make_workspace(ctx["client"], other["headers"])
     assignment_id = await _seed_assignment(other_ws)
+    await _retire_other_pending_assignments(assignment_id)
     token = str(uuid.uuid4())
 
     first = await ctx["client"].post("/workers/claim", headers=wh, json={"claim_token": token})
@@ -584,6 +602,7 @@ async def test_service_global_worker_skips_budget_blocked_workspace_and_claims_o
         priority=1,
         created_at=datetime.now(UTC) + timedelta(seconds=1),
     )
+    await _retire_other_pending_assignments(blocked, expected)
 
     async with AsyncSessionLocal() as s:
         result = await claiming.claim_assignment(s, worker_id=wid)
@@ -608,6 +627,7 @@ async def test_service_global_worker_spend_cap_stays_scoped_to_assignment_worksp
     other_ws = await _make_workspace(ctx["client"], other["headers"])
     blocked = await _seed_assignment(ctx["ws"], priority=1)
     expected = await _seed_assignment(other_ws, priority=50)
+    await _retire_other_pending_assignments(blocked, expected)
     async with AsyncSessionLocal() as s:
         await s.execute(
             text(
