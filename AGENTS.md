@@ -1,4 +1,4 @@
-# AGENTS.md — Content Orchestrator
+# AGENTS.md — HumanGate
 
 Instructions for coding agents and humans working in this repository.
 

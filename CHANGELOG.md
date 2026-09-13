@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to Content Orchestrator are documented in this file.
+All notable changes to HumanGate are documented in this file.
 
 ## [Unreleased]
 

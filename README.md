@@ -1,4 +1,4 @@
-# Content Orchestrator
+# HumanGate
 
 Private Beta focus: **Agency Content Desk** — submit drafts, mandatory
 Human Review Gate, workspace isolation (FORCE RLS), and spend controls.
@@ -86,7 +86,7 @@ cd apps/web && npm test && npm run build
 ## Agent / contributor guide
 
 See [`AGENTS.md`](./AGENTS.md) (non-negotiables, working rules) and
-`.cursor/rules/content-orchestrator.mdc`.
+`.cursor/rules/humangate.mdc`.
 
 ## Status
 

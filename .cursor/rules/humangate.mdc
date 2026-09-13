@@ -1,9 +1,9 @@
 ---
-description: Content Orchestrator non-negotiables and agent working rules
+description: HumanGate non-negotiables and agent working rules
 alwaysApply: true
 ---
 
-# Content Orchestrator — agent rules
+# HumanGate — agent rules
 
 Follow `AGENTS.md` at the repo root.
 

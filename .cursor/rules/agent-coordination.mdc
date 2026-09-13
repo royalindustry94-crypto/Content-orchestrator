@@ -5,7 +5,7 @@ alwaysApply: true
 
 # Agent coordination
 
-Before planning or editing, read `AGENTS.md`, `.github/AGENT_OPERATING_PROTOCOL.md`, and the active record in [coordination hub #90](https://github.com/royalindustry94-crypto/Content-orchestrator/issues/90).
+Before planning or editing, read `AGENTS.md`, `.github/AGENT_OPERATING_PROTOCOL.md`, and the active record in [coordination hub #90](https://github.com/royalindustry94-crypto/HumanGate/issues/90).
 
 - Cursor may act as Builder only when explicitly assigned in the hub.
 - Enforce one task, one Builder, one branch, and one pull request. Never start or continue a duplicate implementation.

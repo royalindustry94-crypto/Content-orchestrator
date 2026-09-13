@@ -23,7 +23,7 @@ def _prom_line(name: str, value: float | int, labels: dict[str, str] | None = No
 
 async def _collect(session: AsyncSession) -> str:
     lines: list[str] = [
-        "# HELP co_up Content Orchestrator API process up",
+        "# HELP co_up HumanGate API process up",
         "# TYPE co_up gauge",
         "co_up 1",
     ]

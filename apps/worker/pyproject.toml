@@ -1,7 +1,7 @@
 [project]
 name = "content-orchestrator-worker"
 version = "0.1.0"
-description = "Content Orchestrator background worker service"
+description = "HumanGate background worker service"
 requires-python = ">=3.12"
 dependencies = [
     "pydantic>=2.9,<3.0",

@@ -1,6 +1,6 @@
 # Postgres backup and restore
 
-Content Orchestrator stores all durable product state in Postgres.
+HumanGate stores all durable product state in Postgres.
 Treat backup and restore as a launch dependency, not a post-beta nicety.
 
 ## Strategy
