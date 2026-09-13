@@ -27,6 +27,7 @@ jobs:
     outputs:
       mode: ${{ steps.gate.outputs.mode }}
       authorized_sha: ${{ steps.gate.outputs.authorized_sha }}
+      authorized_ref: ${{ steps.gate.outputs.authorized_ref }}
     steps:
       - name: Require an exact-SHA Codex authorization
         id: gate
@@ -79,11 +80,12 @@ jobs:
               }
               core.setOutput('mode', requestedMode);
               core.setOutput('authorized_sha', pr.head.sha);
+              core.setOutput('authorized_ref', pr.head.ref);
               return;
             }
 
-            if (requestedMode !== 'build') {
-              core.setFailed('Continue/remediate commands must be posted on the owning pull request.');
+            if (requestedMode === 'continue') {
+              core.setFailed('Continue commands must be posted on the owning pull request.');
               return;
             }
             const {data: repository} = await github.rest.repos.get({
@@ -101,6 +103,21 @@ jobs:
               issue_number: 90,
               per_page: 100,
             });
+            if (requestedMode === 'remediate') {
+              const approved = body.includes('<!-- codex-remediation-gate:v1 -->') &&
+                body.includes('CODEX_REMEDIATION: APPROVED') &&
+                body.includes(`HEAD_SHA: ${ref.object.sha}`);
+              if (!approved) {
+                core.setFailed(
+                  `Claude remediation blocked: no trusted approval for exact main ${ref.object.sha}`
+                );
+                return;
+              }
+              core.setOutput('mode', requestedMode);
+              core.setOutput('authorized_sha', ref.object.sha);
+              core.setOutput('authorized_ref', repository.default_branch);
+              return;
+            }
             const baselinePassed = controlComments.some((comment) => {
               if (comment.user?.login !== owner) return false;
               const text = comment.body || '';
@@ -116,6 +133,7 @@ jobs:
             }
             core.setOutput('mode', requestedMode);
             core.setOutput('authorized_sha', ref.object.sha);
+            core.setOutput('authorized_ref', repository.default_branch);
 
   claude:
     needs: authorize
@@ -131,6 +149,11 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          ref: ${{ needs.authorize.outputs.authorized_ref }}
+      - name: Verify exact authorized checkout
+        env:
+          AUTHORIZED_SHA: ${{ needs.authorize.outputs.authorized_sha }}
+        run: test "$(git rev-parse HEAD)" = "$AUTHORIZED_SHA"
       - name: Run one bounded Claude coding cycle
         uses: anthropics/claude-code-action@9c5ddab2e6d17b83ea679153b31f1d5f023cf636 # v1.0.217
         with:
