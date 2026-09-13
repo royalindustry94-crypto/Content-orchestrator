@@ -58,7 +58,11 @@ class Settings(BaseSettings):
     allow_local_auth_in_production: bool = Field(default=False)
 
     # --- Scheduler (background tick in API lifespan) ---
-    scheduler_interval_seconds: float = Field(default=2.0, ge=0.2)
+    # 2s was too aggressive for a serverless deployment: every tick opens a
+    # fresh owner-engine connection, and this competes with the outbox and
+    # maintenance loops (see db/session.py) plus real request traffic for
+    # Postgres's shared connection cap.
+    scheduler_interval_seconds: float = Field(default=10.0, ge=0.2)
     scheduler_batch_size: int = Field(default=50, ge=1)
 
     # Default estimated stage cost used when dispatching with Draft Desk.
@@ -118,7 +122,9 @@ class Settings(BaseSettings):
     default_monthly_spend_cap_usd: float = Field(default=1000.0)
 
     # --- Outbox relay (Private Beta review decisions + future consumers) ---
-    outbox_relay_interval_seconds: float = Field(default=2.0, ge=0.2)
+    # See scheduler_interval_seconds above — same serverless connection-
+    # pressure reasoning.
+    outbox_relay_interval_seconds: float = Field(default=10.0, ge=0.2)
 
     # --- Stripe billing (P-001 / WP-PB-004) ---
     # When false (default), entitlements are not enforced — Private Beta P0 path.

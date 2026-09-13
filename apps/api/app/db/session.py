@@ -41,7 +41,21 @@ settings = get_settings()
 # when pytest-asyncio creates a new event loop per test while SQLAlchemy's
 # pool retains connections bound to the previous loop.
 _is_test = os.getenv("ENVIRONMENT") == "test"
-_pool_kwargs: dict = {"poolclass": NullPool} if _is_test else {"pool_pre_ping": True}
+# Deliberately small: this process is a serverless function, and the default
+# pool_size=5/max_overflow=10 lets a single warm instance alone claim up to
+# 15 connections per engine. Multiple concurrent warm instances (routine
+# under Vercel — the dashboard alone fires ~9 parallel requests per load
+# plus a 20s auto-refresh poll) then compete for Postgres's single
+# server-wide connection cap, which starves *both* engines (and the
+# lifespan background loops in app/main.py, all on `engine`) at once —
+# the actual cause behind intermittent 500s across otherwise-unrelated
+# routes. pool_recycle guards against Supabase silently dropping
+# long-idle connections out from under a warm instance.
+_pool_kwargs: dict = (
+    {"poolclass": NullPool}
+    if _is_test
+    else {"pool_pre_ping": True, "pool_size": 3, "max_overflow": 2, "pool_recycle": 300}
+)
 
 
 def _asyncpg_url(dsn: str) -> str:
