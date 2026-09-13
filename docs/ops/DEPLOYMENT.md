@@ -15,7 +15,7 @@ Required for API boot:
 |----------|---------|
 | `DATABASE_URL` | Owner/migration connection (Alembic) |
 | `APP_DATABASE_URL` | Runtime connection as `app_runtime` (RLS) |
-| `SUPABASE_JWT_SECRET` | Verifies Supabase-issued JWTs |
+| `SUPABASE_JWT_SECRET` | Verifies Supabase-issued JWTs — must be a real, random secret >= 32 bytes (P0-1, 2026-09-13 audit); the API refuses to boot with a blank, short, or known-placeholder value outside `ENVIRONMENT=test` |
 
 Compose overrides DB hostnames to the `postgres` service; keep the local
 `.env` values for host-run processes if you mix modes.

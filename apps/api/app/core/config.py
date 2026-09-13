@@ -9,7 +9,7 @@ failure" rule in the project instructions.
 from __future__ import annotations
 
 from functools import lru_cache
-from typing import TypedDict
+from typing import ClassVar, TypedDict
 
 from pydantic import Field, PostgresDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -53,6 +53,14 @@ class Settings(BaseSettings):
     supabase_jwt_secret: str
     supabase_jwt_algorithm: str = Field(default="HS256")
     supabase_jwt_audience: str = Field(default="authenticated")
+    # Optional `iss` claim to require on every verified JWT (P0-1, 2026-09-13
+    # audit). Unset means no issuer check — today's behavior, kept as the
+    # default since a managed Supabase project's exact issuer URL
+    # (`https://<project-ref>.supabase.co/auth/v1`) isn't known until
+    # deployed. AUTH_MODE=local issues `content-orchestrator-local` (see
+    # app/services/local_auth.py) — set this once the real value is known
+    # for every non-local, non-test environment.
+    supabase_jwt_issuer: str | None = Field(default=None)
     auth_mode: str = Field(default="supabase")  # local | supabase
     # Explicit break-glass for AUTH_MODE=local when ENVIRONMENT=production.
     allow_local_auth_in_production: bool = Field(default=False)
@@ -175,6 +183,72 @@ class Settings(BaseSettings):
                 "APP_DATABASE_URL still uses the migration-default app_runtime "
                 "password in a production environment; rotate the app_runtime "
                 "role's password and update APP_DATABASE_URL before starting"
+            )
+        return self
+
+    # Known-weak/placeholder JWT signing secrets seen in the wild (docs,
+    # scaffolding, copy-pasted between projects) — reject them outright
+    # rather than trust that "not blank" means "not guessable". Matched
+    # case-insensitively as an exact value, not a substring: real generated
+    # secrets legitimately contain words like "test" or "secret" inside a
+    # longer random string (e.g. this repo's own test fixtures).
+    _KNOWN_WEAK_JWT_SECRETS: ClassVar[frozenset[str]] = frozenset(
+        {
+            "",
+            "secret",
+            "changeme",
+            "change-me",
+            "change_me",
+            "your-secret",
+            "your-jwt-secret",
+            "your_jwt_secret",
+            "example",
+            "test",
+            "password",
+            "insecure",
+            "default",
+            "jwtsecret",
+            "supersecretjwtkey",
+            # The Supabase CLI's `supabase start` local-dev default — long
+            # enough to pass a naive length check, and copy-pasted into real
+            # deployments often enough to be worth rejecting by name.
+            "super-secret-jwt-token-with-at-least-32-characters-long",
+        }
+    )
+
+    @model_validator(mode="after")
+    def _validate_jwt_secret(self) -> Settings:
+        """P0-1 (2026-09-13 independent audit): `app.core.security` only
+        checks a JWT's signature and claim *shape* — a weak, blank, or
+        widely-known placeholder secret means anyone can forge a validly
+        "signed" token for any user. Exempt only `ENVIRONMENT=test`, which
+        pins its own fixed secret in `tests/conftest.py`; every other
+        environment, including local `development`, must supply a real,
+        sufficiently random secret.
+
+        This does not migrate existing deployments off HMAC shared secrets
+        automatically — a deployed weak secret must still be rotated by an
+        operator, and asymmetric verification via Supabase's JWKS endpoint
+        (removing the shared-secret risk entirely) is tracked as a bounded
+        follow-up, not implemented in this pass.
+        """
+        if self.environment.strip().lower() == "test":
+            return self
+        secret = self.supabase_jwt_secret
+        normalized = secret.strip().lower()
+        if len(secret.encode("utf-8")) < 32:
+            raise ValueError(
+                "SUPABASE_JWT_SECRET must be at least 32 bytes outside ENVIRONMENT=test"
+            )
+        if normalized in self._KNOWN_WEAK_JWT_SECRETS:
+            raise ValueError(
+                "SUPABASE_JWT_SECRET is a known placeholder/default value; "
+                "generate a real random secret"
+            )
+        if len(set(secret)) < 8:
+            raise ValueError(
+                "SUPABASE_JWT_SECRET looks predictable (too few distinct characters); "
+                "generate a real random secret"
             )
         return self
 
