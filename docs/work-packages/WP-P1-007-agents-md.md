@@ -8,7 +8,7 @@ agents do not drift from Gate / RLS / spend / audit rules.
 ## Delivered
 
 - `AGENTS.md` — north star, non-negotiables, stack, security checklist
-- `.cursor/rules/content-orchestrator.mdc` — always-apply Cursor rule
+- `.cursor/rules/humangate.mdc` — always-apply Cursor rule
 - README link
 
 ## Status — COMPLETE (2026-07-28)

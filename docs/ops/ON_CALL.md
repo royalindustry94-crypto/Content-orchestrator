@@ -1,6 +1,6 @@
-# On-call runbook — Content Orchestrator
+# On-call runbook — HumanGate
 
-**Audience:** engineer on call for Private Beta / staging / production  
+**Audience:** engineer on call for Private Beta / staging / production
 **Last updated:** 2026-07-28 (P-008)
 
 ## Severity guide

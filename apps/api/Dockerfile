@@ -1,4 +1,4 @@
-# Content Orchestrator API — production-style image
+# HumanGate API — production-style image
 FROM python:3.12-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \

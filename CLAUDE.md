@@ -2,7 +2,7 @@
 
 Read and follow `AGENTS.md` first. `.github/AGENT_OPERATING_PROTOCOL.md`
 adds the coordination model. Use [coordination hub
-#90](https://github.com/royalindustry94-crypto/Content-orchestrator/issues/90)
+#90](https://github.com/royalindustry94-crypto/HumanGate/issues/90)
 for `CLAIM`, `HEARTBEAT`, `HANDOFF`, and baseline audit records.
 
 ## Mandatory Codex handoff gate

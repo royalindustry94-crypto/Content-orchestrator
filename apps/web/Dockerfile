@@ -1,4 +1,4 @@
-# Content Orchestrator web — multi-stage Node build + nginx
+# HumanGate web — multi-stage Node build + nginx
 FROM node:22-alpine AS build
 
 WORKDIR /app
