@@ -6,6 +6,7 @@ or stores tokens itself. See docs/milestone-2-identity-and-access.md §1.
 
 from __future__ import annotations
 
+import uuid
 from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 
@@ -35,13 +36,18 @@ class AuthenticatedUser:
 
 
 def _decode_supabase_jwt(token: str) -> dict:
+    # P0-1 (2026-09-13 audit): only validate `iss` when one is configured —
+    # a managed Supabase project's issuer URL isn't known until deployed,
+    # and requiring it unconditionally would break every environment that
+    # hasn't set SUPABASE_JWT_ISSUER yet. See app/core/config.py.
+    decode_kwargs: dict = {
+        "algorithms": [settings.supabase_jwt_algorithm],
+        "audience": settings.supabase_jwt_audience,
+    }
+    if settings.supabase_jwt_issuer:
+        decode_kwargs["issuer"] = settings.supabase_jwt_issuer
     try:
-        return jwt_decode(
-            token,
-            settings.supabase_jwt_secret,
-            algorithms=[settings.supabase_jwt_algorithm],
-            audience=settings.supabase_jwt_audience,
-        )
+        return jwt_decode(token, settings.supabase_jwt_secret, **decode_kwargs)
     except InvalidTokenError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -68,6 +74,18 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="token missing 'sub' claim",
         )
+    # P0-1 (2026-09-13 audit): `sub` used to be accepted as any non-empty
+    # string. Every real user id in this system (Supabase auth.users.id /
+    # profiles.id, minted by both AUTH_MODE=supabase and =local) is a UUID —
+    # requiring that shape here rejects a token forged with an arbitrary
+    # `sub` before it ever reaches a workspace-membership lookup.
+    try:
+        uuid.UUID(str(sub))
+    except (ValueError, AttributeError, TypeError) as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="token 'sub' claim must be a valid UUID",
+        ) from exc
 
     return AuthenticatedUser(id=sub, email=claims.get("email"))
 
