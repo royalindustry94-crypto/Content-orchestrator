@@ -20,6 +20,9 @@ for `CLAIM`, `HEARTBEAT`, `HANDOFF`, and baseline audit records.
   event-driven Codex auditor can identify and inspect it automatically.
 - Do not start a new task unless the current `main` SHA has a matching
   `CODEX_BASELINE: PASS` on coordination issue #90.
+- When the baseline has `CHANGES_REQUESTED`, a trusted exact-main
+  `CODEX_REMEDIATION: APPROVED` comment may start one remediation-only cycle
+  from the owning audit issue. It does not authorize feature work.
 - Do not continue feature work on a PR unless a trusted Codex comment records
   `CODEX_AUDIT: CHECKPOINT_PASS` for its exact current head SHA. A
   `CODEX_AUDIT: CHANGES_REQUESTED` comment authorizes only its listed fixes.
